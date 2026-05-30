@@ -2,8 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { buildBalance, dateRangeIso, todayIso } from "@/lib/gas/demand";
 import { dummyFlows, dummyTemperatures, dummyCapacity } from "@/lib/gas/dummy";
-import { fetchBelgradeTemperatures } from "@/lib/server/openmeteo.functions";
-import { fetchEntsogFlows } from "@/lib/server/entsog.functions";
+import { fetchBelgradeTemperatures } from "@/lib/data/openmeteo.functions";
+import { fetchEntsogFlows } from "@/lib/data/entsog.functions";
 import type { BalanceRow, CapacityRow, FlowRow, TempRow } from "@/lib/gas/types";
 import { useDashboard } from "./dashboard-context";
 
