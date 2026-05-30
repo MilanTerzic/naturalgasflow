@@ -9,38 +9,95 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as DashRouteImport } from './routes/_dash'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as DashModelRouteImport } from './routes/_dash.model'
+import { Route as DashFlowsRouteImport } from './routes/_dash.flows'
+import { Route as DashCapacityRouteImport } from './routes/_dash.capacity'
+import { Route as DashBalanceRouteImport } from './routes/_dash.balance'
 
+const DashRoute = DashRouteImport.update({
+  id: '/_dash',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DashModelRoute = DashModelRouteImport.update({
+  id: '/model',
+  path: '/model',
+  getParentRoute: () => DashRoute,
+} as any)
+const DashFlowsRoute = DashFlowsRouteImport.update({
+  id: '/flows',
+  path: '/flows',
+  getParentRoute: () => DashRoute,
+} as any)
+const DashCapacityRoute = DashCapacityRouteImport.update({
+  id: '/capacity',
+  path: '/capacity',
+  getParentRoute: () => DashRoute,
+} as any)
+const DashBalanceRoute = DashBalanceRouteImport.update({
+  id: '/balance',
+  path: '/balance',
+  getParentRoute: () => DashRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/balance': typeof DashBalanceRoute
+  '/capacity': typeof DashCapacityRoute
+  '/flows': typeof DashFlowsRoute
+  '/model': typeof DashModelRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/balance': typeof DashBalanceRoute
+  '/capacity': typeof DashCapacityRoute
+  '/flows': typeof DashFlowsRoute
+  '/model': typeof DashModelRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/_dash': typeof DashRouteWithChildren
+  '/_dash/balance': typeof DashBalanceRoute
+  '/_dash/capacity': typeof DashCapacityRoute
+  '/_dash/flows': typeof DashFlowsRoute
+  '/_dash/model': typeof DashModelRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/balance' | '/capacity' | '/flows' | '/model'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/balance' | '/capacity' | '/flows' | '/model'
+  id:
+    | '__root__'
+    | '/'
+    | '/_dash'
+    | '/_dash/balance'
+    | '/_dash/capacity'
+    | '/_dash/flows'
+    | '/_dash/model'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  DashRoute: typeof DashRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/_dash': {
+      id: '/_dash'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof DashRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -48,22 +105,57 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_dash/model': {
+      id: '/_dash/model'
+      path: '/model'
+      fullPath: '/model'
+      preLoaderRoute: typeof DashModelRouteImport
+      parentRoute: typeof DashRoute
+    }
+    '/_dash/flows': {
+      id: '/_dash/flows'
+      path: '/flows'
+      fullPath: '/flows'
+      preLoaderRoute: typeof DashFlowsRouteImport
+      parentRoute: typeof DashRoute
+    }
+    '/_dash/capacity': {
+      id: '/_dash/capacity'
+      path: '/capacity'
+      fullPath: '/capacity'
+      preLoaderRoute: typeof DashCapacityRouteImport
+      parentRoute: typeof DashRoute
+    }
+    '/_dash/balance': {
+      id: '/_dash/balance'
+      path: '/balance'
+      fullPath: '/balance'
+      preLoaderRoute: typeof DashBalanceRouteImport
+      parentRoute: typeof DashRoute
+    }
   }
 }
 
+interface DashRouteChildren {
+  DashBalanceRoute: typeof DashBalanceRoute
+  DashCapacityRoute: typeof DashCapacityRoute
+  DashFlowsRoute: typeof DashFlowsRoute
+  DashModelRoute: typeof DashModelRoute
+}
+
+const DashRouteChildren: DashRouteChildren = {
+  DashBalanceRoute: DashBalanceRoute,
+  DashCapacityRoute: DashCapacityRoute,
+  DashFlowsRoute: DashFlowsRoute,
+  DashModelRoute: DashModelRoute,
+}
+
+const DashRouteWithChildren = DashRoute._addFileChildren(DashRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  DashRoute: DashRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
