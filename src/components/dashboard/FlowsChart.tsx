@@ -11,14 +11,8 @@ import {
 } from "recharts";
 import { PALETTE, POINTS } from "@/lib/gas/config";
 import { fmtMcm, fmtShortDate } from "@/lib/gas/format";
-import type { BalanceRow } from "@/lib/gas/types";
+import type { FlowRow } from "@/lib/gas/types";
 
-interface FlowsChartProps {
-  balance: BalanceRow[];
-  today: string;
-}
-
-// Render each point as TWO lines (actual + forecast) for dashed forecast style.
 const POINT_COLORS = {
   kiskundorozsma_hu: PALETTE.huOthers,
   kireevo: PALETTE.bgImport,
@@ -26,49 +20,31 @@ const POINT_COLORS = {
   kalotina: PALETTE.kalotina,
 } as const;
 
-export function FlowsChart({ balance, today }: FlowsChartProps) {
-  const todayTs = Date.parse(`${today}T00:00:00Z`);
-  const halfDay = 12 * 3_600_000;
-
-  // Build per-point actual/forecast columns once.
-  const data = balance.map((r) => {
-    const row: Record<string, number | null> = { ts: r.ts };
+export function FlowsChart({
+  flows,
+  dates,
+  today,
+}: {
+  flows: FlowRow[];
+  dates: string[];
+  today: string;
+}) {
+  const flowByDate = new Map(flows.map((f) => [f.date, f]));
+  const data = dates.map((date) => {
+    const ts = Date.parse(`${date}T00:00:00Z`);
+    const isFcst = date > today;
+    const row = flowByDate.get(date);
+    const out: Record<string, number | null> = { ts };
     for (const key of Object.keys(POINTS) as (keyof typeof POINTS)[]) {
-      // The pure flows aren't in BalanceRow except via the derived fields,
-      // so re-expose the per-point fields by re-reading via a lookup.
-      // We have kiskundorozsma_entry_mcm (=kkd_hu), kalotina_entry_mcm,
-      // imports_from_bulgaria_mcm (=kireevo - kkd2). For per-point detail,
-      // we use balance-derived components and approximate kkd_2 from
-      // kireevo - imports_from_bulgaria_mcm.
-      const kkdHu = r.kiskundorozsma_entry_mcm;
-      const kal = r.kalotina_entry_mcm;
-      const imp = r.imports_from_bulgaria_mcm;
-      // kireevo and kkd_2 are not directly stored — but for the flows
-      // tab we want raw point flows. Use balance-only proxies here:
-      // kireevo ≈ imp + (estimated kkd2). Without kkd2 we plot kireevo=imp.
-      // We'll show 4 lines using available proxies (good enough for the
-      // dashboard parity; the user can switch live to see actual ENTSOG).
-      let v: number;
-      switch (key) {
-        case "kiskundorozsma_hu":
-          v = kkdHu;
-          break;
-        case "kireevo":
-          v = imp;
-          break;
-        case "kiskundorozsma_2":
-          v = 0;
-          break;
-        case "kalotina":
-          v = kal;
-          break;
-      }
-      row[`${key}_actual`] = r.is_forecast ? null : v;
-      row[`${key}_fcst`] = r.is_forecast ? v : null;
+      const v = row ? (row[key] as number | undefined) ?? null : null;
+      out[`${key}_actual`] = isFcst ? null : v;
+      out[`${key}_fcst`] = isFcst ? v : null;
     }
-    return row;
+    return out;
   });
 
+  const todayTs = Date.parse(`${today}T00:00:00Z`);
+  const halfDay = 12 * 3_600_000;
   return (
     <ResponsiveContainer width="100%" height="100%">
       <LineChart data={data} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
