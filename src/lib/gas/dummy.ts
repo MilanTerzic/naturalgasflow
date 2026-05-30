@@ -43,11 +43,13 @@ export function dummyFlows(dates: string[]): FlowRow[] {
   return dates.map((date) => {
     const doy = dayOfYear(date);
     const winter = 0.5 + 0.5 * Math.cos((2 * Math.PI * (doy - 15)) / 365);
-    const kkdHu = Math.max(0, 4.5 + 4.0 * winter + gaussian(rand, 0, 0.3));
-    const kire = Math.max(0, 6.0 + 2.5 * winter + gaussian(rand, 0, 0.25));
-    const kkd2 = Math.max(0, 0.6 + 0.5 * winter + gaussian(rand, 0, 0.1));
-    const kal = Math.max(0, 1.5 + 1.5 * winter + gaussian(rand, 0, 0.2));
-    const kkdHuMet = Math.max(0, kkdHu * 0.3 + gaussian(rand, 0, 0.15));
+    // HU→RS (Kiskundorozsma) is effectively idle since TurkStream came online.
+    const kkdHu = 0;
+    // BG→RS via Kireevo carries most of Serbia's supply.
+    const kire = Math.max(0, 8.5 + 3.5 * winter + gaussian(rand, 0, 0.3));
+    const kkd2 = Math.max(0, 0.3 + 0.3 * winter + gaussian(rand, 0, 0.08));
+    const kal = Math.max(0, 1.6 + 1.4 * winter + gaussian(rand, 0, 0.2));
+    const kkdHuMet = 0;
     return {
       date,
       kiskundorozsma_hu: +kkdHu.toFixed(3),
