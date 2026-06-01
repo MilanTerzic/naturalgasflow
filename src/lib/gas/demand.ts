@@ -117,12 +117,6 @@ export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
   // estimates. If a day has no usable actual data, carry forward the most
   // recent historical day. If no historical exists, use the nearest future
   // day as a last-resort fallback. Track source type per day for the UI.
-  const flowKeys: (keyof FlowRow)[] = [
-    "kiskundorozsma_hu",
-    "kireevo",
-    "kiskundorozsma_2",
-    "kalotina",
-  ];
   const flowDaily: Record<string, FlowRow | undefined> = {};
   const estimatedFrom: Record<string, string | undefined> = {};
   const sourceType: Record<string, "actual" | "historical_fallback" | "future_fallback" | "none"> = {};
