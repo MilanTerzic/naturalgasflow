@@ -27,23 +27,36 @@ export const Route = createFileRoute("/_dash/capacity")({
   component: CapacityPage,
 });
 
-const HORIZONS = [
-  { value: "0.25", label: "Next 3 months" },
-  { value: "0.5", label: "Next 6 months" },
-  { value: "1", label: "Next 12 months" },
-  { value: "2", label: "Next 2 years" },
-  { value: "3", label: "Next 3 years" },
-  { value: "5", label: "Next 5 years" },
-];
+// EU gas year = 1 Oct → 1 Oct of the following calendar year.
+function currentGasYearStart(today = new Date()): number {
+  const y = today.getUTCFullYear();
+  return today.getUTCMonth() >= 9 ? y : y - 1;
+}
+
+function gasYearOptions() {
+  const start = currentGasYearStart();
+  const years = [-1, 0, 1, 2, 3, 4, 5];
+  return years.map((offset) => {
+    const y = start + offset;
+    return {
+      value: String(y),
+      label: `Gas year ${y}/${String(y + 1).slice(-2)} (1 Oct ${y} → 1 Oct ${y + 1})`,
+      fromISO: `${y}-10-01`,
+      toISO: `${y + 1}-10-01`,
+    };
+  });
+}
 
 function CapacityPage() {
   const { flows } = useDashboardData();
-  const [horizon, setHorizon] = useState("1");
-  const years = Number(horizon);
+  const options = useMemo(gasYearOptions, []);
+  const [gasYear, setGasYear] = useState(String(currentGasYearStart()));
+
+  const selected = options.find((o) => o.value === gasYear) ?? options[1];
 
   const { rows: capacity, range } = useMemo(
-    () => dummyCapacity(years),
-    [years],
+    () => dummyCapacity({ fromISO: selected.fromISO, toISO: selected.toISO }),
+    [selected.fromISO, selected.toISO],
   );
 
   return (
@@ -60,15 +73,15 @@ function CapacityPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">Horizon</span>
-          <Select value={horizon} onValueChange={setHorizon}>
-            <SelectTrigger className="h-8 w-[170px] text-xs">
+          <span className="text-xs text-muted-foreground">Gas year</span>
+          <Select value={gasYear} onValueChange={setGasYear}>
+            <SelectTrigger className="h-8 w-[300px] text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {HORIZONS.map((h) => (
-                <SelectItem key={h.value} value={h.value} className="text-xs">
-                  {h.label}
+              {options.map((o) => (
+                <SelectItem key={o.value} value={o.value} className="text-xs">
+                  {o.label}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -76,7 +89,12 @@ function CapacityPage() {
         </div>
       </div>
 
-      <CapacityCharts capacity={capacity} flows={flows} />
+      <CapacityCharts
+        capacity={capacity}
+        flows={flows}
+        heatmapFromISO={selected.fromISO}
+        heatmapToISO={selected.toISO}
+      />
       <CapacityTable capacity={capacity} flows={flows} />
     </div>
   );
