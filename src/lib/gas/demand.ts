@@ -112,9 +112,10 @@ export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
     return vals.reduce((s, v) => s + v, 0) / vals.length;
   });
 
-  // Current-day flow estimate: if today's value is missing or zero while
-  // yesterday's was positive, copy yesterday into today.
-  const todayIdx = dates.indexOf(todayIso);
+  // Historical fill: for each historical date (≤ today) with missing/zero
+  // flow data, carry forward the most recent prior day that has positive
+  // values, looking back up to MAX_LOOKBACK days. Mark those rows estimated.
+  const MAX_LOOKBACK = 3;
   const flowKeys: (keyof FlowRow)[] = [
     "kiskundorozsma_hu",
     "kireevo",
@@ -122,25 +123,34 @@ export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
     "kalotina",
   ];
   const flowDaily: Record<string, FlowRow | undefined> = {};
+  const estimatedFrom: Record<string, string | undefined> = {};
   for (const d of dates) flowDaily[d] = flowByDate.get(d);
-  if (todayIdx > 0) {
-    const todayKey = dates[todayIdx];
-    const yKey = dates[todayIdx - 1];
-    const yRow = flowDaily[yKey];
-    const tRow = flowDaily[todayKey];
-    if (yRow) {
-      const fixed: FlowRow = tRow
-        ? { ...tRow }
-        : { date: todayKey, kiskundorozsma_hu: 0, kireevo: 0, kiskundorozsma_2: 0, kalotina: 0 };
-      for (const k of flowKeys) {
-        const yVal = yRow[k] as number;
-        const tVal = (fixed[k] as number | undefined) ?? 0;
-        const yUsable = typeof yVal === "number" && yVal > 0;
-        if (yUsable && (tVal == null || tVal === 0)) {
-          (fixed[k] as number) = yVal;
+
+  const hasUsableFlow = (r: FlowRow | undefined) =>
+    !!r && (r.kireevo > 0 || r.kalotina > 0 || r.kiskundorozsma_hu > 0);
+
+  const todayIdx = dates.indexOf(todayIso);
+  const lastHistoricalIdx = todayIdx >= 0 ? todayIdx : dates.length - 1;
+  for (let i = 0; i <= lastHistoricalIdx; i++) {
+    const dKey = dates[i];
+    if (hasUsableFlow(flowDaily[dKey])) continue;
+    // Walk back up to MAX_LOOKBACK days for a usable source row.
+    for (let back = 1; back <= MAX_LOOKBACK && i - back >= 0; back++) {
+      const srcKey = dates[i - back];
+      const srcRow = flowDaily[srcKey];
+      if (!hasUsableFlow(srcRow)) continue;
+      const fixed: FlowRow = { ...(srcRow as FlowRow), date: dKey };
+      // Preserve any positive values that were present on the target day.
+      const orig = flowDaily[dKey];
+      if (orig) {
+        for (const k of flowKeys) {
+          const v = orig[k] as number | undefined;
+          if (typeof v === "number" && v > 0) (fixed[k] as number) = v;
         }
       }
-      flowDaily[todayKey] = fixed;
+      flowDaily[dKey] = fixed;
+      estimatedFrom[dKey] = srcKey;
+      break;
     }
   }
 
@@ -192,6 +202,8 @@ export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
       date,
       ts,
       is_forecast,
+      is_estimated: !is_forecast && !!estimatedFrom[date],
+      estimated_from: estimatedFrom[date],
       temperature_c: temp,
       avg_temperature_c: avg,
       temperature_actual_c: is_forecast ? null : temp,
