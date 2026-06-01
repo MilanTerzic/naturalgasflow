@@ -28,9 +28,9 @@ export function KpiRow({ balance, today }: { balance: BalanceRow[]; today: strin
   const estHint = est && cur.estimated_from
     ? `Estimated · from ${cur.estimated_from}`
     : undefined;
-  // For flow-derived KPIs, prefer the estimated tone when the row is carried forward.
-  const flowTone = (positive = false): "default" | "positive" | "warning" =>
-    est ? "warning" : positive ? "positive" : "default";
+  // Estimated (carried-forward) flow KPIs are highlighted in green per user request.
+  const flowTone = (): "default" | "positive" =>
+    est ? "positive" : "default";
 
   return (
     <div className="space-y-2">
