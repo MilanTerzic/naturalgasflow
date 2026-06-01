@@ -130,9 +130,9 @@ export function CapacityCharts({
     return all.filter((d) => d <= today).slice(-21);
   }, [flows]);
 
-  const totalAvailable = routes.reduce((s, r) => s + r.available_mwh, 0);
-  const totalBooked = routes.reduce((s, r) => s + r.booked_mwh, 0);
-  const totalUsed = routes.reduce((s, r) => s + r.used_mwh, 0);
+  const totalAvailable = routes.reduce((s, r) => s + r.available_mcm, 0);
+  const totalBooked = routes.reduce((s, r) => s + r.booked_mcm, 0);
+  const totalUsed = routes.reduce((s, r) => s + r.used_mcm, 0);
 
   return (
     <div className="space-y-4">
@@ -140,36 +140,36 @@ export function CapacityCharts({
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <SummaryKpi
           label="Technical capacity"
-          value={fmtMwh(totalAvailable)}
-          unit="MWh/d"
+          value={fmtMcm(totalAvailable)}
+          unit="mcm/d"
           tone="muted"
           hint="Sum of offered capacity across all border routes."
         />
         <SummaryKpi
           label="Booked"
-          value={fmtMwh(totalBooked)}
-          unit="MWh/d"
+          value={fmtMcm(totalBooked)}
+          unit="mcm/d"
           tone="accent"
           hint={`${fmtPct((totalBooked / Math.max(totalAvailable, 1)) * 100)} of technical`}
         />
         <SummaryKpi
           label="Used (physical flow)"
-          value={fmtMwh(totalUsed)}
-          unit="MWh/d"
+          value={fmtMcm(totalUsed)}
+          unit="mcm/d"
           tone="primary"
           hint={`${fmtPct((totalUsed / Math.max(totalAvailable, 1)) * 100)} of technical · latest day`}
         />
       </div>
 
       {/* Per-route bars: available baseline with booked + used overlay */}
-      <ChartCard title="Capacity vs flow — by route" subtitle="Technical · booked · physically used (latest day)">
+      <ChartCard title="Capacity vs flow — by route" subtitle="Technical · booked · physically used (latest day), mcm/d">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
             data={routes.map((r) => ({
               label: r.label,
-              available: r.available_mwh,
-              booked: r.booked_mwh,
-              used: r.used_mwh,
+              available: r.available_mcm,
+              booked: r.booked_mcm,
+              used: r.used_mcm,
             }))}
             layout="vertical"
             margin={{ top: 8, right: 24, left: 4, bottom: 8 }}
@@ -180,7 +180,7 @@ export function CapacityCharts({
               type="number"
               tick={{ fontSize: 10 }}
               stroke={PALETTE.axis}
-              tickFormatter={(v) => fmtMwh(v)}
+              tickFormatter={(v) => fmtMcm(v)}
             />
             <YAxis
               type="category"
@@ -190,7 +190,7 @@ export function CapacityCharts({
               stroke={PALETTE.axis}
             />
             <Tooltip
-              formatter={(v) => (typeof v === "number" ? `${fmtMwh(v)} MWh/d` : "–")}
+              formatter={(v) => (typeof v === "number" ? `${fmtMcm(v)} mcm/d` : "–")}
               contentStyle={{ fontSize: 12 }}
             />
             <Legend wrapperStyle={{ fontSize: 11 }} />
