@@ -300,12 +300,26 @@ function SummaryKpi({
 
 function RouteHeatRow({
   route,
-  dates,
+  months,
+  todayISO,
 }: {
   route: RouteSummary;
-  dates: string[];
+  months: { key: string; label: string }[];
+  todayISO: string;
 }) {
-  const byDate = new Map(route.perDate.map((p) => [p.date, p]));
+  // Group per-date utilisation into month buckets (mean of util_pct across the
+  // days we have data for). Months with zero observed days render blank.
+  const byMonth = new Map<string, { sum: number; n: number; usedSum: number }>();
+  for (const p of route.perDate) {
+    const k = p.date.slice(0, 7); // YYYY-MM
+    const slot = byMonth.get(k) ?? { sum: 0, n: 0, usedSum: 0 };
+    slot.sum += p.util_pct;
+    slot.usedSum += p.used_mcm;
+    slot.n += 1;
+    byMonth.set(k, slot);
+  }
+  const todayMonth = todayISO.slice(0, 7);
+
   return (
     <>
       <div className="flex items-center pr-2 text-[11px] leading-tight">
@@ -313,15 +327,25 @@ function RouteHeatRow({
           {route.label}
         </span>
       </div>
-      {dates.map((d) => {
-        const cell = byDate.get(d);
-        const pct = cell?.util_pct ?? 0;
+      {months.map((m) => {
+        const slot = byMonth.get(m.key);
+        const hasData = !!slot && slot.n > 0;
+        const pct = hasData ? slot!.sum / slot!.n : 0;
+        const avgUsed = hasData ? slot!.usedSum / slot!.n : 0;
+        const isFuture = m.key > todayMonth;
         return (
           <div
-            key={d}
+            key={m.key}
             className="h-7 rounded-[3px]"
-            style={{ background: heatColor(pct) }}
-            title={`${route.label} · ${d}: ${fmtPct(pct)} (${fmtMcm(cell?.used_mcm ?? 0)} mcm/d)`}
+            style={{
+              background: hasData ? heatColor(pct) : "oklch(0.97 0.005 240)",
+              opacity: !hasData && isFuture ? 0.4 : 1,
+            }}
+            title={
+              hasData
+                ? `${route.label} · ${m.label}: ${fmtPct(pct)} avg (${fmtMcm(avgUsed)} mcm/d avg, ${slot!.n} days)`
+                : `${route.label} · ${m.label}: no flow data`
+            }
           />
         );
       })}
