@@ -12,12 +12,15 @@ export interface FlowRow {
   kiskundorozsma_hu_met?: number;
 }
 
+export type FlowSourceType = "actual" | "historical_fallback" | "future_fallback" | "none";
+
 export interface BalanceRow {
   date: string; // ISO date
   ts: number; // epoch ms (for chart x-axis)
   is_forecast: boolean;
-  is_estimated: boolean; // carried forward from a previous day when source data was missing
+  is_estimated: boolean; // carried forward from a previous (or future) day when source data was missing
   estimated_from?: string; // ISO date of the source day used for carry-forward
+  source_type: FlowSourceType; // why the flow values for this row were selected
   temperature_c: number | null;
   avg_temperature_c: number | null;
   temperature_actual_c: number | null;
