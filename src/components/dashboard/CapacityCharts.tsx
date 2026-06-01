@@ -242,7 +242,8 @@ export function CapacityCharts({
             data={routes.map((r) => ({
               label: r.label.split("·").slice(1).join("·").trim() || r.label,
               tso: r.tso,
-              util: +r.utilisation_used.toFixed(1),
+              // Physical flow cannot exceed technical capacity — cap at 100 %.
+              util: +Math.min(r.utilisation_used, 100).toFixed(1),
             }))}
             margin={{ top: 10, right: 16, left: 4, bottom: 60 }}
           >
@@ -256,7 +257,12 @@ export function CapacityCharts({
               height={70}
               interval={0}
             />
-            <YAxis tick={{ fontSize: 11 }} stroke={PALETTE.axis} tickFormatter={(v) => `${v}%`} />
+            <YAxis
+              tick={{ fontSize: 11 }}
+              stroke={PALETTE.axis}
+              tickFormatter={(v) => `${v}%`}
+              domain={[0, 100]}
+            />
             <ReferenceLine y={100} stroke={PALETTE.demand} strokeDasharray="4 4" />
             <Tooltip
               formatter={(v) => (typeof v === "number" ? fmtPct(v) : "–")}
@@ -264,7 +270,7 @@ export function CapacityCharts({
             />
             <Bar dataKey="util" isAnimationActive={false}>
               {routes.map((r, i) => (
-                <Cell key={i} fill={heatColor(r.utilisation_used)} />
+                <Cell key={i} fill={heatColor(Math.min(r.utilisation_used, 100))} />
               ))}
             </Bar>
           </BarChart>
