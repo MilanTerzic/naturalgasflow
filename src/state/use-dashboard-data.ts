@@ -115,7 +115,7 @@ export function useDashboardData(): DashboardData {
     ],
   );
 
-  const capacity = useMemo(() => dummyCapacity(), []);
+  const capacity = useMemo(() => dummyCapacity().rows, []);
 
   // Validation: warn on day-over-day total-supply jumps > 50%.
   for (let i = 1; i < balance.length; i++) {
