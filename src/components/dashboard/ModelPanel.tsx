@@ -1,4 +1,10 @@
-import { LINEAR_COEFFS, POLY_COEFFS } from "@/lib/gas/config";
+import {
+  BIH_SHARE,
+  CONVERSION_MCM_TO_GWH,
+  DOMESTIC_PRODUCTION_MCM,
+  LINEAR_COEFFS,
+  POLY_COEFFS,
+} from "@/lib/gas/config";
 import { fmtMcm, fmtShortDate, fmtTemp } from "@/lib/gas/format";
 import type { BalanceRow } from "@/lib/gas/types";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -29,87 +35,176 @@ export function ModelPanel({
   const refreshDate = new Date().toISOString().slice(0, 10);
   return (
     <div className="space-y-4">
+      <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+        All supply and demand values are shown in <strong>mcm/day</strong>. Estimated values are
+        used only where actual ENTSOG data is not available, and are clearly marked.
+      </div>
+
       <div className="grid gap-3 lg:grid-cols-2">
+        {/* Polynomial model */}
         <div className="rounded-md border bg-card p-3 shadow-sm">
-          <h3 className="mb-2 text-sm font-semibold">Demand regression</h3>
-          <div className="space-y-1 text-sm">
-            <p>
-              Active model: <span className="font-medium">{usePolynomial ? "Polynomial (cubic)" : "Linear"}</span>
-            </p>
-            <p className="font-mono text-xs">
-              Poly: y = {POLY_COEFFS[0]}·x³ {POLY_COEFFS[1]}·x² {POLY_COEFFS[2]}·x + {POLY_COEFFS[3]}
-            </p>
-            <p className="font-mono text-xs">
-              Linear: y = {LINEAR_COEFFS[0]}·x + {LINEAR_COEFFS[1]}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              y = Serbian daily demand (mcm/day) · x = Belgrade 2-day rolling average temperature (°C).
-              Coefficients calibrated against historical demand vs. Belgrade temperature.
-            </p>
-            <p className="text-xs text-muted-foreground">
-              ARIMA / time-series smoothing: not active in this build — temperature-driven regression
-              alone matches observed daily variance within the rolling ±10-day window. Can be layered
-              on top by post-processing the demand series (e.g. ARIMA(1,0,1) on residuals).
-            </p>
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-sm font-semibold">Polynomial regression (active{usePolynomial ? "" : " — fallback to linear"})</h3>
+            <span className={`rounded px-2 py-0.5 text-[10px] font-medium ${usePolynomial ? "bg-emerald-100 text-emerald-800" : "bg-muted text-muted-foreground"}`}>
+              {usePolynomial ? "DEFAULT" : "inactive"}
+            </span>
           </div>
+          <p className="font-mono text-xs">
+            y = {POLY_COEFFS[0]}·x³ {POLY_COEFFS[1]}·x² {POLY_COEFFS[2]}·x + {POLY_COEFFS[3]}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            y = Serbian daily demand (mcm/day) · x = Belgrade 2-day average temperature (°C).
+          </p>
+          <Table className="mt-2">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="h-7">Term</TableHead>
+                <TableHead className="h-7 text-right">Coefficient</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow><TableCell>x³</TableCell><TableCell className="text-right tabular-nums">{POLY_COEFFS[0]}</TableCell></TableRow>
+              <TableRow><TableCell>x²</TableCell><TableCell className="text-right tabular-nums">{POLY_COEFFS[1]}</TableCell></TableRow>
+              <TableRow><TableCell>x</TableCell><TableCell className="text-right tabular-nums">{POLY_COEFFS[2]}</TableCell></TableRow>
+              <TableRow><TableCell>constant</TableCell><TableCell className="text-right tabular-nums">{POLY_COEFFS[3]}</TableCell></TableRow>
+            </TableBody>
+          </Table>
         </div>
+
+        {/* Linear fallback */}
         <div className="rounded-md border bg-card p-3 shadow-sm">
-          <h3 className="mb-2 text-sm font-semibold">Operational assumptions</h3>
-          <ul className="space-y-1 text-sm">
-            <li>Refresh date: <span className="font-medium tabular-nums">{refreshDate}</span></li>
-            <li>Domestic production: <span className="font-medium tabular-nums">{domesticProduction} mcm/d</span> (constant)</li>
-            <li>Bosnia export: <span className="font-medium tabular-nums">{(bihShare * 100).toFixed(1)}%</span> of BG→RS via Kireevo/Gastrans</li>
-            <li>Storage injection cap: <span className="font-medium tabular-nums">2.50 mcm/d</span></li>
-            <li>Storage withdrawal cap: <span className="font-medium tabular-nums">5.00 mcm/d</span></li>
-            <li>Curve shift: <span className="font-medium tabular-nums">{curveShift.toFixed(2)} mcm/d</span></li>
-            <li>Curve distortion: <span className="font-medium tabular-nums">{curveDistortion.toFixed(2)}×</span></li>
-            <li>Demand floor: <span className="font-medium tabular-nums">4.00 mcm/d</span></li>
-          </ul>
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-sm font-semibold">Linear regression (fallback)</h3>
+            <span className={`rounded px-2 py-0.5 text-[10px] font-medium ${!usePolynomial ? "bg-emerald-100 text-emerald-800" : "bg-muted text-muted-foreground"}`}>
+              {!usePolynomial ? "ACTIVE" : "fallback"}
+            </span>
+          </div>
+          <p className="font-mono text-xs">
+            y = {LINEAR_COEFFS[0]}·x + {LINEAR_COEFFS[1]}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Used only if the polynomial model fails, produces invalid output, or input
+            temperature data is missing/insufficient.
+          </p>
+          <Table className="mt-2">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="h-7">Term</TableHead>
+                <TableHead className="h-7 text-right">Coefficient</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow><TableCell>x</TableCell><TableCell className="text-right tabular-nums">{LINEAR_COEFFS[0]}</TableCell></TableRow>
+              <TableRow><TableCell>constant</TableCell><TableCell className="text-right tabular-nums">{LINEAR_COEFFS[1]}</TableCell></TableRow>
+            </TableBody>
+          </Table>
         </div>
+
+        {/* Assumptions */}
         <div className="rounded-md border bg-card p-3 shadow-sm lg:col-span-2">
-          <h3 className="mb-2 text-sm font-semibold">Data sources & conversions</h3>
-          <ul className="space-y-1 text-sm">
-            <li><span className="font-medium">ENTSOG Transparency Platform</span> — Physical Flow, daily, no token required. Points: Kiskundorozsma HU→RS (FGSZ exit), Kireevo BG→RS (Bulgartransgaz exit), Kiskundorozsma-2 (FGSZ entry), Kalotina BG→RS exit.</li>
-            <li><span className="font-medium">Open-Meteo</span> — Belgrade daily mean temperature. Archive API for history, forecast API for today + future (≤16 days).</li>
-            <li>Refresh window: rolling ±10 days from today.</li>
-            <li>Conversion: 1 mcm/day ≈ 10,550 MWh/day ≈ 10,550,000 kWh/day (GCV 10.55 kWh/m³).</li>
-            <li>Supply formula: <span className="font-mono text-xs">Total = (Kireevo − KKD-2) + Kalotina + KKD HU + 0.5 − Bosnia</span></li>
-            <li>Bosnia export = 7% × (Kireevo − KKD-2).</li>
-            <li>Storage ± = supply − demand, clipped to [−5.0, +2.5] mcm/d.</li>
-            <li>If today's ENTSOG values are not yet published, the previous day's values are carried forward and a warning banner is shown.</li>
-          </ul>
+          <h3 className="mb-2 text-sm font-semibold">Assumptions (live from sidebar)</h3>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Parameter</TableHead>
+                <TableHead className="text-right">Value</TableHead>
+                <TableHead>Notes</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow>
+                <TableCell>Domestic Serbian production</TableCell>
+                <TableCell className="text-right tabular-nums">{domesticProduction.toFixed(2)} mcm/day</TableCell>
+                <TableCell className="text-xs text-muted-foreground">Default {DOMESTIC_PRODUCTION_MCM.toFixed(2)} — user adjustable.</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Bosnia consumption / export share</TableCell>
+                <TableCell className="text-right tabular-nums">{(bihShare * 100).toFixed(1)} %</TableCell>
+                <TableCell className="text-xs text-muted-foreground">Default {(BIH_SHARE * 100).toFixed(1)}% — applied to Import BG net only.</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Import from BG (net)</TableCell>
+                <TableCell className="text-right tabular-nums font-mono">max(Kireevo − KKD-2, 0)</TableCell>
+                <TableCell className="text-xs text-muted-foreground">Isolates physical Serbia entry, not regional transit.</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Bosnia export</TableCell>
+                <TableCell className="text-right tabular-nums font-mono">{(bihShare * 100).toFixed(1)}% × max(Kireevo − KKD-2, 0)</TableCell>
+                <TableCell className="text-xs text-muted-foreground">Replaced by actual data when available.</TableCell>
+              </TableRow>
+              <TableRow className="border-t-2">
+                <TableCell className="font-medium">Serbian available supply</TableCell>
+                <TableCell className="text-right tabular-nums font-mono whitespace-nowrap">
+                  KKD HU + Import BG net + Kalotina + Production − Bosnia
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground">Single formula used everywhere (KPIs, charts, table).</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Storage balance / imbalance</TableCell>
+                <TableCell className="text-right tabular-nums font-mono">Available supply − Required demand</TableCell>
+                <TableCell className="text-xs text-muted-foreground">Positive = injection, negative = withdrawal.</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Energy conversion</TableCell>
+                <TableCell className="text-right tabular-nums">1 mcm = {CONVERSION_MCM_TO_GWH} GWh</TableCell>
+                <TableCell className="text-xs text-muted-foreground">GCV ≈ 10.55 kWh/m³.</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Curve shift</TableCell>
+                <TableCell className="text-right tabular-nums">{curveShift.toFixed(2)} mcm/day</TableCell>
+                <TableCell className="text-xs text-muted-foreground">Applied after base regression result.</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Curve distortion</TableCell>
+                <TableCell className="text-right tabular-nums">{curveDistortion.toFixed(2)} ×</TableCell>
+                <TableCell className="text-xs text-muted-foreground">Multiplier on regression output.</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Refresh date</TableCell>
+                <TableCell className="text-right tabular-nums">{refreshDate}</TableCell>
+                <TableCell className="text-xs text-muted-foreground">ENTSOG + Open-Meteo last sync window.</TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
         </div>
       </div>
 
-
+      {/* Debug / transparency table */}
       <div className="rounded-md border bg-card shadow-sm">
         <div className="border-b p-3">
-          <h3 className="text-sm font-semibold">Daily temperature & demand</h3>
-          <p className="text-xs text-muted-foreground">Full series for the selected date range.</p>
+          <h3 className="text-sm font-semibold">Per-day source &amp; balance trace</h3>
+          <p className="text-xs text-muted-foreground">
+            For each day: what data was used (actual / historical fallback / future fallback),
+            the source date if estimated, and the computed supply &amp; storage.
+          </p>
         </div>
         <ScrollArea className="h-96">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Date</TableHead>
-                <TableHead className="text-right">Temp (°C)</TableHead>
-                <TableHead className="text-right">2-day avg</TableHead>
-                <TableHead className="text-right">Demand (mcm/d)</TableHead>
-                <TableHead className="text-right">Supply (mcm/d)</TableHead>
-                <TableHead className="text-right">Storage ± (mcm/d)</TableHead>
-                <TableHead>Type</TableHead>
+                <TableHead>Source</TableHead>
+                <TableHead>From</TableHead>
+                <TableHead className="text-right">Temp °C</TableHead>
+                <TableHead className="text-right">Demand</TableHead>
+                <TableHead className="text-right">Supply</TableHead>
+                <TableHead className="text-right">Storage ±</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {balance.map((r) => (
-                <TableRow key={r.date}>
+                <TableRow key={r.date} className={r.is_estimated ? "bg-emerald-50/60" : undefined}>
                   <TableCell>{fmtShortDate(r.date)}</TableCell>
+                  <TableCell className="text-xs">
+                    {r.is_forecast ? "forecast" : r.source_type.replace("_", " ")}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {r.estimated_from ?? "—"}
+                  </TableCell>
                   <TableCell className="text-right tabular-nums">{fmtTemp(r.temperature_c)}</TableCell>
-                  <TableCell className="text-right tabular-nums">{fmtTemp(r.avg_temperature_c)}</TableCell>
                   <TableCell className="text-right tabular-nums">{fmtMcm(r.demand_mcm)}</TableCell>
                   <TableCell className="text-right tabular-nums">{fmtMcm(r.serbian_available_supply_mcm)}</TableCell>
                   <TableCell className="text-right tabular-nums">{fmtMcm(r.storage_imbalance_mcm)}</TableCell>
-                  <TableCell className="text-xs">{r.is_forecast ? "forecast" : "actual"}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
