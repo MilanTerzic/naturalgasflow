@@ -18,12 +18,34 @@ export interface TempFetchResult {
   fetchedAt: string; // ISO timestamp
 }
 
-// In-memory cache (per server instance). Refresh at most once per hour.
+// Per-day cache: once a date's temperature is fetched, keep it.
+// - Historical days (date < today UTC) never expire — temperature is final.
+// - Today & future days expire after 1 hour so forecasts can refresh.
 const CACHE_TTL_MS = 60 * 60 * 1000;
-type CacheEntry = { value: TempFetchResult; expiresAt: number };
-const cache = new Map<string, CacheEntry>();
+type DayEntry = {
+  temperature_c: number;
+  provider: WeatherProvider;
+  fetchedAt: string;
+  expiresAt: number; // Infinity for finalized historical days
+};
+const dayCache = new Map<string, DayEntry>(); // key = ISO date
+const errorCache = new Map<string, { error: string; expiresAt: number }>(); // dedupe failures
+const ERROR_TTL_MS = 5 * 60 * 1000;
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+function todayIsoUtc(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function isoDatesBetween(from: string, to: string): string[] {
+  const out: string[] = [];
+  const d = new Date(`${from}T00:00:00Z`);
+  const end = new Date(`${to}T00:00:00Z`);
+  while (d.getTime() <= end.getTime()) {
+    out.push(d.toISOString().slice(0, 10));
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return out;
+}
 
 async function fetchJson(url: string, timeoutMs = 10_000): Promise<unknown> {
   const ctrl = new AbortController();
@@ -81,6 +103,8 @@ async function fetchOpenMeteo(from: string, to: string): Promise<TempRow[]> {
     .map(([date, temperature_c]) => ({ date, temperature_c }));
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 async function fetchOpenMeteoWithRetry(from: string, to: string): Promise<TempRow[]> {
   try {
     return await fetchOpenMeteo(from, to);
@@ -108,51 +132,97 @@ async function fetchVisualCrossing(from: string, to: string): Promise<TempRow[]>
 export const fetchBelgradeTemperatures = createServerFn({ method: "POST" })
   .inputValidator((d: FetchTempArgs) => d)
   .handler(async ({ data }): Promise<TempFetchResult> => {
-    const cacheKey = `${data.from}_${data.to}`;
     const now = Date.now();
-    const hit = cache.get(cacheKey);
-    if (hit && hit.expiresAt > now) {
-      return hit.value;
+    const today = todayIsoUtc();
+    const requestedDates = isoDatesBetween(data.from, data.to);
+
+    // 1. Find which dates need fetching (missing or expired).
+    const missing: string[] = [];
+    for (const d of requestedDates) {
+      const entry = dayCache.get(d);
+      if (!entry || entry.expiresAt <= now) missing.push(d);
     }
 
-    let result: TempFetchResult;
-    try {
-      const rows = await fetchOpenMeteoWithRetry(data.from, data.to);
-      if (rows.length === 0) throw new Error("Open-Meteo returned empty data");
-      result = {
-        data: rows,
-        error: null,
-        warning: null,
-        provider: "open-meteo",
-        fetchedAt: new Date().toISOString(),
-      };
-    } catch (primaryErr) {
-      const primaryMsg = primaryErr instanceof Error ? primaryErr.message : "Unknown error";
-      console.warn("Open-Meteo unavailable, falling back to Visual Crossing:", primaryMsg);
-      try {
-        const rows = await fetchVisualCrossing(data.from, data.to);
-        result = {
-          data: rows,
-          error: null,
-          warning: "Open-Meteo unavailable, using Visual Crossing fallback.",
-          provider: "visual-crossing",
-          fetchedAt: new Date().toISOString(),
-        };
-      } catch (fallbackErr) {
-        const fbMsg = fallbackErr instanceof Error ? fallbackErr.message : "Unknown error";
-        console.error("Visual Crossing fallback failed:", fbMsg);
-        result = {
-          data: [],
-          error: `Temperature unavailable (Open-Meteo: ${primaryMsg}; Visual Crossing: ${fbMsg})`,
-          warning: null,
-          provider: "none",
-          fetchedAt: new Date().toISOString(),
-        };
+    let warning: string | null = null;
+    let fetchError: string | null = null;
+    let providerUsed: WeatherProvider | null = null;
+
+    if (missing.length > 0) {
+      // Check error backoff: if we recently failed for this window, skip refetch.
+      const errKey = `${missing[0]}_${missing[missing.length - 1]}`;
+      const errHit = errorCache.get(errKey);
+      const inBackoff = errHit && errHit.expiresAt > now;
+
+      if (!inBackoff) {
+        const fetchFrom = missing[0];
+        const fetchTo = missing[missing.length - 1];
+        let rows: TempRow[] = [];
+        try {
+          rows = await fetchOpenMeteoWithRetry(fetchFrom, fetchTo);
+          if (rows.length === 0) throw new Error("Open-Meteo returned empty data");
+          providerUsed = "open-meteo";
+        } catch (primaryErr) {
+          const primaryMsg = primaryErr instanceof Error ? primaryErr.message : "Unknown error";
+          console.warn("Open-Meteo unavailable, falling back to Visual Crossing:", primaryMsg);
+          try {
+            rows = await fetchVisualCrossing(fetchFrom, fetchTo);
+            providerUsed = "visual-crossing";
+            warning = "Open-Meteo unavailable, using Visual Crossing fallback.";
+          } catch (fallbackErr) {
+            const fbMsg = fallbackErr instanceof Error ? fallbackErr.message : "Unknown error";
+            console.error("Visual Crossing fallback failed:", fbMsg);
+            fetchError = `Temperature unavailable (Open-Meteo: ${primaryMsg}; Visual Crossing: ${fbMsg})`;
+            errorCache.set(errKey, { error: fetchError, expiresAt: now + ERROR_TTL_MS });
+          }
+        }
+
+        // Store each fetched day. Historical days are finalized (never expire).
+        if (providerUsed) {
+          const fetchedAt = new Date().toISOString();
+          for (const row of rows) {
+            const isHistorical = row.date < today;
+            dayCache.set(row.date, {
+              temperature_c: row.temperature_c as number,
+              provider: providerUsed,
+              fetchedAt,
+              expiresAt: isHistorical ? Number.POSITIVE_INFINITY : now + CACHE_TTL_MS,
+            });
+          }
+        }
+      } else if (errHit) {
+        fetchError = errHit.error;
       }
     }
 
-    // Cache successful responses for 1 hour; cache failures briefly (5 min) to avoid hammering.
-    const ttl = result.data.length > 0 ? CACHE_TTL_MS : 5 * 60 * 1000;
-    cache.set(cacheKey, { value: result, expiresAt: now + ttl });
-    return result;
+    // 2. Assemble result from cache for every requested date.
+    const out: TempRow[] = [];
+    const providers = new Set<WeatherProvider>();
+    let latestFetchedAt = "";
+    for (const d of requestedDates) {
+      const entry = dayCache.get(d);
+      if (entry) {
+        out.push({ date: d, temperature_c: entry.temperature_c });
+        providers.add(entry.provider);
+        if (entry.fetchedAt > latestFetchedAt) latestFetchedAt = entry.fetchedAt;
+      }
+    }
+
+    // Pick a representative provider for the response.
+    const provider: WeatherProvider =
+      providers.size === 0
+        ? "none"
+        : providers.has("visual-crossing")
+          ? "visual-crossing"
+          : "open-meteo";
+
+    // Only surface the error if we genuinely have no data at all.
+    const error = out.length === 0 ? fetchError : null;
+
+    return {
+      data: out,
+      error,
+      warning,
+      provider,
+      fetchedAt: latestFetchedAt || new Date().toISOString(),
+    };
   });
