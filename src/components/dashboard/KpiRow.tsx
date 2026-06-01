@@ -58,7 +58,7 @@ export function KpiRow({ balance, today }: { balance: BalanceRow[]; today: strin
           label="Storage ±"
           value={`${fmtMcm(storage)} mcm`}
           hint={est ? estHint : storageLabel}
-          tone={est ? "warning" : storage >= 0 ? "positive" : "negative"}
+          tone={est ? "positive" : storage >= 0 ? "positive" : "negative"}
         />
         <KpiCard
           label="Belgrade temperature"
