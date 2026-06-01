@@ -2,8 +2,9 @@ import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { CapacityCharts } from "@/components/dashboard/CapacityCharts";
 import { CapacityTable } from "@/components/dashboard/CapacityTable";
-import { useDashboardData } from "@/state/use-dashboard-data";
 import { dummyCapacity } from "@/lib/gas/dummy";
+import { realCapacityAndFlows, SNAPSHOT_RANGE } from "@/lib/gas/real-data";
+import { useDashboardData } from "@/state/use-dashboard-data";
 import { fmtShortDate } from "@/lib/gas/format";
 import {
   Select,
@@ -27,7 +28,6 @@ export const Route = createFileRoute("/_dash/capacity")({
   component: CapacityPage,
 });
 
-// EU gas year = 1 Oct → 1 Oct of the following calendar year.
 function currentGasYearStart(today = new Date()): number {
   const y = today.getUTCFullYear();
   return today.getUTCMonth() >= 9 ? y : y - 1;
@@ -47,17 +47,28 @@ function gasYearOptions() {
   });
 }
 
+function overlapsSnapshot(fromISO: string, toISO: string) {
+  return fromISO < SNAPSHOT_RANGE.toISO && toISO > SNAPSHOT_RANGE.fromISO;
+}
+
 function CapacityPage() {
-  const { flows } = useDashboardData();
+  const { flows: liveFlows } = useDashboardData();
   const options = useMemo(gasYearOptions, []);
   const [gasYear, setGasYear] = useState(String(currentGasYearStart()));
 
   const selected = options.find((o) => o.value === gasYear) ?? options[1];
 
-  const { rows: capacity, range } = useMemo(
-    () => dummyCapacity({ fromISO: selected.fromISO, toISO: selected.toISO }),
-    [selected.fromISO, selected.toISO],
-  );
+  const { capacity, flows, usingReal } = useMemo(() => {
+    if (overlapsSnapshot(selected.fromISO, selected.toISO)) {
+      const r = realCapacityAndFlows({
+        fromISO: selected.fromISO,
+        toISO: selected.toISO,
+      });
+      return { capacity: r.capacity, flows: r.flows, usingReal: true };
+    }
+    const d = dummyCapacity({ fromISO: selected.fromISO, toISO: selected.toISO });
+    return { capacity: d.rows, flows: liveFlows, usingReal: false };
+  }, [selected.fromISO, selected.toISO, liveFlows]);
 
   return (
     <div className="space-y-4">
@@ -67,9 +78,12 @@ function CapacityPage() {
           <p className="text-xs text-muted-foreground">
             Period shown:{" "}
             <span className="font-medium tabular-nums text-foreground">
-              {fmtShortDate(range.fromISO)} → {fmtShortDate(range.toISO)}
+              {fmtShortDate(selected.fromISO)} → {fmtShortDate(selected.toISO)}
             </span>{" "}
-            · daily, monthly &amp; quarterly products aggregated per route.
+            ·{" "}
+            {usingReal
+              ? `ENTSOG operational data (snapshot ${fmtShortDate(SNAPSHOT_RANGE.fromISO)} → ${fmtShortDate(SNAPSHOT_RANGE.toISO)}).`
+              : "Modelled values — outside the available ENTSOG snapshot window."}
           </p>
         </div>
         <div className="flex items-center gap-2">
