@@ -43,7 +43,7 @@ async function fetchPoint(
   };
   const rows = json.operationaldata ?? json.operationalData ?? [];
   const out = new Map<string, number>();
-  for (const r of json.operationalData ?? []) {
+  for (const r of rows) {
     if (r.value == null || !r.periodFrom) continue;
     const date = r.periodFrom.slice(0, 10);
     const unit = (r.unit ?? "kWh/d").toLowerCase();
