@@ -57,12 +57,13 @@ export function useDashboardData(): DashboardData {
   if (s.mode === "live") {
     // Temperatures: live only. No silent dummy mix.
     if (tempQuery.data?.error) {
-      warnings.push(`Open-Meteo: ${tempQuery.data.error}. Temperature unavailable.`);
+      warnings.push(`${tempQuery.data.error}. Temperature unavailable.`);
       temps = tempQuery.data.data ?? [];
     } else if (tempQuery.isError) {
-      warnings.push("Open-Meteo unreachable. Temperature unavailable.");
+      warnings.push("Weather providers unreachable. Temperature unavailable.");
       temps = [];
     } else {
+      if (tempQuery.data?.warning) warnings.push(tempQuery.data.warning);
       temps = tempQuery.data?.data ?? [];
     }
     // Flows: live only.
