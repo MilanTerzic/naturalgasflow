@@ -112,9 +112,7 @@ export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
     return vals.reduce((s, v) => s + v, 0) / vals.length;
   });
 
-  // Historical fill: for each historical date (≤ today) with missing/zero
-  // flow data, carry forward the most recent prior day that has positive
-  // values, looking back up to MAX_LOOKBACK days. Mark those rows estimated.
+  // Historical fill + anomaly cap.
   const MAX_LOOKBACK = 3;
   const flowKeys: (keyof FlowRow)[] = [
     "kiskundorozsma_hu",
@@ -131,16 +129,51 @@ export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
 
   const todayIdx = dates.indexOf(todayIso);
   const lastHistoricalIdx = todayIdx >= 0 ? todayIdx : dates.length - 1;
+
+  // Per-point anomaly cap: if a day's value > 2.5× trailing 7-day median for
+  // that point (and median > 0.5 mcm), the day is incomplete/duplicated —
+  // replace value with the trailing median and mark estimated.
+  const ANOM_RATIO = 2.5;
+  const MED_WINDOW = 7;
+  const median = (arr: number[]) => {
+    if (arr.length === 0) return 0;
+    const s = [...arr].sort((a, b) => a - b);
+    const m = Math.floor(s.length / 2);
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  };
+  for (let i = 0; i <= lastHistoricalIdx; i++) {
+    const dKey = dates[i];
+    const row = flowDaily[dKey];
+    if (!row) continue;
+    const fixed: FlowRow = { ...row };
+    let anomaly = false;
+    for (const k of flowKeys) {
+      const v = (row[k] as number) ?? 0;
+      const past: number[] = [];
+      for (let j = Math.max(0, i - MED_WINDOW); j < i; j++) {
+        const pv = (flowDaily[dates[j]]?.[k] as number) ?? 0;
+        if (pv > 0) past.push(pv);
+      }
+      const med = median(past);
+      if (med > 0.5 && v > med * ANOM_RATIO) {
+        (fixed[k] as number) = +med.toFixed(4);
+        anomaly = true;
+      }
+    }
+    if (anomaly) {
+      flowDaily[dKey] = fixed;
+      estimatedFrom[dKey] = estimatedFrom[dKey] ?? dates[Math.max(0, i - 1)];
+    }
+  }
+
   for (let i = 0; i <= lastHistoricalIdx; i++) {
     const dKey = dates[i];
     if (hasUsableFlow(flowDaily[dKey])) continue;
-    // Walk back up to MAX_LOOKBACK days for a usable source row.
     for (let back = 1; back <= MAX_LOOKBACK && i - back >= 0; back++) {
       const srcKey = dates[i - back];
       const srcRow = flowDaily[srcKey];
       if (!hasUsableFlow(srcRow)) continue;
       const fixed: FlowRow = { ...(srcRow as FlowRow), date: dKey };
-      // Preserve any positive values that were present on the target day.
       const orig = flowDaily[dKey];
       if (orig) {
         for (const k of flowKeys) {
