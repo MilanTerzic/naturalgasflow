@@ -18,7 +18,7 @@ function CapacityPage() {
   return (
     <div className="space-y-4">
       <CapacityCharts capacity={capacity} flows={flows} />
-      <CapacityTable capacity={capacity} />
+      <CapacityTable capacity={capacity} flows={flows} />
     </div>
   );
 }
