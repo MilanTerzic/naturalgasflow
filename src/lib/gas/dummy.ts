@@ -64,12 +64,14 @@ export function dummyFlows(dates: string[]): FlowRow[] {
 // Realistic technical capacity in MWh/d for each route.
 // (mcm/d × 10 550 = MWh/d.)  Picked from published TSO technical capacities so
 // that physical flow can never exceed technical capacity.
+// Values calibrated to ENTSOG operational data (Oct 2025).
 const OFFERED_BASELINE: Record<string, number> = {
-  FGSZ_exit: 147_700, // ~14 mcm/d  Kiskundorozsma RO→HU
-  Bulgartransgaz_exit: 52_750, // ~5  mcm/d  Kalotina BG→RS
-  Gastrans_entry_kireevo: 495_850, // ~47 mcm/d  Strandzha 1 / Kireevo BG→RS
-  Gastrans_exit_kkd2: 63_300, // ~6  mcm/d  Kiskundorozsma 2 HU→RS
-  FGSZ_entry_kkd2: 63_300, // ~6  mcm/d  Kiskundorozsma 2 HU→RS (HU side)
+  FGSZ_exit: 141_977, // ~13.5 mcm/d  Kiskundorozsma HU→RS
+  Bulgartransgaz_exit: 53_053, // ~5.0  mcm/d  Kalotina BG→RS
+  Bulgartransgaz_exit_kireevo: 407_968, // ~38.7 mcm/d  Kireevo BG→RS (same pipe as Gastrans entry)
+  Gastrans_entry_kireevo: 407_968, // ~38.7 mcm/d  Kireevo entry (must mirror BG exit)
+  Gastrans_exit_kkd2: 245_766, // ~23.3 mcm/d  Kiskundorozsma 2 (RS side)
+  FGSZ_entry_kkd2: 245_766, // ~23.3 mcm/d  Kiskundorozsma 2 (HU side)
 };
 
 function offeredFor(d: (typeof CAPACITY_DEFS)[number]) {
