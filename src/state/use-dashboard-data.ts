@@ -39,7 +39,8 @@ export function useDashboardData(): DashboardData {
     queryKey: ["temps", from, to],
     queryFn: () => fetchBelgradeTemperatures({ data: { from, to } }),
     enabled: s.mode === "live",
-    staleTime: 30 * 60 * 1000,
+    staleTime: 60 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const flowQuery = useQuery({
