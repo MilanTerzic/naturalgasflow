@@ -23,14 +23,14 @@ export interface DashboardSettings {
 const Ctx = createContext<DashboardSettings | null>(null);
 
 export function DashboardProvider({ children }: { children: ReactNode }) {
-  const [mode, setMode] = useState<DataMode>("dummy");
-  const [rangePastDays, setRangePastDays] = useState(14);
-  const [rangeFutureDays, setRangeFutureDays] = useState(7);
+  const [mode, setMode] = useState<DataMode>("live");
+  const [rangePastDays, setRangePastDays] = useState(10);
+  const [rangeFutureDays, setRangeFutureDays] = useState(10);
   const [usePolynomial, setUsePolynomial] = useState(true);
   const [curveShift, setCurveShift] = useState(0);
   const [curveDistortion, setCurveDistortion] = useState(1);
   const [domesticProduction, setDomesticProduction] = useState(0.5);
-  const [bihShare, setBihShare] = useState(0.08);
+  const [bihShare, setBihShare] = useState(0.07);
 
   const value = useMemo<DashboardSettings>(
     () => ({

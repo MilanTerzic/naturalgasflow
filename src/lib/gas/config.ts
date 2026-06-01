@@ -14,8 +14,8 @@ export const POLY_COEFFS = [0.0007, -0.0188, -0.3194, 11.987] as const;
 export const LINEAR_COEFFS = [-0.354, 11.396] as const;
 
 export const DOMESTIC_PRODUCTION_MCM = 0.5;
-export const BIH_SHARE = 0.08;
-export const MAX_STORAGE_INJECTION = 2.7;
+export const BIH_SHARE = 0.07;
+export const MAX_STORAGE_INJECTION = 2.5;
 export const MAX_STORAGE_WITHDRAWAL = 5.0;
 export const CURVE_SHIFT_DEFAULT = 0.0;
 export const CURVE_DISTORTION_DEFAULT = 1.0;
