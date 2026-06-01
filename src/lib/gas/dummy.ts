@@ -104,15 +104,35 @@ function quarterLabel(d: Date, offset: number) {
   return `Q${q + 1} ${year}`;
 }
 
-export function dummyCapacity(): CapacityRow[] {
+export interface DummyCapacityRange {
+  fromISO: string;
+  toISO: string;
+}
+
+export function dummyCapacity(
+  yearsAhead = 1,
+): { rows: CapacityRow[]; range: DummyCapacityRange } {
   const rand = mulberry32(11);
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
+
+  const days = Math.max(7, Math.round(365 * yearsAhead));
+  const months = Math.max(3, Math.round(12 * yearsAhead));
+  const quarters = Math.max(2, Math.round(4 * yearsAhead));
+
+  const dailyOffsets: number[] = [];
+  for (let o = -2; o <= days; o++) dailyOffsets.push(o);
+  const monthlyOffsets: number[] = [];
+  for (let o = 0; o <= months; o++) monthlyOffsets.push(o);
+  const quarterlyOffsets: number[] = [];
+  for (let o = 0; o <= quarters; o++) quarterlyOffsets.push(o);
+
   const periods: Record<"daily" | "monthly" | "quarterly", string[]> = {
-    daily: [-2, -1, 0, 1, 2].map((o) => addDays(today, o).toISOString().slice(0, 10)),
-    monthly: [0, 1, 2, 3, 4].map((o) => monthLabel(addMonths(today, o))),
-    quarterly: [0, 1, 2, 3, 4].map((o) => quarterLabel(today, o)),
+    daily: dailyOffsets.map((o) => addDays(today, o).toISOString().slice(0, 10)),
+    monthly: monthlyOffsets.map((o) => monthLabel(addMonths(today, o))),
+    quarterly: quarterlyOffsets.map((o) => quarterLabel(today, o)),
   };
+
   const rows: CapacityRow[] = [];
   for (const d of CAPACITY_DEFS) {
     const offered = offeredFor(d);
@@ -138,5 +158,8 @@ export function dummyCapacity(): CapacityRow[] {
       }
     }
   }
-  return rows;
+
+  const fromISO = addDays(today, -2).toISOString().slice(0, 10);
+  const toISO = addDays(today, days).toISOString().slice(0, 10);
+  return { rows, range: { fromISO, toISO } };
 }
