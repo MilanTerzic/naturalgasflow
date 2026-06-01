@@ -30,7 +30,7 @@ function DashLayout() {
                 Natural gas flows, demand forecast and cross-border capacity bookings.
               </p>
             </div>
-            <nav className="flex flex-wrap gap-1">
+            <nav className="flex flex-wrap items-center gap-1">
               {TABS.map((t) => (
                 <Link
                   key={t.to}
@@ -47,6 +47,15 @@ function DashLayout() {
                   {t.label}
                 </Link>
               ))}
+              <button
+                type="button"
+                onClick={lockApp}
+                title="Lock the app"
+                className="ml-2 inline-flex items-center gap-1 rounded border px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <Lock className="h-3.5 w-3.5" />
+                Lock
+              </button>
             </nav>
           </div>
         </header>
