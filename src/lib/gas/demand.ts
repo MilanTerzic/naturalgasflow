@@ -202,6 +202,8 @@ export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
       date,
       ts,
       is_forecast,
+      is_estimated: !is_forecast && !!estimatedFrom[date],
+      estimated_from: estimatedFrom[date],
       temperature_c: temp,
       avg_temperature_c: avg,
       temperature_actual_c: is_forecast ? null : temp,
