@@ -3,16 +3,14 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
   Legend,
-  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
 import { CAPACITY_DEFS, CONVERSION_MCM_TO_MWH, PALETTE } from "@/lib/gas/config";
-import { fmtMcm, fmtPct, fmtShortDate } from "@/lib/gas/format";
+import { fmtMcm, fmtPct } from "@/lib/gas/format";
 import type { CapacityRow, FlowRow } from "@/lib/gas/types";
 import type { FlowPoint } from "@/lib/gas/config";
 import { ChartCard } from "./ChartCard";
