@@ -89,10 +89,6 @@ export function useDashboardData(): DashboardData {
     return flows.some((f) => f.date === y && (f.kireevo > 0 || f.kalotina > 0));
   }, [flows, today, dates]);
 
-  // Note: per-row carry-forward (up to 3 days back) is handled in buildBalance
-  // and surfaced via row.is_estimated + row.estimated_from. The KpiRow shows
-  // an inline green banner; no duplicate yellow warning needed here.
-
   const balance = useMemo(
     () =>
       buildBalance({
