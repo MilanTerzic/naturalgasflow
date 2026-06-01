@@ -328,7 +328,7 @@ function RouteHeatRow({
             key={d}
             className="h-7 rounded-[3px]"
             style={{ background: heatColor(pct) }}
-            title={`${route.label} · ${d}: ${fmtPct(pct)} (${fmtMwh(cell?.used_mwh ?? 0)} MWh/d)`}
+            title={`${route.label} · ${d}: ${fmtPct(pct)} (${fmtMcm(cell?.used_mcm ?? 0)} mcm/d)`}
           />
         );
       })}
