@@ -1,5 +1,5 @@
 import { CAPACITY_DEFS, CONVERSION_MCM_TO_MWH } from "@/lib/gas/config";
-import { fmtMwh, fmtPct } from "@/lib/gas/format";
+import { fmtMcm, fmtPct } from "@/lib/gas/format";
 import type { CapacityRow, FlowRow } from "@/lib/gas/types";
 import {
   Table,
