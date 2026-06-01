@@ -114,21 +114,49 @@ function heatColor(pct: number): string {
   return `oklch(${light.toFixed(3)} ${chroma.toFixed(3)} ${hue.toFixed(1)})`;
 }
 
+// Build the 12 month-buckets that span [fromISO, toISO).
+function monthBucketsBetween(fromISO: string, toISO: string) {
+  const from = new Date(`${fromISO}T00:00:00Z`);
+  const to = new Date(`${toISO}T00:00:00Z`);
+  const out: { key: string; label: string }[] = [];
+  let d = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), 1));
+  while (d < to) {
+    const y = d.getUTCFullYear();
+    const m = d.getUTCMonth();
+    const monthShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][m];
+    out.push({
+      key: `${y}-${String(m + 1).padStart(2, "0")}`,
+      label: `${monthShort} ${String(y).slice(-2)}`,
+    });
+    d = new Date(Date.UTC(y, m + 1, 1));
+  }
+  return out;
+}
+
 export function CapacityCharts({
   capacity,
   flows,
+  heatmapFromISO,
+  heatmapToISO,
 }: {
   capacity: CapacityRow[];
   flows: FlowRow[];
+  heatmapFromISO?: string;
+  heatmapToISO?: string;
 }) {
   const routes = useMemo(() => summarise(capacity, flows), [capacity, flows]);
 
-  // Heatmap: limit to a sensible window — last 21 historical days.
-  const heatDates = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    const all = Array.from(new Set(flows.map((f) => f.date))).sort();
-    return all.filter((d) => d <= today).slice(-21);
-  }, [flows]);
+  // Annual, monthly heatmap. Default window = current gas year if not provided.
+  const heatMonths = useMemo(() => {
+    if (heatmapFromISO && heatmapToISO) {
+      return monthBucketsBetween(heatmapFromISO, heatmapToISO);
+    }
+    const today = new Date();
+    const y = today.getUTCMonth() >= 9 ? today.getUTCFullYear() : today.getUTCFullYear() - 1;
+    return monthBucketsBetween(`${y}-10-01`, `${y + 1}-10-01`);
+  }, [heatmapFromISO, heatmapToISO]);
+
+  const todayISO = new Date().toISOString().slice(0, 10);
 
   const totalAvailable = routes.reduce((s, r) => s + r.available_mcm, 0);
   const totalBooked = routes.reduce((s, r) => s + r.booked_mcm, 0);
@@ -201,13 +229,14 @@ export function CapacityCharts({
         </ResponsiveContainer>
       </ChartCard>
 
-      {/* Heatmap */}
+      {/* Annual heatmap aggregated by month */}
       <div className="rounded-md border bg-card p-3 shadow-sm">
         <div className="mb-3 flex items-baseline justify-between">
           <div>
             <h3 className="text-sm font-semibold">Utilisation heatmap</h3>
             <p className="text-xs text-muted-foreground">
-              Used / technical capacity, % · last {heatDates.length} historical days.
+              Used / technical capacity, monthly average · {heatMonths[0]?.label} → {heatMonths[heatMonths.length - 1]?.label}.
+              Months without physical-flow data are shown blank.
             </p>
           </div>
           <HeatLegend />
@@ -216,66 +245,24 @@ export function CapacityCharts({
           <div
             className="grid gap-[2px]"
             style={{
-              gridTemplateColumns: `260px repeat(${heatDates.length}, minmax(28px, 1fr))`,
+              gridTemplateColumns: `260px repeat(${heatMonths.length}, minmax(40px, 1fr))`,
             }}
           >
             <div />
-            {heatDates.map((d) => (
+            {heatMonths.map((m) => (
               <div
-                key={d}
-                className="text-[9px] tabular-nums text-muted-foreground text-center -rotate-45 origin-bottom-left translate-y-2 h-5"
+                key={m.key}
+                className="text-[10px] tabular-nums text-muted-foreground text-center pb-1"
               >
-                {fmtShortDate(d)}
+                {m.label}
               </div>
             ))}
             {routes.map((r) => (
-              <RouteHeatRow key={r.key} route={r} dates={heatDates} />
+              <RouteHeatRow key={r.key} route={r} months={heatMonths} todayISO={todayISO} />
             ))}
           </div>
         </div>
       </div>
-
-      {/* Utilisation gauges per route */}
-      <ChartCard title="Latest-day utilisation by route" subtitle="Used vs technical capacity">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart
-            data={routes.map((r) => ({
-              label: r.label.split("·").slice(1).join("·").trim() || r.label,
-              tso: r.tso,
-              // Physical flow cannot exceed technical capacity — cap at 100 %.
-              util: +Math.min(r.utilisation_used, 100).toFixed(1),
-            }))}
-            margin={{ top: 10, right: 16, left: 4, bottom: 60 }}
-          >
-            <CartesianGrid stroke={PALETTE.grid} vertical={false} />
-            <XAxis
-              dataKey="label"
-              tick={{ fontSize: 10 }}
-              stroke={PALETTE.axis}
-              angle={-25}
-              textAnchor="end"
-              height={70}
-              interval={0}
-            />
-            <YAxis
-              tick={{ fontSize: 11 }}
-              stroke={PALETTE.axis}
-              tickFormatter={(v) => `${v}%`}
-              domain={[0, 100]}
-            />
-            <ReferenceLine y={100} stroke={PALETTE.demand} strokeDasharray="4 4" />
-            <Tooltip
-              formatter={(v) => (typeof v === "number" ? fmtPct(v) : "–")}
-              contentStyle={{ fontSize: 12 }}
-            />
-            <Bar dataKey="util" isAnimationActive={false}>
-              {routes.map((r, i) => (
-                <Cell key={i} fill={heatColor(Math.min(r.utilisation_used, 100))} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </ChartCard>
     </div>
   );
 }
