@@ -14,10 +14,10 @@ export const Route = createFileRoute("/_dash/capacity")({
 });
 
 function CapacityPage() {
-  const { capacity } = useDashboardData();
+  const { capacity, flows } = useDashboardData();
   return (
     <div className="space-y-4">
-      <CapacityCharts capacity={capacity} />
+      <CapacityCharts capacity={capacity} flows={flows} />
       <CapacityTable capacity={capacity} />
     </div>
   );
