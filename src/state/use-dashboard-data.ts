@@ -16,6 +16,8 @@ export interface DashboardData {
   today: string;
   warnings: string[];
   isLoading: boolean;
+  todayFallback: boolean; // true when today's flows were carried over from yesterday
+  refreshedAt: string;
 }
 
 export function useDashboardData(): DashboardData {
@@ -52,23 +54,45 @@ export function useDashboardData(): DashboardData {
   let flows: FlowRow[];
 
   if (s.mode === "live") {
-    if (tempQuery.data && tempQuery.data.data.length > 0 && !tempQuery.data.error) {
-      temps = tempQuery.data.data;
+    // Temperatures: live only. No silent dummy mix.
+    if (tempQuery.data?.error) {
+      warnings.push(`Open-Meteo: ${tempQuery.data.error}. Temperature unavailable.`);
+      temps = tempQuery.data.data ?? [];
+    } else if (tempQuery.isError) {
+      warnings.push("Open-Meteo unreachable. Temperature unavailable.");
+      temps = [];
     } else {
-      temps = dummyTemperatures(dates);
-      if (tempQuery.data?.error) warnings.push(`Open-Meteo: ${tempQuery.data.error}. Using dummy temperatures.`);
-      else if (tempQuery.isError) warnings.push("Open-Meteo unreachable. Using dummy temperatures.");
+      temps = tempQuery.data?.data ?? [];
     }
-    if (flowQuery.data && flowQuery.data.data.length > 0 && !flowQuery.data.error) {
-      flows = flowQuery.data.data;
+    // Flows: live only.
+    if (flowQuery.data?.error) {
+      warnings.push(`ENTSOG: ${flowQuery.data.error}. Flow data unavailable.`);
+      flows = flowQuery.data.data ?? [];
+    } else if (flowQuery.isError) {
+      warnings.push("ENTSOG unreachable. Flow data unavailable.");
+      flows = [];
     } else {
-      flows = dummyFlows(dates);
-      if (flowQuery.data?.error) warnings.push(`ENTSOG: ${flowQuery.data.error}. Using dummy flows.`);
-      else if (flowQuery.isError) warnings.push("ENTSOG unreachable. Using dummy flows.");
+      flows = flowQuery.data?.data ?? [];
     }
   } else {
     temps = dummyTemperatures(dates);
     flows = dummyFlows(dates);
+  }
+
+  // Detect "today fallback": no flow row for today, but yesterday is available.
+  const todayFallback = useMemo(() => {
+    const hasToday = flows.some((f) => f.date === today && (f.kireevo > 0 || f.kalotina > 0 || f.kiskundorozsma_hu > 0));
+    if (hasToday) return false;
+    const yIdx = dates.indexOf(today) - 1;
+    if (yIdx < 0) return false;
+    const y = dates[yIdx];
+    return flows.some((f) => f.date === y && (f.kireevo > 0 || f.kalotina > 0));
+  }, [flows, today, dates]);
+
+  if (todayFallback) {
+    warnings.push(
+      `Live ENTSOG data for ${today} not yet published. Today's values carried forward from previous day.`,
+    );
   }
 
   const balance = useMemo(
@@ -108,5 +132,7 @@ export function useDashboardData(): DashboardData {
     today,
     warnings,
     isLoading: s.mode === "live" && (tempQuery.isLoading || flowQuery.isLoading),
+    todayFallback,
+    refreshedAt: today,
   };
 }
