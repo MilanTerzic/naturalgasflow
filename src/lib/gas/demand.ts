@@ -188,7 +188,7 @@ export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
       curveShift,
       curveDistortion,
     });
-    const demand = clipLow(demandRaw, DEMAND_FLOOR_MCM);
+    const demand = clipLow(demandRaw, 0);
 
     const f = flowDaily[date] ?? {
       date,
