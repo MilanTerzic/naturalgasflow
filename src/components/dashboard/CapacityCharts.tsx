@@ -13,7 +13,8 @@ import {
 } from "recharts";
 import { CAPACITY_DEFS, CONVERSION_MCM_TO_MWH, PALETTE } from "@/lib/gas/config";
 import { fmtMwh, fmtPct, fmtShortDate } from "@/lib/gas/format";
-import type { CapacityRow, FlowRow, FlowPoint } from "@/lib/gas/types";
+import type { CapacityRow, FlowRow } from "@/lib/gas/types";
+import type { FlowPoint } from "@/lib/gas/config";
 import { ChartCard } from "./ChartCard";
 
 // Map a capacity route to the ENTSOG flow key that physically corresponds to it.
