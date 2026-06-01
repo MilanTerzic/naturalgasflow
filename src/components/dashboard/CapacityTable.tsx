@@ -1,5 +1,5 @@
 import { CAPACITY_DEFS, CONVERSION_MCM_TO_MWH } from "@/lib/gas/config";
-import { fmtMwh, fmtPct } from "@/lib/gas/format";
+import { fmtMcm, fmtPct } from "@/lib/gas/format";
 import type { CapacityRow, FlowRow } from "@/lib/gas/types";
 import {
   Table,
@@ -46,9 +46,9 @@ export function CapacityTable({
             <TableHead>#</TableHead>
             <TableHead>Route</TableHead>
             <TableHead>Dir.</TableHead>
-            <TableHead className="text-right">Technical (MWh/d)</TableHead>
-            <TableHead className="text-right">Booked (MWh/d)</TableHead>
-            <TableHead className="text-right">Used (MWh/d)</TableHead>
+            <TableHead className="text-right">Technical (mcm/d)</TableHead>
+            <TableHead className="text-right">Booked (mcm/d)</TableHead>
+            <TableHead className="text-right">Used (mcm/d)</TableHead>
             <TableHead className="text-right">Booked %</TableHead>
             <TableHead className="text-right">Used %</TableHead>
           </TableRow>
@@ -59,12 +59,20 @@ export function CapacityTable({
               (r) =>
                 r.tso === d.tso && r.border_point === d.borderPoint && r.direction === d.direction,
             );
-            const available = matched.reduce((m, r) => Math.max(m, r.offered_mwh), 0);
-            const booked = matched.reduce((m, r) => Math.max(m, r.booked_mwh), 0);
+            // Convert MWh/d → mcm/d so capacity shares a unit with physical flow.
+            const available =
+              matched.reduce((m, r) => Math.max(m, r.offered_mwh), 0) / CONVERSION_MCM_TO_MWH;
+            const bookedRaw =
+              matched.reduce((m, r) => Math.max(m, r.booked_mwh), 0) / CONVERSION_MCM_TO_MWH;
+            // Booked can never physically exceed technical capacity.
+            const booked = Math.min(bookedRaw, available);
             const fk = flowKeyFor(d);
-            const used = fk && latestFlow ? (latestFlow[fk] ?? 0) * CONVERSION_MCM_TO_MWH : 0;
+            const usedRaw = fk && latestFlow ? latestFlow[fk] ?? 0 : 0;
+            // Clamp used to technical for the % column; show raw value in the
+            // "Used" column so the user can still see slight measurement overshoot.
+            const used = usedRaw;
             const bookedPct = available > 0 ? (booked / available) * 100 : 0;
-            const usedPct = available > 0 ? (used / available) * 100 : 0;
+            const usedPct = available > 0 ? (Math.min(usedRaw, available) / available) * 100 : 0;
             return (
               <TableRow key={idx}>
                 <TableCell className="text-xs text-muted-foreground">{idx + 1}</TableCell>
@@ -73,9 +81,9 @@ export function CapacityTable({
                   <div className="text-muted-foreground">{d.borderPoint}</div>
                 </TableCell>
                 <TableCell className="text-xs">{d.direction}</TableCell>
-                <TableCell className="text-right tabular-nums">{fmtMwh(available)}</TableCell>
-                <TableCell className="text-right tabular-nums">{fmtMwh(booked)}</TableCell>
-                <TableCell className="text-right tabular-nums">{fmtMwh(used)}</TableCell>
+                <TableCell className="text-right tabular-nums">{fmtMcm(available)}</TableCell>
+                <TableCell className="text-right tabular-nums">{fmtMcm(booked)}</TableCell>
+                <TableCell className="text-right tabular-nums">{fmtMcm(used)}</TableCell>
                 <TableCell className="text-right tabular-nums">{fmtPct(bookedPct)}</TableCell>
                 <TableCell className="text-right tabular-nums">{fmtPct(usedPct)}</TableCell>
               </TableRow>
