@@ -117,6 +117,19 @@ export function useDashboardData(): DashboardData {
 
   const capacity = useMemo(() => dummyCapacity(), []);
 
+  // Validation: warn on day-over-day total-supply jumps > 50%.
+  for (let i = 1; i < balance.length; i++) {
+    const a = balance[i - 1].serbian_available_supply_mcm;
+    const b = balance[i].serbian_available_supply_mcm;
+    if (a > 1 && Math.abs(b - a) / a > 0.5 && !balance[i].is_forecast) {
+      const dir = b > a ? "↑" : "↓";
+      warnings.push(
+        `Supply jump ${dir} ${(((b - a) / a) * 100).toFixed(0)}% on ${balance[i].date} ` +
+          `(${a.toFixed(2)} → ${b.toFixed(2)} mcm). Check ENTSOG inputs for this day.`,
+      );
+    }
+  }
+
   return {
     balance,
     flows,
