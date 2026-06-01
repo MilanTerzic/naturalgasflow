@@ -37,9 +37,13 @@ async function fetchPoint(
     `&indicator=Physical%20Flow&periodType=day&limit=-1`;
   const res = await fetch(url, { headers: { accept: "application/json" } });
   if (!res.ok) throw new Error(`ENTSOG ${pd}: HTTP ${res.status}`);
-  const json = (await res.json()) as { operationalData?: EntsogOperationalRow[] };
+  const json = (await res.json()) as {
+    operationaldata?: EntsogOperationalRow[];
+    operationalData?: EntsogOperationalRow[];
+  };
+  const rows = json.operationaldata ?? json.operationalData ?? [];
   const out = new Map<string, number>();
-  for (const r of json.operationalData ?? []) {
+  for (const r of rows) {
     if (r.value == null || !r.periodFrom) continue;
     const date = r.periodFrom.slice(0, 10);
     const unit = (r.unit ?? "kWh/d").toLowerCase();
