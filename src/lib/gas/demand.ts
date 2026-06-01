@@ -27,7 +27,7 @@ export function forecastDemand(
     curveDistortion?: number;
   } = {},
 ): number {
-  if (avgTempC == null || Number.isNaN(avgTempC)) return DEMAND_FLOOR_MCM;
+  if (avgTempC == null || Number.isNaN(avgTempC)) return 0;
   const usePoly = opts.usePolynomial ?? true;
   const shift = opts.curveShift ?? CURVE_SHIFT_DEFAULT;
   const distortion =
