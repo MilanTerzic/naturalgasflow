@@ -21,15 +21,24 @@ interface EntsogOperationalRow {
   value?: number | null;
   unit?: string;
   indicator?: string;
+  lastUpdateDateTime?: string;
 }
 
 const POINT_KEYS = Object.keys(ENTSOG_POINT_DIRECTIONS) as FlowPoint[];
+
+interface DailyPick {
+  value_mcm: number;
+  unit: string;
+  raw_value: number;
+  last_update: string;
+  period_type: string;
+}
 
 async function fetchPoint(
   pd: string,
   from: string,
   to: string,
-): Promise<Map<string, number>> {
+): Promise<Map<string, DailyPick>> {
   const url =
     `https://transparency.entsog.eu/api/v1/operationaldata.json` +
     `?pointDirection=${encodeURIComponent(pd)}` +
@@ -42,7 +51,12 @@ async function fetchPoint(
     operationalData?: EntsogOperationalRow[];
   };
   const rows = json.operationaldata ?? json.operationalData ?? [];
-  const out = new Map<string, number>();
+
+  // De-duplication: group by gas day. For each day, keep ONE value.
+  // ENTSOG sometimes returns multiple records per day (revisions, sub-periods).
+  // We pick the record with the latest lastUpdateDateTime. This avoids the
+  // duplicated/inflated-today bug caused by summing sub-entries.
+  const byDate = new Map<string, DailyPick>();
   for (const r of rows) {
     if (r.value == null || !r.periodFrom) continue;
     const date = r.periodFrom.slice(0, 10);
@@ -50,11 +64,22 @@ async function fetchPoint(
     let mcm: number;
     if (unit.startsWith("kwh")) mcm = kwhPerDayToMcmPerDay(r.value);
     else if (unit.startsWith("mwh")) mcm = r.value / 10_550;
+    else if (unit.startsWith("gwh")) mcm = r.value / 10.55;
     else mcm = kwhPerDayToMcmPerDay(r.value);
-    // Sum if multiple sub-entries per day.
-    out.set(date, (out.get(date) ?? 0) + mcm);
+
+    const lastUpdate = r.lastUpdateDateTime ?? "";
+    const prev = byDate.get(date);
+    if (!prev || lastUpdate >= prev.last_update) {
+      byDate.set(date, {
+        value_mcm: mcm,
+        unit: r.unit ?? "kWh/d",
+        raw_value: r.value,
+        last_update: lastUpdate,
+        period_type: r.periodType ?? "day",
+      });
+    }
   }
-  return out;
+  return byDate;
 }
 
 export const fetchEntsogFlows = createServerFn({ method: "POST" })
@@ -65,10 +90,14 @@ export const fetchEntsogFlows = createServerFn({ method: "POST" })
         POINT_KEYS.map(async (key) => {
           try {
             const m = await fetchPoint(ENTSOG_POINT_DIRECTIONS[key], data.from, data.to);
+            console.log(
+              `[ENTSOG] ${key}: ${m.size} unique gas-days returned ` +
+                `(window ${data.from} → ${data.to})`,
+            );
             return [key, m] as const;
           } catch (err) {
             console.warn(`ENTSOG point ${key} failed:`, err);
-            return [key, new Map<string, number>()] as const;
+            return [key, new Map<string, DailyPick>()] as const;
           }
         }),
       );
@@ -83,7 +112,10 @@ export const fetchEntsogFlows = createServerFn({ method: "POST" })
           kiskundorozsma_2: 0,
           kalotina: 0,
         };
-        for (const [key, m] of perPoint) row[key] = +(m.get(date) ?? 0).toFixed(4);
+        for (const [key, m] of perPoint) {
+          const pick = m.get(date);
+          row[key] = pick ? +pick.value_mcm.toFixed(4) : 0;
+        }
         return row;
       });
       return { data: rows, error: null };
