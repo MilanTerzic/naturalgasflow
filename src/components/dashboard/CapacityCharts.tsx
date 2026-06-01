@@ -12,7 +12,7 @@ import {
   YAxis,
 } from "recharts";
 import { CAPACITY_DEFS, CONVERSION_MCM_TO_MWH, PALETTE } from "@/lib/gas/config";
-import { fmtMwh, fmtPct, fmtShortDate } from "@/lib/gas/format";
+import { fmtMcm, fmtPct, fmtShortDate } from "@/lib/gas/format";
 import type { CapacityRow, FlowRow } from "@/lib/gas/types";
 import type { FlowPoint } from "@/lib/gas/config";
 import { ChartCard } from "./ChartCard";
@@ -32,17 +32,22 @@ function routeLabel(d: (typeof CAPACITY_DEFS)[number]) {
   return `${d.tso} · ${point} (${d.direction})`;
 }
 
+// All values below are in mcm/day so capacity and physical flow share one unit
+// (flows arrive in mcm/d; capacity is stored in MWh/d and converted via
+// CONVERSION_MCM_TO_MWH).  Used capacity is clamped to technical capacity so
+// rounding / unit slack can never make the bar exceed 100 %.
 interface RouteSummary {
   key: string;
   label: string;
   tso: string;
-  available_mwh: number; // technical capacity
-  booked_mwh: number; // booked across all products (max)
-  used_mwh: number; // physical flow on latest date
+  available_mcm: number; // technical capacity
+  booked_mcm: number; // booked across all products (max — never exceeds technical)
+  used_mcm: number; // physical flow on latest date (clamped to technical)
+  used_raw_mcm: number; // unclamped, for tooltips
   utilisation_booked: number; // booked / available
   utilisation_used: number; // used / available
   flowKey: FlowPoint | null;
-  perDate: { date: string; used_mwh: number; util_pct: number }[];
+  perDate: { date: string; used_mcm: number; util_pct: number }[];
 }
 
 function summarise(capacity: CapacityRow[], flows: FlowRow[]): RouteSummary[] {
@@ -56,23 +61,29 @@ function summarise(capacity: CapacityRow[], flows: FlowRow[]): RouteSummary[] {
     const matched = capacity.filter(
       (r) => r.tso === d.tso && r.border_point === d.borderPoint && r.direction === d.direction,
     );
-    // Collapse across products (daily/monthly/quarterly). Offered is technical
-    // capacity → take the max. Booked → take the max across all products
-    // (worst-case commitment); aggregating sums would double-count overlapping
-    // products that all reserve the same pipe.
-    const available = matched.reduce((m, r) => Math.max(m, r.offered_mwh), 0);
-    const booked = matched.reduce((m, r) => Math.max(m, r.booked_mwh), 0);
+    // Collapse across products (daily / monthly / quarterly).  Offered =
+    // technical capacity → take the max.  Booked → take the max across all
+    // products (worst-case commitment); summing would double-count overlapping
+    // products that all reserve the same pipe.  Convert MWh/d → mcm/d so we
+    // can compare against physical flow directly.
+    const availableMwh = matched.reduce((m, r) => Math.max(m, r.offered_mwh), 0);
+    const bookedMwh = matched.reduce((m, r) => Math.max(m, r.booked_mwh), 0);
+    const available = availableMwh / CONVERSION_MCM_TO_MWH;
+    // Booked can never physically exceed technical.
+    const booked = Math.min(bookedMwh / CONVERSION_MCM_TO_MWH, available);
+
     const flowKey = flowKeyFor(d);
-    const used_mcm = flowKey && latest ? latest[flowKey] ?? 0 : 0;
-    const used_mwh = used_mcm * CONVERSION_MCM_TO_MWH;
+    const usedRaw = flowKey && latest ? latest[flowKey] ?? 0 : 0;
+    // Clamp physical flow to technical capacity for chart geometry —
+    // measurement / rounding noise occasionally pushes flow a hair past 100 %.
+    const used = available > 0 ? Math.min(usedRaw, available) : usedRaw;
 
     const perDate = flows.map((f) => {
-      const u_mcm = flowKey ? f[flowKey] ?? 0 : 0;
-      const u_mwh = u_mcm * CONVERSION_MCM_TO_MWH;
+      const u = flowKey ? f[flowKey] ?? 0 : 0;
       return {
         date: f.date,
-        used_mwh: u_mwh,
-        util_pct: available > 0 ? (u_mwh / available) * 100 : 0,
+        used_mcm: u,
+        util_pct: available > 0 ? Math.min((u / available) * 100, 120) : 0,
       };
     });
 
@@ -80,11 +91,12 @@ function summarise(capacity: CapacityRow[], flows: FlowRow[]): RouteSummary[] {
       key: `${d.tso}|${d.borderPoint}|${d.direction}`,
       label: routeLabel(d),
       tso: d.tso,
-      available_mwh: available,
-      booked_mwh: booked,
-      used_mwh,
+      available_mcm: available,
+      booked_mcm: booked,
+      used_mcm: used,
+      used_raw_mcm: usedRaw,
       utilisation_booked: available > 0 ? (booked / available) * 100 : 0,
-      utilisation_used: available > 0 ? (used_mwh / available) * 100 : 0,
+      utilisation_used: available > 0 ? (usedRaw / available) * 100 : 0,
       flowKey,
       perDate,
     };
