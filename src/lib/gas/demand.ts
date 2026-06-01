@@ -235,11 +235,14 @@ export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
       source_type: src,
       temperature_c: temp,
       avg_temperature_c: avg,
+      // Duplicate the boundary value (date === todayIso) into BOTH the
+      // actual and forecast series so the solid and dashed lines join
+      // instead of leaving a one-day gap at "today".
       temperature_actual_c: is_forecast ? null : temp,
-      temperature_forecast_c: is_forecast ? temp : null,
+      temperature_forecast_c: is_forecast || date === todayIso ? temp : null,
       demand_mcm: demand,
       required_actual_mcm: is_forecast ? null : demand,
-      required_forecast_mcm: is_forecast ? demand : null,
+      required_forecast_mcm: is_forecast || date === todayIso ? demand : null,
       kalotina_entry_mcm: kal,
       kiskundorozsma_entry_mcm: kkdHu,
       imports_from_bulgaria_mcm,
