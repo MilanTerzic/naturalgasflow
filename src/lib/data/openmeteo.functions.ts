@@ -18,12 +18,34 @@ export interface TempFetchResult {
   fetchedAt: string; // ISO timestamp
 }
 
-// In-memory cache (per server instance). Refresh at most once per hour.
+// Per-day cache: once a date's temperature is fetched, keep it.
+// - Historical days (date < today UTC) never expire — temperature is final.
+// - Today & future days expire after 1 hour so forecasts can refresh.
 const CACHE_TTL_MS = 60 * 60 * 1000;
-type CacheEntry = { value: TempFetchResult; expiresAt: number };
-const cache = new Map<string, CacheEntry>();
+type DayEntry = {
+  temperature_c: number;
+  provider: WeatherProvider;
+  fetchedAt: string;
+  expiresAt: number; // Infinity for finalized historical days
+};
+const dayCache = new Map<string, DayEntry>(); // key = ISO date
+const errorCache = new Map<string, { error: string; expiresAt: number }>(); // dedupe failures
+const ERROR_TTL_MS = 5 * 60 * 1000;
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+function todayIsoUtc(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function isoDatesBetween(from: string, to: string): string[] {
+  const out: string[] = [];
+  const d = new Date(`${from}T00:00:00Z`);
+  const end = new Date(`${to}T00:00:00Z`);
+  while (d.getTime() <= end.getTime()) {
+    out.push(d.toISOString().slice(0, 10));
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return out;
+}
 
 async function fetchJson(url: string, timeoutMs = 10_000): Promise<unknown> {
   const ctrl = new AbortController();
