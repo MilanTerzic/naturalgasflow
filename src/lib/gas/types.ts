@@ -16,6 +16,8 @@ export interface BalanceRow {
   date: string; // ISO date
   ts: number; // epoch ms (for chart x-axis)
   is_forecast: boolean;
+  is_estimated: boolean; // carried forward from a previous day when source data was missing
+  estimated_from?: string; // ISO date of the source day used for carry-forward
   temperature_c: number | null;
   avg_temperature_c: number | null;
   temperature_actual_c: number | null;
