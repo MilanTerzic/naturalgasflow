@@ -89,10 +89,6 @@ export function useDashboardData(): DashboardData {
     return flows.some((f) => f.date === y && (f.kireevo > 0 || f.kalotina > 0));
   }, [flows, today, dates]);
 
-  // Note: per-row carry-forward (up to 3 days back) is handled in buildBalance
-  // and surfaced via row.is_estimated + row.estimated_from. The KpiRow shows
-  // an inline green banner; no duplicate yellow warning needed here.
-
   const balance = useMemo(
     () =>
       buildBalance({
@@ -120,6 +116,19 @@ export function useDashboardData(): DashboardData {
   );
 
   const capacity = useMemo(() => dummyCapacity(), []);
+
+  // Validation: warn on day-over-day total-supply jumps > 50%.
+  for (let i = 1; i < balance.length; i++) {
+    const a = balance[i - 1].serbian_available_supply_mcm;
+    const b = balance[i].serbian_available_supply_mcm;
+    if (a > 1 && Math.abs(b - a) / a > 0.5 && !balance[i].is_forecast) {
+      const dir = b > a ? "↑" : "↓";
+      warnings.push(
+        `Supply jump ${dir} ${(((b - a) / a) * 100).toFixed(0)}% on ${balance[i].date} ` +
+          `(${a.toFixed(2)} → ${b.toFixed(2)} mcm). Check ENTSOG inputs for this day.`,
+      );
+    }
+  }
 
   return {
     balance,

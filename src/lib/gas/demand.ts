@@ -112,78 +112,68 @@ export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
     return vals.reduce((s, v) => s + v, 0) / vals.length;
   });
 
-  // Historical fill + anomaly cap.
-  const MAX_LOOKBACK = 3;
-  const flowKeys: (keyof FlowRow)[] = [
-    "kiskundorozsma_hu",
-    "kireevo",
-    "kiskundorozsma_2",
-    "kalotina",
-  ];
+  // --- Flow selection per day ---
+  // Rule: trust actual ENTSOG values when present; never sum them with
+  // estimates. If a day has no usable actual data, carry forward the most
+  // recent historical day. If no historical exists, use the nearest future
+  // day as a last-resort fallback. Track source type per day for the UI.
   const flowDaily: Record<string, FlowRow | undefined> = {};
   const estimatedFrom: Record<string, string | undefined> = {};
+  const sourceType: Record<string, "actual" | "historical_fallback" | "future_fallback" | "none"> = {};
   for (const d of dates) flowDaily[d] = flowByDate.get(d);
 
+  // "Usable" = at least one of the import points has a positive value.
+  // A row of all zeros is treated as missing (ENTSOG hasn't published yet).
   const hasUsableFlow = (r: FlowRow | undefined) =>
     !!r && (r.kireevo > 0 || r.kalotina > 0 || r.kiskundorozsma_hu > 0);
 
   const todayIdx = dates.indexOf(todayIso);
   const lastHistoricalIdx = todayIdx >= 0 ? todayIdx : dates.length - 1;
 
-  // Per-point anomaly cap: if a day's value > 2.5× trailing 7-day median for
-  // that point (and median > 0.5 mcm), the day is incomplete/duplicated —
-  // replace value with the trailing median and mark estimated.
-  const ANOM_RATIO = 2.5;
-  const MED_WINDOW = 7;
-  const median = (arr: number[]) => {
-    if (arr.length === 0) return 0;
-    const s = [...arr].sort((a, b) => a - b);
-    const m = Math.floor(s.length / 2);
-    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-  };
   for (let i = 0; i <= lastHistoricalIdx; i++) {
     const dKey = dates[i];
-    const row = flowDaily[dKey];
-    if (!row) continue;
-    const fixed: FlowRow = { ...row };
-    let anomaly = false;
-    for (const k of flowKeys) {
-      const v = (row[k] as number) ?? 0;
-      const past: number[] = [];
-      for (let j = Math.max(0, i - MED_WINDOW); j < i; j++) {
-        const pv = (flowDaily[dates[j]]?.[k] as number) ?? 0;
-        if (pv > 0) past.push(pv);
-      }
-      const med = median(past);
-      if (med > 0.5 && v > med * ANOM_RATIO) {
-        (fixed[k] as number) = +med.toFixed(4);
-        anomaly = true;
-      }
+    if (hasUsableFlow(flowDaily[dKey])) {
+      sourceType[dKey] = "actual";
+      continue;
     }
-    if (anomaly) {
-      flowDaily[dKey] = fixed;
-      estimatedFrom[dKey] = estimatedFrom[dKey] ?? dates[Math.max(0, i - 1)];
-    }
-  }
-
-  for (let i = 0; i <= lastHistoricalIdx; i++) {
-    const dKey = dates[i];
-    if (hasUsableFlow(flowDaily[dKey])) continue;
-    for (let back = 1; back <= MAX_LOOKBACK && i - back >= 0; back++) {
+    // Walk back for the most recent historical day with real data.
+    let filled = false;
+    for (let back = 1; back <= i; back++) {
       const srcKey = dates[i - back];
       const srcRow = flowDaily[srcKey];
       if (!hasUsableFlow(srcRow)) continue;
-      const fixed: FlowRow = { ...(srcRow as FlowRow), date: dKey };
-      const orig = flowDaily[dKey];
-      if (orig) {
-        for (const k of flowKeys) {
-          const v = orig[k] as number | undefined;
-          if (typeof v === "number" && v > 0) (fixed[k] as number) = v;
-        }
-      }
-      flowDaily[dKey] = fixed;
+      flowDaily[dKey] = { ...(srcRow as FlowRow), date: dKey };
       estimatedFrom[dKey] = srcKey;
+      sourceType[dKey] = "historical_fallback";
+      filled = true;
       break;
+    }
+    if (filled) continue;
+    // Last-resort: walk forward for the nearest future day with real data.
+    for (let fwd = i + 1; fwd < dates.length; fwd++) {
+      const srcKey = dates[fwd];
+      const srcRow = flowDaily[srcKey];
+      if (!hasUsableFlow(srcRow)) continue;
+      flowDaily[dKey] = { ...(srcRow as FlowRow), date: dKey };
+      estimatedFrom[dKey] = srcKey;
+      sourceType[dKey] = "future_fallback";
+      filled = true;
+      break;
+    }
+    if (!filled) sourceType[dKey] = "none";
+  }
+
+  // Debug log: one line per historical day showing what was selected and why.
+  if (typeof console !== "undefined") {
+    for (let i = 0; i <= lastHistoricalIdx; i++) {
+      const dKey = dates[i];
+      const r = flowDaily[dKey];
+      console.debug(
+        `[balance] ${dKey} src=${sourceType[dKey] ?? "none"}` +
+          (estimatedFrom[dKey] ? ` from=${estimatedFrom[dKey]}` : "") +
+          ` kireevo=${r?.kireevo ?? 0} kkd2=${r?.kiskundorozsma_2 ?? 0}` +
+          ` kkdHu=${r?.kiskundorozsma_hu ?? 0} kal=${r?.kalotina ?? 0}`,
+      );
     }
   }
 
@@ -207,11 +197,13 @@ export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
       kiskundorozsma_2: 0,
       kalotina: 0,
     };
-    const kkdHu = f.kiskundorozsma_hu || 0;
-    const kire = f.kireevo || 0;
+    const kkdHu = clipLow(f.kiskundorozsma_hu || 0, 0);
+    const kire = clipLow(f.kireevo || 0, 0);
     const kkd2 = clipLow(f.kiskundorozsma_2 || 0, 0);
-    const kal = f.kalotina || 0;
+    const kal = clipLow(f.kalotina || 0, 0);
 
+    // Gastrans Serbia component = Kireevo exit BG - KKD-2 entry HU, floored at 0.
+    // This isolates the gas physically entering Serbia, not regional transit.
     const imports_from_bulgaria_mcm = clipLow(kire - kkd2, 0);
     const bosnia_consumption_mcm = clipLow(imports_from_bulgaria_mcm * bihShare, 0);
     const imports_from_bulgaria_available_mcm = clipLow(
@@ -219,6 +211,9 @@ export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
       0,
     );
 
+    // Total Supply formula:
+    //   max(Kireevo - KKD-2, 0) + KKD HU + Kalotina + production - Bosnia export
+    // Bosnia export is deducted exactly once here.
     const serbian_available_supply_mcm =
       imports_from_bulgaria_mcm + kal + kkdHu + domesticProduction - bosnia_consumption_mcm;
 
@@ -231,12 +226,14 @@ export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
     const storage_injection_mcm = Math.max(storage_imbalance_mcm, 0);
     const storage_withdrawal_mcm = -Math.min(storage_imbalance_mcm, 0);
 
+    const src = is_forecast ? "actual" : sourceType[date] ?? "none";
     return {
       date,
       ts,
       is_forecast,
-      is_estimated: !is_forecast && !!estimatedFrom[date],
+      is_estimated: !is_forecast && src !== "actual" && src !== "none",
       estimated_from: estimatedFrom[date],
+      source_type: src,
       temperature_c: temp,
       avg_temperature_c: avg,
       temperature_actual_c: is_forecast ? null : temp,
@@ -258,3 +255,4 @@ export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
     };
   });
 }
+
