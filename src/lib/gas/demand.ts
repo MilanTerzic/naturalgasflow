@@ -3,7 +3,6 @@ import {
   BIH_SHARE,
   CURVE_DISTORTION_DEFAULT,
   CURVE_SHIFT_DEFAULT,
-  DEMAND_FLOOR_MCM,
   DOMESTIC_PRODUCTION_MCM,
   LINEAR_COEFFS,
   MAX_STORAGE_INJECTION,
@@ -27,7 +26,7 @@ export function forecastDemand(
     curveDistortion?: number;
   } = {},
 ): number {
-  if (avgTempC == null || Number.isNaN(avgTempC)) return DEMAND_FLOOR_MCM;
+  if (avgTempC == null || Number.isNaN(avgTempC)) return 0;
   const usePoly = opts.usePolynomial ?? true;
   const shift = opts.curveShift ?? CURVE_SHIFT_DEFAULT;
   const distortion =
@@ -188,7 +187,7 @@ export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
       curveShift,
       curveDistortion,
     });
-    const demand = clipLow(demandRaw, DEMAND_FLOOR_MCM);
+    const demand = clipLow(demandRaw, 0);
 
     const f = flowDaily[date] ?? {
       date,

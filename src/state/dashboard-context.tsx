@@ -27,7 +27,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const [rangePastDays, setRangePastDays] = useState(10);
   const [rangeFutureDays, setRangeFutureDays] = useState(10);
   const [usePolynomial, setUsePolynomial] = useState(true);
-  const [curveShift, setCurveShift] = useState(0);
+  const [curveShift, setCurveShift] = useState(1);
   const [curveDistortion, setCurveDistortion] = useState(1);
   const [domesticProduction, setDomesticProduction] = useState(0.5);
   const [bihShare, setBihShare] = useState(0.07);
