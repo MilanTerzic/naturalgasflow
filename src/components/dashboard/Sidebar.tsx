@@ -10,20 +10,21 @@ export function Sidebar() {
       <div>
         <h2 className="text-sm font-semibold">Dashboard controls</h2>
         <p className="mt-1 text-xs text-muted-foreground">
-          Defaults to dummy data. Switch to live to fetch Open-Meteo + ENTSOG.
+          Defaults to live ENTSOG + Open-Meteo. Toggle dummy for offline preview.
         </p>
       </div>
 
       <div className="flex items-center justify-between rounded-md border bg-card p-3">
         <div>
           <Label className="text-xs font-medium">Use dummy data</Label>
-          <p className="text-[11px] text-muted-foreground">Offline preview</p>
+          <p className="text-[11px] text-muted-foreground">Offline demo mode</p>
         </div>
         <Switch
           checked={s.mode === "dummy"}
           onCheckedChange={(v) => s.setMode(v ? "dummy" : "live")}
         />
       </div>
+
 
       <div className="space-y-3 rounded-md border bg-card p-3">
         <div>
