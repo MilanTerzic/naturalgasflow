@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as DashRouteImport } from './routes/_dash'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as DashSrbijagasRouteImport } from './routes/_dash.srbijagas'
 import { Route as DashModelRouteImport } from './routes/_dash.model'
 import { Route as DashFlowsRouteImport } from './routes/_dash.flows'
 import { Route as DashCapacityRouteImport } from './routes/_dash.capacity'
@@ -24,6 +25,11 @@ const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const DashSrbijagasRoute = DashSrbijagasRouteImport.update({
+  id: '/srbijagas',
+  path: '/srbijagas',
+  getParentRoute: () => DashRoute,
 } as any)
 const DashModelRoute = DashModelRouteImport.update({
   id: '/model',
@@ -52,6 +58,7 @@ export interface FileRoutesByFullPath {
   '/capacity': typeof DashCapacityRoute
   '/flows': typeof DashFlowsRoute
   '/model': typeof DashModelRoute
+  '/srbijagas': typeof DashSrbijagasRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -59,6 +66,7 @@ export interface FileRoutesByTo {
   '/capacity': typeof DashCapacityRoute
   '/flows': typeof DashFlowsRoute
   '/model': typeof DashModelRoute
+  '/srbijagas': typeof DashSrbijagasRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -68,12 +76,13 @@ export interface FileRoutesById {
   '/_dash/capacity': typeof DashCapacityRoute
   '/_dash/flows': typeof DashFlowsRoute
   '/_dash/model': typeof DashModelRoute
+  '/_dash/srbijagas': typeof DashSrbijagasRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/balance' | '/capacity' | '/flows' | '/model'
+  fullPaths: '/' | '/balance' | '/capacity' | '/flows' | '/model' | '/srbijagas'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/balance' | '/capacity' | '/flows' | '/model'
+  to: '/' | '/balance' | '/capacity' | '/flows' | '/model' | '/srbijagas'
   id:
     | '__root__'
     | '/'
@@ -82,6 +91,7 @@ export interface FileRouteTypes {
     | '/_dash/capacity'
     | '/_dash/flows'
     | '/_dash/model'
+    | '/_dash/srbijagas'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -104,6 +114,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_dash/srbijagas': {
+      id: '/_dash/srbijagas'
+      path: '/srbijagas'
+      fullPath: '/srbijagas'
+      preLoaderRoute: typeof DashSrbijagasRouteImport
+      parentRoute: typeof DashRoute
     }
     '/_dash/model': {
       id: '/_dash/model'
@@ -141,6 +158,7 @@ interface DashRouteChildren {
   DashCapacityRoute: typeof DashCapacityRoute
   DashFlowsRoute: typeof DashFlowsRoute
   DashModelRoute: typeof DashModelRoute
+  DashSrbijagasRoute: typeof DashSrbijagasRoute
 }
 
 const DashRouteChildren: DashRouteChildren = {
@@ -148,6 +166,7 @@ const DashRouteChildren: DashRouteChildren = {
   DashCapacityRoute: DashCapacityRoute,
   DashFlowsRoute: DashFlowsRoute,
   DashModelRoute: DashModelRoute,
+  DashSrbijagasRoute: DashSrbijagasRoute,
 }
 
 const DashRouteWithChildren = DashRoute._addFileChildren(DashRouteChildren)
