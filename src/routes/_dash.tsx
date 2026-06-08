@@ -13,6 +13,7 @@ const TABS = [
   { to: "/balance", label: "Gas Balance" },
   { to: "/flows", label: "Flow Details" },
   { to: "/capacity", label: "Capacity Bookings" },
+  { to: "/srbijagas", label: "Srbijagas Full Supply" },
   { to: "/model", label: "Model & Assumptions" },
 ] as const;
 
