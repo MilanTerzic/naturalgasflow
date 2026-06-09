@@ -52,13 +52,14 @@ import {
   parseKvCsv,
   reconstructPrice,
   seasonalProfile,
+  smoothExtremes,
   syntheticBrent,
   syntheticTtf,
   toCsv,
 } from "@/lib/srbijagas/helpers";
 import { useSrbijagasOverrides } from "@/lib/srbijagas/storage";
 import type { DailyFlowRow } from "@/lib/srbijagas/types";
-import { fmtMcm, fmtShortDate, fmtTemp } from "@/lib/gas/format";
+import { fmtMcm, fmtShortDate, fmtShortDateYear, fmtTemp } from "@/lib/gas/format";
 import { PALETTE } from "@/lib/gas/config";
 import { useDashboard } from "@/state/dashboard-context";
 
