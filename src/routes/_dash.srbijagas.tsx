@@ -135,6 +135,12 @@ function SrbijagasPage() {
     staleTime: 24 * 60 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
+  const entsoeQ = useQuery({
+    queryKey: ["srbijagas-entsoe-gas", fromISO, toISO],
+    queryFn: () => fetchEntsoeGasGeneration({ data: { fromISO, toISO } }),
+    staleTime: 6 * 60 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
 
   const dates = useMemo(() => dateRangeIso(fromISO, toISO), [fromISO, toISO]);
 
@@ -150,6 +156,12 @@ function SrbijagasPage() {
     }));
   }, [flowsQ.data]);
 
+  // Merge ENTSO-E gas-fired generation with any manual override (manual wins).
+  const powerDailyMerged = useMemo(
+    () => ({ ...(entsoeQ.data?.data ?? {}), ...overrides.manualPowerDaily }),
+    [entsoeQ.data, overrides.manualPowerDaily],
+  );
+
   const analysis = useMemo(
     () =>
       buildAnalysis({
@@ -161,10 +173,10 @@ function SrbijagasPage() {
         domesticProduction,
         manualSerbianDaily: overrides.manualSerbianDaily,
         manualBosniaDaily: overrides.manualBosniaDaily,
-        manualPowerDaily: overrides.manualPowerDaily,
+        manualPowerDaily: powerDailyMerged,
         manualTempDaily: overrides.manualTempDaily,
       }),
-    [dates, flows, tempsQ.data, overrides, domesticProduction],
+    [dates, flows, tempsQ.data, overrides, domesticProduction, powerDailyMerged],
   );
 
   const monthly = useMemo(() => aggregateMonthly(analysis), [analysis]);
@@ -231,10 +243,11 @@ function SrbijagasPage() {
     reader.readAsText(file);
   };
 
-  const loading = flowsQ.isLoading || tempsQ.isLoading;
+  const loading = flowsQ.isLoading || tempsQ.isLoading || entsoeQ.isLoading;
   const flowsError = flowsQ.data?.error;
   const tempsError = tempsQ.data?.error;
   const fxError = fxQ.data?.error;
+  const entsoeError = entsoeQ.data?.error;
 
   return (
     <div className="space-y-4">
