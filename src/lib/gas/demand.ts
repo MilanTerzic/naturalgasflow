@@ -30,9 +30,7 @@ export function forecastDemand(
   const usePoly = opts.usePolynomial ?? true;
   const shift = opts.curveShift ?? CURVE_SHIFT_DEFAULT;
   const distortion =
-    !opts.curveDistortion || opts.curveDistortion === 0
-      ? CURVE_DISTORTION_DEFAULT
-      : opts.curveDistortion;
+    !opts.curveDistortion || opts.curveDistortion === 0 ? CURVE_DISTORTION_DEFAULT : opts.curveDistortion;
   const coeffs = usePoly ? POLY_COEFFS : LINEAR_COEFFS;
   return polyval(coeffs, avgTempC) * distortion + shift;
 }
@@ -123,8 +121,7 @@ export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
 
   // "Usable" = at least one of the import points has a positive value.
   // A row of all zeros is treated as missing (ENTSOG hasn't published yet).
-  const hasUsableFlow = (r: FlowRow | undefined) =>
-    !!r && (r.kireevo > 0 || r.kalotina > 0 || r.kiskundorozsma_hu > 0);
+  const hasUsableFlow = (r: FlowRow | undefined) => !!r && (r.kireevo > 0 || r.kalotina > 0 || r.kiskundorozsma_hu > 0);
 
   const todayIdx = dates.indexOf(todayIso);
   const lastHistoricalIdx = todayIdx >= 0 ? todayIdx : dates.length - 1;
@@ -187,7 +184,7 @@ export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
       curveShift,
       curveDistortion,
     });
-    const demand = clipLow(demandRaw, 0);
+    const demand = Math.min(19, clipLow(demandRaw, 0));
 
     const f = flowDaily[date] ?? {
       date,
@@ -205,10 +202,7 @@ export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
     // This isolates the gas physically entering Serbia, not regional transit.
     const imports_from_bulgaria_mcm = clipLow(kire - kkd2, 0);
     const bosnia_consumption_mcm = clipLow(imports_from_bulgaria_mcm * bihShare, 0);
-    const imports_from_bulgaria_available_mcm = clipLow(
-      imports_from_bulgaria_mcm - bosnia_consumption_mcm,
-      0,
-    );
+    const imports_from_bulgaria_available_mcm = clipLow(imports_from_bulgaria_mcm - bosnia_consumption_mcm, 0);
 
     // Total Supply formula:
     //   max(Kireevo - KKD-2, 0) + KKD HU + Kalotina + production - Bosnia export
@@ -217,15 +211,11 @@ export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
       imports_from_bulgaria_mcm + kal + kkdHu + domesticProduction - bosnia_consumption_mcm;
 
     const storage_imbalance_raw_mcm = serbian_available_supply_mcm - demand;
-    const storage_imbalance_mcm = clip(
-      storage_imbalance_raw_mcm,
-      -maxStorageWithdrawal,
-      maxStorageInjection,
-    );
+    const storage_imbalance_mcm = clip(storage_imbalance_raw_mcm, -maxStorageWithdrawal, maxStorageInjection);
     const storage_injection_mcm = Math.max(storage_imbalance_mcm, 0);
     const storage_withdrawal_mcm = -Math.min(storage_imbalance_mcm, 0);
 
-    const src = is_forecast ? "actual" : sourceType[date] ?? "none";
+    const src = is_forecast ? "actual" : (sourceType[date] ?? "none");
     return {
       date,
       ts,
@@ -257,4 +247,3 @@ export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
     };
   });
 }
-
