@@ -402,15 +402,15 @@ function SrbijagasPage() {
 
         {/* ---------------- VOLUME HISTORY ---------------- */}
         <TabsContent value="volume" className="space-y-4 pt-3">
-          <ChartCard title="Daily Serbian gas balance" subtitle="mcm/day — imports + production − Bosnia (assumed) = consumption" height={340}>
+          <ChartCard title="Daily Serbian gas balance" subtitle="mcm/day — imports + production − Bosnia (assumed) = consumption. Extreme spikes carried-forward from prior day." height={340}>
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={analysis} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
+              <ComposedChart data={analysisSmoothed} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
                 <CartesianGrid stroke={PALETTE.grid} vertical={false} />
                 <XAxis dataKey="ts" type="number" domain={["dataMin", "dataMax"]} scale="time"
-                  tickFormatter={(v) => fmtShortDate(new Date(v).toISOString().slice(0, 10))}
-                  tick={{ fontSize: 11 }} stroke={PALETTE.axis} />
+                  tickFormatter={(v) => fmtShortDateYear(new Date(v).toISOString().slice(0, 10))}
+                  tick={{ fontSize: 11 }} stroke={PALETTE.axis} minTickGap={50} />
                 <YAxis tick={{ fontSize: 11 }} stroke={PALETTE.axis} />
-                <Tooltip labelFormatter={(v) => fmtShortDate(new Date(Number(v)).toISOString().slice(0, 10))}
+                <Tooltip labelFormatter={(v) => fmtShortDateYear(new Date(Number(v)).toISOString().slice(0, 10))}
                   formatter={(v: unknown, n) => [typeof v === "number" ? `${fmtMcm(v)} mcm/d` : "–", n]}
                   contentStyle={{ fontSize: 12 }} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />

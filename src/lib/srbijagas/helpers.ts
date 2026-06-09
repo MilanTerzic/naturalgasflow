@@ -180,19 +180,19 @@ export function aggregateMonthly(rows: AnalysisRow[]): MonthlyAggRow[] {
 // Smooth extreme outliers in numeric fields by carrying forward the previous
 // day's value. An "extreme" is > 2.5× or < 0.4× the previous non-zero value.
 // Used for chart display only — raw analysis rows are preserved for tables.
-export function smoothExtremes<T extends Record<string, unknown>>(
+export function smoothExtremes<T extends object>(
   rows: T[],
   fields: (keyof T)[],
 ): T[] {
   const prev: Partial<Record<keyof T, number>> = {};
   return rows.map((r) => {
-    const next: T = { ...r };
+    const next = { ...r } as T;
     for (const f of fields) {
-      const v = r[f];
+      const v = (r as Record<string, unknown>)[f as string];
       if (typeof v !== "number" || !Number.isFinite(v)) continue;
       const p = prev[f];
       if (p != null && p > 0 && (v > p * 2.5 || v < p * 0.4)) {
-        (next as Record<keyof T, unknown>)[f] = p;
+        (next as Record<string, unknown>)[f as string] = p;
       } else {
         prev[f] = v;
       }
