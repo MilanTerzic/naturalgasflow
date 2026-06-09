@@ -257,7 +257,7 @@ function SrbijagasPage() {
           <h2 className="text-sm font-semibold">Srbijagas Full Supply Analysis</h2>
           <p className="text-xs text-muted-foreground">
             Historical volume / weather / power / price analytics for a potential Srbijagas full-supply offer.
-            ENTSOG public history typically covers ~2 years — extend earlier periods via CSV upload.
+            Default window is 5 years — ENTSOG public history typically covers ~2 years, extend earlier periods via CSV upload.
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
@@ -288,12 +288,13 @@ function SrbijagasPage() {
         </div>
       </div>
 
-      {(loading || flowsError || tempsError || fxError) && (
+      {(loading || flowsError || tempsError || fxError || entsoeError) && (
         <div className="space-y-1 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
           {loading && <div>Loading historical data…</div>}
           {flowsError && <div>⚠ ENTSOG: {flowsError}</div>}
           {tempsError && <div>⚠ Weather: {tempsError}</div>}
           {fxError && <div>⚠ ECB FX: {fxError} (price reconstruction will skip oil-indexed component)</div>}
+          {entsoeError && <div>⚠ ENTSO-E gas generation: {entsoeError}</div>}
         </div>
       )}
 
@@ -534,7 +535,8 @@ function SrbijagasPage() {
           <div className="rounded-md border bg-card p-3 shadow-sm">
             <h3 className="mb-2 text-sm font-semibold">Power assumptions</h3>
             <p className="mb-3 text-xs text-muted-foreground">
-              No gas-fired power feed connected yet. Upload daily generation (GWh) in the Manual Overrides tab.
+              Gas-fired generation (Fossil Gas, B04) pulled from ENTSO-E Transparency for Serbia (10YCS-SERBIATSOV).
+              Manual CSV uploads in the Overrides tab take priority over API values.
               Conversion: <code className="rounded bg-muted px-1">gas (mcm) = electricity (GWh) ÷ efficiency ÷ CV (kWh/m³ × 10⁻³)</code>
             </p>
             <div className="grid gap-3 md:grid-cols-2">
