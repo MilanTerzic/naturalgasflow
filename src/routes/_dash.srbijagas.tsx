@@ -41,7 +41,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { fetchHistoricalFlows, fetchEcbFx } from "@/lib/data/historical.functions";
+import { fetchHistoricalFlows, fetchEcbFx, fetchEntsoeGasGeneration } from "@/lib/data/historical.functions";
 import { fetchBelgradeTemperatures } from "@/lib/data/openmeteo.functions";
 import {
   aggregateMonthly,
@@ -84,7 +84,7 @@ type Preset = "1y" | "2y" | "3y" | "5y" | "10y" | "custom";
 function defaultRange(): { from: string; to: string } {
   const to = new Date();
   const from = new Date(to);
-  from.setUTCFullYear(from.getUTCFullYear() - 2);
+  from.setUTCFullYear(from.getUTCFullYear() - 5);
   return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
 }
 
@@ -102,7 +102,7 @@ function presetRange(p: Preset): { from: string; to: string } | null {
 function SrbijagasPage() {
   const { domesticProduction } = useDashboard();
   const { overrides, update, reset } = useSrbijagasOverrides();
-  const [preset, setPreset] = useState<Preset>("2y");
+  const [preset, setPreset] = useState<Preset>("5y");
   const initial = defaultRange();
   const [fromISO, setFromISO] = useState(initial.from);
   const [toISO, setToISO] = useState(initial.to);
