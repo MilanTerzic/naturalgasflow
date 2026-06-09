@@ -177,6 +177,32 @@ export function aggregateMonthly(rows: AnalysisRow[]): MonthlyAggRow[] {
     .sort((a, b) => (a.month < b.month ? -1 : 1));
 }
 
+// Smooth extreme outliers in numeric fields by carrying forward the previous
+// day's value. An "extreme" is > 2.5× or < 0.4× the previous non-zero value.
+// Used for chart display only — raw analysis rows are preserved for tables.
+export function smoothExtremes<T extends object>(
+  rows: T[],
+  fields: (keyof T)[],
+): T[] {
+  const prev: Partial<Record<keyof T, number>> = {};
+  return rows.map((r) => {
+    const next = { ...r } as T;
+    for (const f of fields) {
+      const v = (r as Record<string, unknown>)[f as string];
+      if (typeof v !== "number" || !Number.isFinite(v)) continue;
+      const p = prev[f];
+      if (p != null && p > 0 && (v > p * 2.5 || v < p * 0.4)) {
+        (next as Record<string, unknown>)[f as string] = p;
+      } else {
+        prev[f] = v;
+      }
+    }
+    return next;
+  });
+}
+
+
+
 export function seasonalProfile(monthly: MonthlyAggRow[]) {
   // Average by calendar month across all years.
   const groups: Record<string, number[]> = {};

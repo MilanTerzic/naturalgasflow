@@ -52,13 +52,14 @@ import {
   parseKvCsv,
   reconstructPrice,
   seasonalProfile,
+  smoothExtremes,
   syntheticBrent,
   syntheticTtf,
   toCsv,
 } from "@/lib/srbijagas/helpers";
 import { useSrbijagasOverrides } from "@/lib/srbijagas/storage";
 import type { DailyFlowRow } from "@/lib/srbijagas/types";
-import { fmtMcm, fmtShortDate, fmtTemp } from "@/lib/gas/format";
+import { fmtMcm, fmtShortDate, fmtShortDateYear, fmtTemp } from "@/lib/gas/format";
 import { PALETTE } from "@/lib/gas/config";
 import { useDashboard } from "@/state/dashboard-context";
 
@@ -181,6 +182,18 @@ function SrbijagasPage() {
 
   const monthly = useMemo(() => aggregateMonthly(analysis), [analysis]);
   const seasonal = useMemo(() => seasonalProfile(monthly), [monthly]);
+
+  // Display-only: smooth extreme outliers (>2.5× or <0.4× prior day) by carry-forward.
+  const analysisSmoothed = useMemo(
+    () =>
+      smoothExtremes(analysis, [
+        "serbian_consumption_mcm",
+        "imports_bg_net_mcm",
+        "imports_total_mcm",
+        "bosnia_mcm",
+      ]),
+    [analysis],
+  );
 
   // Price reconstruction
   const months = useMemo(() => monthsBetween(fromISO, toISO), [fromISO, toISO]);
@@ -389,15 +402,15 @@ function SrbijagasPage() {
 
         {/* ---------------- VOLUME HISTORY ---------------- */}
         <TabsContent value="volume" className="space-y-4 pt-3">
-          <ChartCard title="Daily Serbian gas balance" subtitle="mcm/day — imports + production − Bosnia (assumed) = consumption" height={340}>
+          <ChartCard title="Daily Serbian gas balance" subtitle="mcm/day — imports + production − Bosnia (assumed) = consumption. Extreme spikes carried-forward from prior day." height={340}>
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={analysis} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
+              <ComposedChart data={analysisSmoothed} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
                 <CartesianGrid stroke={PALETTE.grid} vertical={false} />
                 <XAxis dataKey="ts" type="number" domain={["dataMin", "dataMax"]} scale="time"
-                  tickFormatter={(v) => fmtShortDate(new Date(v).toISOString().slice(0, 10))}
-                  tick={{ fontSize: 11 }} stroke={PALETTE.axis} />
+                  tickFormatter={(v) => fmtShortDateYear(new Date(v).toISOString().slice(0, 10))}
+                  tick={{ fontSize: 11 }} stroke={PALETTE.axis} minTickGap={50} />
                 <YAxis tick={{ fontSize: 11 }} stroke={PALETTE.axis} />
-                <Tooltip labelFormatter={(v) => fmtShortDate(new Date(Number(v)).toISOString().slice(0, 10))}
+                <Tooltip labelFormatter={(v) => fmtShortDateYear(new Date(Number(v)).toISOString().slice(0, 10))}
                   formatter={(v: unknown, n) => [typeof v === "number" ? `${fmtMcm(v)} mcm/d` : "–", n]}
                   contentStyle={{ fontSize: 12 }} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />

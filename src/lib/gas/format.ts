@@ -24,3 +24,9 @@ export const fmtShortDate = (iso: string) => {
   const d = new Date(`${iso}T00:00:00Z`);
   return d.toLocaleDateString("en-US", { month: "short", day: "2-digit", timeZone: "UTC" });
 };
+
+export const fmtShortDateYear = (iso: string) => {
+  const d = new Date(`${iso}T00:00:00Z`);
+  return d.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric", timeZone: "UTC" });
+};
+
