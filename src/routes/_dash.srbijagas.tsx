@@ -183,6 +183,18 @@ function SrbijagasPage() {
   const monthly = useMemo(() => aggregateMonthly(analysis), [analysis]);
   const seasonal = useMemo(() => seasonalProfile(monthly), [monthly]);
 
+  // Display-only: smooth extreme outliers (>2.5× or <0.4× prior day) by carry-forward.
+  const analysisSmoothed = useMemo(
+    () =>
+      smoothExtremes(analysis, [
+        "serbian_consumption_mcm",
+        "imports_bg_net_mcm",
+        "imports_total_mcm",
+        "bosnia_mcm",
+      ]),
+    [analysis],
+  );
+
   // Price reconstruction
   const months = useMemo(() => monthsBetween(fromISO, toISO), [fromISO, toISO]);
   const ttfByMonth = useMemo(() => Object.fromEntries(months.map((m) => [m, syntheticTtf(m)])), [months]);
