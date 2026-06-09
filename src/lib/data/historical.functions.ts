@@ -104,6 +104,7 @@ function minIso(a: string, b: string): string {
 
 // Very small XML extractor (workerd has no DOMParser). We only need
 // Period blocks with resolution + timeInterval/start + Point list.
+// Handles A03 (stepwise) curves where missing positions inherit the prior value.
 function parseEntsoeXml(xml: string): Record<string, number> {
   const out: Record<string, number> = {};
   const periodRegex = /<Period>([\s\S]*?)<\/Period>/g;
@@ -112,25 +113,37 @@ function parseEntsoeXml(xml: string): Record<string, number> {
     const block = pm[1];
     const resMatch = block.match(/<resolution>([^<]+)<\/resolution>/);
     const startMatch = block.match(/<timeInterval>[\s\S]*?<start>([^<]+)<\/start>/);
-    if (!resMatch || !startMatch) continue;
-    const resolution = resMatch[1].trim(); // e.g. PT60M, PT15M
+    const endMatch = block.match(/<timeInterval>[\s\S]*?<end>([^<]+)<\/end>/);
+    if (!resMatch || !startMatch || !endMatch) continue;
+    const resolution = resMatch[1].trim();
     const start = new Date(startMatch[1].trim());
-    if (Number.isNaN(start.getTime())) continue;
+    const end = new Date(endMatch[1].trim());
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) continue;
     const minutesPerStep =
       resolution === "PT15M" ? 15 :
       resolution === "PT30M" ? 30 :
       resolution === "PT60M" || resolution === "PT1H" ? 60 :
       60;
+    const totalSteps = Math.round((end.getTime() - start.getTime()) / (minutesPerStep * 60_000));
+
+    // Collect sparse points into a position->value map.
+    const points = new Map<number, number>();
     const pointRegex = /<Point>\s*<position>(\d+)<\/position>\s*<quantity>([\d.\-eE+]+)<\/quantity>\s*<\/Point>/g;
     let qm: RegExpExecArray | null;
     while ((qm = pointRegex.exec(block)) !== null) {
       const pos = parseInt(qm[1], 10);
       const mw = parseFloat(qm[2]);
-      if (!Number.isFinite(mw)) continue;
+      if (Number.isFinite(mw)) points.set(pos, mw);
+    }
+    if (points.size === 0 || totalSteps <= 0) continue;
+
+    // Forward-fill: ENTSO-E A03 curveType repeats prior value until next position.
+    let last = points.get(1) ?? 0;
+    for (let pos = 1; pos <= totalSteps; pos++) {
+      if (points.has(pos)) last = points.get(pos) as number;
       const ts = new Date(start.getTime() + (pos - 1) * minutesPerStep * 60_000);
       const dateKey = ts.toISOString().slice(0, 10);
-      // MW over (minutesPerStep) minutes -> MWh
-      const mwh = mw * (minutesPerStep / 60);
+      const mwh = last * (minutesPerStep / 60);
       out[dateKey] = (out[dateKey] ?? 0) + mwh;
     }
   }
