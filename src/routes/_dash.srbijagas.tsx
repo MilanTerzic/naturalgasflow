@@ -41,7 +41,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { fetchHistoricalFlows, fetchEcbFx } from "@/lib/data/historical.functions";
+import { fetchHistoricalFlows, fetchEcbFx, fetchEntsoeGasGeneration } from "@/lib/data/historical.functions";
 import { fetchBelgradeTemperatures } from "@/lib/data/openmeteo.functions";
 import {
   aggregateMonthly,
@@ -84,7 +84,7 @@ type Preset = "1y" | "2y" | "3y" | "5y" | "10y" | "custom";
 function defaultRange(): { from: string; to: string } {
   const to = new Date();
   const from = new Date(to);
-  from.setUTCFullYear(from.getUTCFullYear() - 2);
+  from.setUTCFullYear(from.getUTCFullYear() - 5);
   return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
 }
 
@@ -102,7 +102,7 @@ function presetRange(p: Preset): { from: string; to: string } | null {
 function SrbijagasPage() {
   const { domesticProduction } = useDashboard();
   const { overrides, update, reset } = useSrbijagasOverrides();
-  const [preset, setPreset] = useState<Preset>("2y");
+  const [preset, setPreset] = useState<Preset>("5y");
   const initial = defaultRange();
   const [fromISO, setFromISO] = useState(initial.from);
   const [toISO, setToISO] = useState(initial.to);
@@ -135,6 +135,12 @@ function SrbijagasPage() {
     staleTime: 24 * 60 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
+  const entsoeQ = useQuery({
+    queryKey: ["srbijagas-entsoe-gas", fromISO, toISO],
+    queryFn: () => fetchEntsoeGasGeneration({ data: { fromISO, toISO } }),
+    staleTime: 6 * 60 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
 
   const dates = useMemo(() => dateRangeIso(fromISO, toISO), [fromISO, toISO]);
 
@@ -150,6 +156,12 @@ function SrbijagasPage() {
     }));
   }, [flowsQ.data]);
 
+  // Merge ENTSO-E gas-fired generation with any manual override (manual wins).
+  const powerDailyMerged = useMemo(
+    () => ({ ...(entsoeQ.data?.data ?? {}), ...overrides.manualPowerDaily }),
+    [entsoeQ.data, overrides.manualPowerDaily],
+  );
+
   const analysis = useMemo(
     () =>
       buildAnalysis({
@@ -161,10 +173,10 @@ function SrbijagasPage() {
         domesticProduction,
         manualSerbianDaily: overrides.manualSerbianDaily,
         manualBosniaDaily: overrides.manualBosniaDaily,
-        manualPowerDaily: overrides.manualPowerDaily,
+        manualPowerDaily: powerDailyMerged,
         manualTempDaily: overrides.manualTempDaily,
       }),
-    [dates, flows, tempsQ.data, overrides, domesticProduction],
+    [dates, flows, tempsQ.data, overrides, domesticProduction, powerDailyMerged],
   );
 
   const monthly = useMemo(() => aggregateMonthly(analysis), [analysis]);
@@ -231,10 +243,11 @@ function SrbijagasPage() {
     reader.readAsText(file);
   };
 
-  const loading = flowsQ.isLoading || tempsQ.isLoading;
+  const loading = flowsQ.isLoading || tempsQ.isLoading || entsoeQ.isLoading;
   const flowsError = flowsQ.data?.error;
   const tempsError = tempsQ.data?.error;
   const fxError = fxQ.data?.error;
+  const entsoeError = entsoeQ.data?.error;
 
   return (
     <div className="space-y-4">
@@ -244,7 +257,7 @@ function SrbijagasPage() {
           <h2 className="text-sm font-semibold">Srbijagas Full Supply Analysis</h2>
           <p className="text-xs text-muted-foreground">
             Historical volume / weather / power / price analytics for a potential Srbijagas full-supply offer.
-            ENTSOG public history typically covers ~2 years — extend earlier periods via CSV upload.
+            Default window is 5 years — ENTSOG public history typically covers ~2 years, extend earlier periods via CSV upload.
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
@@ -275,12 +288,13 @@ function SrbijagasPage() {
         </div>
       </div>
 
-      {(loading || flowsError || tempsError || fxError) && (
+      {(loading || flowsError || tempsError || fxError || entsoeError) && (
         <div className="space-y-1 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
           {loading && <div>Loading historical data…</div>}
           {flowsError && <div>⚠ ENTSOG: {flowsError}</div>}
           {tempsError && <div>⚠ Weather: {tempsError}</div>}
           {fxError && <div>⚠ ECB FX: {fxError} (price reconstruction will skip oil-indexed component)</div>}
+          {entsoeError && <div>⚠ ENTSO-E gas generation: {entsoeError}</div>}
         </div>
       )}
 
@@ -521,7 +535,8 @@ function SrbijagasPage() {
           <div className="rounded-md border bg-card p-3 shadow-sm">
             <h3 className="mb-2 text-sm font-semibold">Power assumptions</h3>
             <p className="mb-3 text-xs text-muted-foreground">
-              No gas-fired power feed connected yet. Upload daily generation (GWh) in the Manual Overrides tab.
+              Gas-fired generation (Fossil Gas, B04) pulled from ENTSO-E Transparency for Serbia (10YCS-SERBIATSOV).
+              Manual CSV uploads in the Overrides tab take priority over API values.
               Conversion: <code className="rounded bg-muted px-1">gas (mcm) = electricity (GWh) ÷ efficiency ÷ CV (kWh/m³ × 10⁻³)</code>
             </p>
             <div className="grid gap-3 md:grid-cols-2">
