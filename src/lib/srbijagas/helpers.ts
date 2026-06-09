@@ -199,6 +199,9 @@ export function smoothExtremes<T extends Record<string, unknown>>(
     }
     return next;
   });
+}
+
+
 
 export function seasonalProfile(monthly: MonthlyAggRow[]) {
   // Average by calendar month across all years.
