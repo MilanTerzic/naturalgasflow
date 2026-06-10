@@ -599,8 +599,8 @@ function SrbijagasPage() {
                 <CartesianGrid stroke={PALETTE.grid} vertical={false} />
                 <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke={PALETTE.axis}
                   tickFormatter={(m) => { const d = new Date(`${m}-01T00:00:00Z`); return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' }); }} />
-                <YAxis tick={{ fontSize: 11 }} stroke={PALETTE.axis} unit=" mcm" />
-                <Tooltip contentStyle={{ fontSize: 12 }} formatter={(v: unknown, n) => [typeof v === "number" ? `${fmtMcm(v)} mcm` : "–", n]} />
+                <YAxis tick={{ fontSize: 11 }} stroke={PALETTE.axis} unit=" mcm/d" />
+                <Tooltip contentStyle={{ fontSize: 12 }} formatter={(v: unknown, n) => [typeof v === "number" ? `${fmtMcm(v)} mcm/d` : "–", n]} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Area type="monotone" dataKey="power_mcm" stackId="b" name="Gas power plant" stroke={PALETTE.kalotina} fill={PALETTE.kalotina} fillOpacity={0.85} isAnimationActive={false} />
                 <Area type="monotone" dataKey="industry_mcm" stackId="b" name="Industry & other" stroke={PALETTE.bgImport} fill={PALETTE.bgImport} fillOpacity={0.85} isAnimationActive={false} />
