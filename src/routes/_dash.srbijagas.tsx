@@ -62,6 +62,7 @@ import {
   DEFAULT_OFFICIAL_PRICE_EUR_MWH,
   DEFAULT_REGULATED_PRICE_EUR_MWH,
   DEFAULT_TTF_EUR_MWH,
+  DEFAULT_OIL_INDEX_EUR_MWH,
 } from "@/lib/srbijagas/default-prices";
 import type { DailyFlowRow } from "@/lib/srbijagas/types";
 import { fmtMcm, fmtShortDate, fmtShortDateYear, fmtTemp } from "@/lib/gas/format";
@@ -222,12 +223,13 @@ function SrbijagasPage() {
       }),
     [months, ttfByMonth, brentByMonth, fxByMonth, officialByMonth, overrides.formula],
   );
-  // Attach regulated tariff series for the price chart.
+  // Attach Source + oil-index series for the price chart.
   const priceRowsWithRegulated = useMemo(
     () =>
       priceRows.map((p) => ({
         ...p,
         regulated_eur_mwh: DEFAULT_REGULATED_PRICE_EUR_MWH[p.month] ?? null,
+        oil_index_eur_mwh: DEFAULT_OIL_INDEX_EUR_MWH[p.month] ?? null,
       })),
     [priceRows],
   );
@@ -657,7 +659,7 @@ function SrbijagasPage() {
                 <Line type="monotone" dataKey="official_eur_mwh" name="Srbijagas Sales" stroke={PALETTE.demand} strokeWidth={2} dot={false} connectNulls />
                 <Line type="monotone" dataKey="regulated_eur_mwh" name="Srbijagas Source" stroke={PALETTE.kalotina} strokeWidth={2} dot={false} connectNulls />
                 <Line type="monotone" dataKey="ttf_eur_mwh" name="TTF reference" stroke={PALETTE.bgImport} strokeWidth={2} dot={false} connectNulls />
-                <Line type="monotone" dataKey="oil_indexed_eur_mwh" name="Oil-indexed" stroke={PALETTE.huMet} dot={false} connectNulls />
+                <Line type="monotone" dataKey="oil_index_eur_mwh" name="Oil index" stroke={PALETTE.huMet} strokeWidth={2} dot={false} connectNulls />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
