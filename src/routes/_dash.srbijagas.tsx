@@ -659,9 +659,9 @@ function SrbijagasPage() {
                 <Tooltip contentStyle={{ fontSize: 12 }} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Line type="monotone" dataKey="official_eur_mwh" name="Srbijagas Sales" stroke={PALETTE.demand} strokeWidth={2} dot={false} connectNulls />
-                <Line type="monotone" dataKey="regulated_eur_mwh" name="Srbijagas Source" stroke={PALETTE.kalotina} strokeWidth={2} dot={false} connectNulls />
                 <Line type="monotone" dataKey="ttf_eur_mwh" name="TTF reference" stroke={PALETTE.bgImport} strokeWidth={2} dot={false} connectNulls />
-                <Line type="monotone" dataKey="oil_index_eur_mwh" name="Oil index" stroke={PALETTE.huMet} strokeWidth={2} dot={false} connectNulls />
+                <Line type="monotone" dataKey="oil_index_eur_mwh" name="Oil price" stroke={PALETTE.huMet} strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls />
+                <Line type="monotone" dataKey="regulated_eur_mwh" name="Srbijagas Source" stroke={PALETTE.kalotina} strokeWidth={2} dot={false} connectNulls />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
