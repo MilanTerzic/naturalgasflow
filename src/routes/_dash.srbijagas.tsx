@@ -60,7 +60,6 @@ import {
 import { useSrbijagasOverrides } from "@/lib/srbijagas/storage";
 import {
   DEFAULT_OFFICIAL_PRICE_EUR_MWH,
-  DEFAULT_REGULATED_PRICE_EUR_MWH,
   DEFAULT_TTF_EUR_MWH,
 } from "@/lib/srbijagas/default-prices";
 import type { DailyFlowRow } from "@/lib/srbijagas/types";
