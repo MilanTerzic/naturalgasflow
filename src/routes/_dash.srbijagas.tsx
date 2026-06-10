@@ -670,7 +670,7 @@ function SrbijagasPage() {
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-sm font-semibold">Pricing table</h3>
               <Button size="sm" variant="outline" className="h-7 text-xs"
-                onClick={() => downloadCsv("srbijagas-price.csv", toCsv(priceRows as unknown as Record<string, unknown>[]))}>
+                onClick={() => downloadCsv("srbijagas-price.csv", toCsv(priceRowsWithRegulated as unknown as Record<string, unknown>[]))}>
                 Export CSV
               </Button>
             </div>
@@ -679,29 +679,40 @@ function SrbijagasPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="text-xs">Month</TableHead>
-                    <TableHead className="text-right text-xs">Official</TableHead>
-                    <TableHead className="text-right text-xs">Reconstructed</TableHead>
-                    <TableHead className="text-right text-xs">TTF</TableHead>
-                    <TableHead className="text-right text-xs">Oil-idx</TableHead>
-                    <TableHead className="text-right text-xs">Brent</TableHead>
-                    <TableHead className="text-right text-xs">EUR/USD</TableHead>
+                    <TableHead className="text-right text-xs">Srbijagas Sales</TableHead>
+                    <TableHead className="text-right text-xs">Srbijagas Source</TableHead>
+                    <TableHead className="text-right text-xs">Oil price</TableHead>
+                    <TableHead className="text-right text-xs">TTF reference</TableHead>
+                    <TableHead className="text-right text-xs">Sales − Source</TableHead>
+                    <TableHead className="text-right text-xs">TTF − Oil</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {priceRows.map((p) => (
-                    <TableRow key={p.month}>
-                      <TableCell className="text-xs">{p.month}</TableCell>
-                      <TableCell className="text-right text-xs tabular-nums">{p.official_eur_mwh?.toFixed(1) ?? "–"}</TableCell>
-                      <TableCell className="text-right text-xs tabular-nums">{p.reconstructed_eur_mwh?.toFixed(1) ?? "–"}</TableCell>
-                      <TableCell className="text-right text-xs tabular-nums">{p.ttf_eur_mwh?.toFixed(1) ?? "–"}</TableCell>
-                      <TableCell className="text-right text-xs tabular-nums">{p.oil_indexed_eur_mwh?.toFixed(1) ?? "–"}</TableCell>
-                      <TableCell className="text-right text-xs tabular-nums">{p.brent_usd_bbl?.toFixed(1) ?? "–"}</TableCell>
-                      <TableCell className="text-right text-xs tabular-nums">{p.eur_usd?.toFixed(3) ?? "–"}</TableCell>
-                    </TableRow>
-                  ))}
+                  {priceRowsWithRegulated.map((p) => {
+                    const salesMinusSource =
+                      p.official_eur_mwh != null && p.regulated_eur_mwh != null
+                        ? p.official_eur_mwh - p.regulated_eur_mwh
+                        : null;
+                    const ttfMinusOil =
+                      p.ttf_eur_mwh != null && p.oil_index_eur_mwh != null
+                        ? p.ttf_eur_mwh - p.oil_index_eur_mwh
+                        : null;
+                    return (
+                      <TableRow key={p.month}>
+                        <TableCell className="text-xs">{p.month}</TableCell>
+                        <TableCell className="text-right text-xs tabular-nums">{p.official_eur_mwh?.toFixed(1) ?? "–"}</TableCell>
+                        <TableCell className="text-right text-xs tabular-nums">{p.regulated_eur_mwh?.toFixed(1) ?? "–"}</TableCell>
+                        <TableCell className="text-right text-xs tabular-nums">{p.oil_index_eur_mwh?.toFixed(1) ?? "–"}</TableCell>
+                        <TableCell className="text-right text-xs tabular-nums">{p.ttf_eur_mwh?.toFixed(1) ?? "–"}</TableCell>
+                        <TableCell className="text-right text-xs tabular-nums">{salesMinusSource?.toFixed(1) ?? "–"}</TableCell>
+                        <TableCell className="text-right text-xs tabular-nums">{ttfMinusOil?.toFixed(1) ?? "–"}</TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
+
           </div>
         </TabsContent>
 
