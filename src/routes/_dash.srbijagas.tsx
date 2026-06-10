@@ -650,13 +650,14 @@ function SrbijagasPage() {
 
           <ChartCard title="Price comparison" subtitle="€/MWh monthly" height={320}>
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={priceRows} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
+              <LineChart data={priceRowsWithRegulated} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
                 <CartesianGrid stroke={PALETTE.grid} vertical={false} />
                 <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke={PALETTE.axis} />
                 <YAxis tick={{ fontSize: 11 }} stroke={PALETTE.axis} unit=" €" />
                 <Tooltip contentStyle={{ fontSize: 12 }} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Line type="monotone" dataKey="official_eur_mwh" name="Official Srbijagas" stroke={PALETTE.demand} strokeWidth={2} dot={false} connectNulls />
+                <Line type="monotone" dataKey="official_eur_mwh" name="Srbijagas (standard)" stroke={PALETTE.demand} strokeWidth={2} dot={false} connectNulls />
+                <Line type="monotone" dataKey="regulated_eur_mwh" name="Srbijagas (regulated)" stroke={PALETTE.kalotina} strokeWidth={2} dot={false} connectNulls />
                 <Line type="monotone" dataKey="reconstructed_eur_mwh" name="Reconstructed" stroke={PALETTE.production} strokeWidth={2} strokeDasharray="4 3" dot={false} connectNulls />
                 <Line type="monotone" dataKey="ttf_eur_mwh" name="TTF benchmark" stroke={PALETTE.bgImport} dot={false} connectNulls />
                 <Line type="monotone" dataKey="oil_indexed_eur_mwh" name="Oil-indexed" stroke={PALETTE.huMet} dot={false} connectNulls />
