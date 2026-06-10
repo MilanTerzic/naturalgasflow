@@ -30,3 +30,8 @@ export const fmtShortDateYear = (iso: string) => {
   return d.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric", timeZone: "UTC" });
 };
 
+export const fmtMonthYear = (iso: string) => {
+  const d = new Date(`${iso}T00:00:00Z`);
+  return d.toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
+};
+
