@@ -224,16 +224,24 @@ function SrbijagasPage() {
     [months, ttfByMonth, brentByMonth, fxByMonth, officialByMonth, overrides.formula],
   );
   // Price comparison chart uses ONLY the user-provided default series — no reconstruction.
+  // Always show the full 2021-01 → 2026-12 horizon regardless of the dashboard date filter.
+  const priceMonths = useMemo(() => {
+    const out: string[] = [];
+    for (let y = 2021; y <= 2026; y++) {
+      for (let m = 1; m <= 12; m++) out.push(`${y}-${String(m).padStart(2, "0")}`);
+    }
+    return out;
+  }, []);
   const priceRowsWithRegulated = useMemo(
     () =>
-      months.map((m) => ({
+      priceMonths.map((m) => ({
         month: m,
         official_eur_mwh: DEFAULT_OFFICIAL_PRICE_EUR_MWH[m] ?? null,
         regulated_eur_mwh: DEFAULT_REGULATED_PRICE_EUR_MWH[m] ?? null,
         ttf_eur_mwh: DEFAULT_TTF_EUR_MWH[m] ?? null,
         oil_index_eur_mwh: DEFAULT_OIL_INDEX_EUR_MWH[m] ?? null,
       })),
-    [months],
+    [priceMonths],
   );
 
   // ---------- KPIs ----------
