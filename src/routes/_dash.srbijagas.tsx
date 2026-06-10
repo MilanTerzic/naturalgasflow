@@ -60,6 +60,7 @@ import {
 import { useSrbijagasOverrides } from "@/lib/srbijagas/storage";
 import {
   DEFAULT_OFFICIAL_PRICE_EUR_MWH,
+  DEFAULT_REGULATED_PRICE_EUR_MWH,
   DEFAULT_TTF_EUR_MWH,
 } from "@/lib/srbijagas/default-prices";
 import type { DailyFlowRow } from "@/lib/srbijagas/types";
@@ -222,6 +223,15 @@ function SrbijagasPage() {
         formula: overrides.formula,
       }),
     [months, ttfByMonth, brentByMonth, fxByMonth, officialByMonth, overrides.formula],
+  );
+  // Attach regulated tariff series for the price chart.
+  const priceRowsWithRegulated = useMemo(
+    () =>
+      priceRows.map((p) => ({
+        ...p,
+        regulated_eur_mwh: DEFAULT_REGULATED_PRICE_EUR_MWH[p.month] ?? null,
+      })),
+    [priceRows],
   );
 
   // ---------- KPIs ----------
@@ -640,15 +650,17 @@ function SrbijagasPage() {
 
           <ChartCard title="Price comparison" subtitle="€/MWh monthly" height={320}>
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={priceRows} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
+              <LineChart data={priceRowsWithRegulated} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
                 <CartesianGrid stroke={PALETTE.grid} vertical={false} />
                 <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke={PALETTE.axis} />
                 <YAxis tick={{ fontSize: 11 }} stroke={PALETTE.axis} unit=" €" />
                 <Tooltip contentStyle={{ fontSize: 12 }} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Line type="monotone" dataKey="official_eur_mwh" name="Srbijagas Sales" stroke={PALETTE.demand} strokeWidth={2} dot={false} connectNulls />
-                <Line type="monotone" dataKey="reconstructed_eur_mwh" name="Srbijagas Source" stroke={PALETTE.production} strokeWidth={2} strokeDasharray="4 3" dot={false} connectNulls />
-                <Line type="monotone" dataKey="ttf_eur_mwh" name="TTF reference" stroke={PALETTE.bgImport} dot={false} connectNulls />
+                <Line type="monotone" dataKey="official_eur_mwh" name="Srbijagas (standard)" stroke={PALETTE.demand} strokeWidth={2} dot={false} connectNulls />
+                <Line type="monotone" dataKey="regulated_eur_mwh" name="Srbijagas (regulated)" stroke={PALETTE.kalotina} strokeWidth={2} dot={false} connectNulls />
+                <Line type="monotone" dataKey="reconstructed_eur_mwh" name="Reconstructed" stroke={PALETTE.production} strokeWidth={2} strokeDasharray="4 3" dot={false} connectNulls />
+                <Line type="monotone" dataKey="ttf_eur_mwh" name="TTF benchmark" stroke={PALETTE.bgImport} dot={false} connectNulls />
+                <Line type="monotone" dataKey="oil_indexed_eur_mwh" name="Oil-indexed" stroke={PALETTE.huMet} dot={false} connectNulls />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -666,9 +678,12 @@ function SrbijagasPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="text-xs">Month</TableHead>
-                    <TableHead className="text-right text-xs">Srbijagas Sales</TableHead>
-                    <TableHead className="text-right text-xs">Srbijagas Source</TableHead>
-                    <TableHead className="text-right text-xs">TTF reference</TableHead>
+                    <TableHead className="text-right text-xs">Official</TableHead>
+                    <TableHead className="text-right text-xs">Reconstructed</TableHead>
+                    <TableHead className="text-right text-xs">TTF</TableHead>
+                    <TableHead className="text-right text-xs">Oil-idx</TableHead>
+                    <TableHead className="text-right text-xs">Brent</TableHead>
+                    <TableHead className="text-right text-xs">EUR/USD</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -678,6 +693,9 @@ function SrbijagasPage() {
                       <TableCell className="text-right text-xs tabular-nums">{p.official_eur_mwh?.toFixed(1) ?? "–"}</TableCell>
                       <TableCell className="text-right text-xs tabular-nums">{p.reconstructed_eur_mwh?.toFixed(1) ?? "–"}</TableCell>
                       <TableCell className="text-right text-xs tabular-nums">{p.ttf_eur_mwh?.toFixed(1) ?? "–"}</TableCell>
+                      <TableCell className="text-right text-xs tabular-nums">{p.oil_indexed_eur_mwh?.toFixed(1) ?? "–"}</TableCell>
+                      <TableCell className="text-right text-xs tabular-nums">{p.brent_usd_bbl?.toFixed(1) ?? "–"}</TableCell>
+                      <TableCell className="text-right text-xs tabular-nums">{p.eur_usd?.toFixed(3) ?? "–"}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
