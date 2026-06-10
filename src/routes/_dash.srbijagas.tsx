@@ -610,13 +610,13 @@ function SrbijagasPage() {
             </ResponsiveContainer>
           </ChartCard>
 
-          <ChartCard title="Yearly consumption by sector" subtitle="Stacked bar — mcm/year" height={280}>
+          <ChartCard title="Yearly consumption by sector" subtitle="Stacked bar — mcm/day (yearly avg)" height={280}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={breakdownYearly} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
                 <CartesianGrid stroke={PALETTE.grid} vertical={false} />
                 <XAxis dataKey="year" tick={{ fontSize: 11 }} stroke={PALETTE.axis} />
-                <YAxis tick={{ fontSize: 11 }} stroke={PALETTE.axis} unit=" mcm" />
-                <Tooltip contentStyle={{ fontSize: 12 }} formatter={(v: unknown, n) => [typeof v === "number" ? `${fmtMcm(v)} mcm` : "–", n]} />
+                <YAxis tick={{ fontSize: 11 }} stroke={PALETTE.axis} unit=" mcm/d" />
+                <Tooltip contentStyle={{ fontSize: 12 }} formatter={(v: unknown, n) => [typeof v === "number" ? `${fmtMcm(v)} mcm/d` : "–", n]} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Bar dataKey="power_mcm" stackId="y" name="Gas power plant" fill={PALETTE.kalotina} isAnimationActive={false} />
                 <Bar dataKey="industry_mcm" stackId="y" name="Industry & other" fill={PALETTE.bgImport} isAnimationActive={false} />
