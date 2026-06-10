@@ -190,6 +190,7 @@ function SrbijagasPage() {
   const seasonal = useMemo(() => seasonalProfile(monthly), [monthly]);
 
   // Consumption breakdown by sector (user-provided yearly shares of total consumption).
+  // Gas power plant is deducted from the "industry & other" share.
   const consumptionBreakdown = useMemo(() => {
     const SHARES: Record<string, { household: number; district: number; industry: number }> = {
       "2021": { household: 0.129, district: 0.227, industry: 0.644 },
@@ -204,24 +205,29 @@ function SrbijagasPage() {
       const year = m.month.slice(0, 4);
       const s = SHARES[year] ?? fallback;
       const total = m.serbian_mcm ?? 0;
+      const power = m.power_gas_mcm ?? 0;
+      const industryRaw = total * s.industry;
+      const industryAfter = Math.max(0, industryRaw - power);
       return {
         month: m.month,
         household_mcm: +(total * s.household).toFixed(3),
         district_mcm: +(total * s.district).toFixed(3),
-        industry_mcm: +(total * s.industry).toFixed(3),
+        industry_mcm: +industryAfter.toFixed(3),
+        power_mcm: +power.toFixed(3),
         total_mcm: +total.toFixed(3),
       };
     });
   }, [monthly]);
 
   const breakdownYearly = useMemo(() => {
-    const acc: Record<string, { year: string; household_mcm: number; district_mcm: number; industry_mcm: number; total_mcm: number }> = {};
+    const acc: Record<string, { year: string; household_mcm: number; district_mcm: number; industry_mcm: number; power_mcm: number; total_mcm: number }> = {};
     for (const r of consumptionBreakdown) {
       const y = r.month.slice(0, 4);
-      const a = (acc[y] ??= { year: y, household_mcm: 0, district_mcm: 0, industry_mcm: 0, total_mcm: 0 });
+      const a = (acc[y] ??= { year: y, household_mcm: 0, district_mcm: 0, industry_mcm: 0, power_mcm: 0, total_mcm: 0 });
       a.household_mcm += r.household_mcm;
       a.district_mcm += r.district_mcm;
       a.industry_mcm += r.industry_mcm;
+      a.power_mcm += r.power_mcm;
       a.total_mcm += r.total_mcm;
     }
     return Object.values(acc).map((a) => ({
@@ -229,6 +235,7 @@ function SrbijagasPage() {
       household_mcm: +a.household_mcm.toFixed(1),
       district_mcm: +a.district_mcm.toFixed(1),
       industry_mcm: +a.industry_mcm.toFixed(1),
+      power_mcm: +a.power_mcm.toFixed(1),
       total_mcm: +a.total_mcm.toFixed(1),
     }));
   }, [consumptionBreakdown]);
@@ -576,7 +583,7 @@ function SrbijagasPage() {
         {/* ---------------- CONSUMPTION BREAKDOWN ---------------- */}
         <TabsContent value="breakdown" className="space-y-4 pt-3">
           <div className="rounded-md border bg-card p-3 text-xs text-muted-foreground shadow-sm">
-            Serbian consumption split by sector using year-specific shares: <strong>Households</strong>, <strong>District heating</strong>, <strong>Industry &amp; other</strong>. Shares: 2021 (12.9/22.7/64.4), 2022 (13.7/19.6/66.6), 2023 (13.9/19.6/66.5), 2024 (15.6/20.2/64.2), 2026 est. (15.7/20.1/64.2). 2025 interpolated.
+            Serbian consumption split by sector using year-specific shares: <strong>Households</strong>, <strong>District heating</strong>, <strong>Industry &amp; other</strong>, and <strong>Gas power plant</strong> (deducted from industry). Shares: 2021 (12.9/22.7/64.4), 2022 (13.7/19.6/66.6), 2023 (13.9/19.6/66.5), 2024 (15.6/20.2/64.2), 2026 est. (15.7/20.1/64.2). 2025 interpolated.
           </div>
 
           <ChartCard title="Monthly consumption breakdown" subtitle="Stacked area — mcm/month" height={340}>
@@ -588,6 +595,7 @@ function SrbijagasPage() {
                 <YAxis tick={{ fontSize: 11 }} stroke={PALETTE.axis} unit=" mcm" />
                 <Tooltip contentStyle={{ fontSize: 12 }} formatter={(v: unknown, n) => [typeof v === "number" ? `${fmtMcm(v)} mcm` : "–", n]} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Area type="monotone" dataKey="power_mcm" stackId="b" name="Gas power plant" stroke={PALETTE.kalotina} fill={PALETTE.kalotina} fillOpacity={0.85} isAnimationActive={false} />
                 <Area type="monotone" dataKey="industry_mcm" stackId="b" name="Industry & other" stroke={PALETTE.bgImport} fill={PALETTE.bgImport} fillOpacity={0.85} isAnimationActive={false} />
                 <Area type="monotone" dataKey="district_mcm" stackId="b" name="District heating" stroke={PALETTE.huMet} fill={PALETTE.huMet} fillOpacity={0.85} isAnimationActive={false} />
                 <Area type="monotone" dataKey="household_mcm" stackId="b" name="Households" stroke={PALETTE.demand} fill={PALETTE.demand} fillOpacity={0.85} isAnimationActive={false} />
@@ -603,6 +611,7 @@ function SrbijagasPage() {
                 <YAxis tick={{ fontSize: 11 }} stroke={PALETTE.axis} unit=" mcm" />
                 <Tooltip contentStyle={{ fontSize: 12 }} formatter={(v: unknown, n) => [typeof v === "number" ? `${fmtMcm(v)} mcm` : "–", n]} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey="power_mcm" stackId="y" name="Gas power plant" fill={PALETTE.kalotina} isAnimationActive={false} />
                 <Bar dataKey="industry_mcm" stackId="y" name="Industry & other" fill={PALETTE.bgImport} isAnimationActive={false} />
                 <Bar dataKey="district_mcm" stackId="y" name="District heating" fill={PALETTE.huMet} isAnimationActive={false} />
                 <Bar dataKey="household_mcm" stackId="y" name="Households" fill={PALETTE.demand} isAnimationActive={false} />
@@ -625,6 +634,7 @@ function SrbijagasPage() {
                   <TableHead className="text-right text-xs">Households (mcm)</TableHead>
                   <TableHead className="text-right text-xs">District heating (mcm)</TableHead>
                   <TableHead className="text-right text-xs">Industry &amp; other (mcm)</TableHead>
+                  <TableHead className="text-right text-xs">Gas power plant (mcm)</TableHead>
                   <TableHead className="text-right text-xs">Total (mcm)</TableHead>
                 </TableRow>
               </TableHeader>
@@ -635,6 +645,7 @@ function SrbijagasPage() {
                     <TableCell className="text-right text-xs tabular-nums">{fmtMcm(r.household_mcm)}</TableCell>
                     <TableCell className="text-right text-xs tabular-nums">{fmtMcm(r.district_mcm)}</TableCell>
                     <TableCell className="text-right text-xs tabular-nums">{fmtMcm(r.industry_mcm)}</TableCell>
+                    <TableCell className="text-right text-xs tabular-nums">{fmtMcm(r.power_mcm)}</TableCell>
                     <TableCell className="text-right text-xs tabular-nums font-semibold">{fmtMcm(r.total_mcm)}</TableCell>
                   </TableRow>
                 ))}
