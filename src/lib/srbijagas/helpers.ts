@@ -1,4 +1,5 @@
 // Aggregation, weather metrics, price reconstruction, CSV utilities.
+import { MAX_SERBIAN_DAILY_MCM } from "@/lib/gas/config";
 import type {
   AnalysisRow,
   BosniaAssumption,
@@ -122,7 +123,7 @@ export function buildAnalysis(opts: {
       domestic_production_mcm: opts.domesticProduction,
       bosnia_mcm: Math.max(0, bosnia),
       bosnia_source: opts.bosnia.method,
-      serbian_consumption_mcm: Math.max(0, serbianConsumption),
+      serbian_consumption_mcm: Math.min(MAX_SERBIAN_DAILY_MCM, Math.max(0, serbianConsumption)),
       temperature_c,
       hdd: hdd(temperature_c),
       cdd: cdd(temperature_c),
