@@ -2,13 +2,16 @@
 import { createServerFn } from "@tanstack/react-start";
 import { BELGRADE_LAT, BELGRADE_LON } from "@/lib/gas/config";
 import type { TempRow } from "@/lib/gas/types";
+import staticTempFallback from "./temp-fallback.json";
+
+const STATIC_FALLBACK: Record<string, number> = staticTempFallback as Record<string, number>;
 
 interface FetchTempArgs {
   from: string; // ISO YYYY-MM-DD
   to: string;
 }
 
-export type WeatherProvider = "open-meteo" | "visual-crossing" | "none";
+export type WeatherProvider = "open-meteo" | "visual-crossing" | "static-fallback" | "none";
 
 export interface TempFetchResult {
   data: TempRow[];
@@ -194,26 +197,37 @@ export const fetchBelgradeTemperatures = createServerFn({ method: "POST" })
       }
     }
 
-    // 2. Assemble result from cache for every requested date.
+    // 2. Assemble result from cache for every requested date; fill gaps from static fallback.
     const out: TempRow[] = [];
     const providers = new Set<WeatherProvider>();
     let latestFetchedAt = "";
+    let usedStaticFallback = false;
     for (const d of requestedDates) {
       const entry = dayCache.get(d);
       if (entry) {
         out.push({ date: d, temperature_c: entry.temperature_c });
         providers.add(entry.provider);
         if (entry.fetchedAt > latestFetchedAt) latestFetchedAt = entry.fetchedAt;
+      } else if (STATIC_FALLBACK[d] != null) {
+        out.push({ date: d, temperature_c: STATIC_FALLBACK[d] });
+        providers.add("static-fallback");
+        usedStaticFallback = true;
       }
+    }
+
+    if (usedStaticFallback && !warning) {
+      warning = "Live weather unavailable for some days; using local fallback dataset.";
     }
 
     // Pick a representative provider for the response.
     const provider: WeatherProvider =
       providers.size === 0
         ? "none"
-        : providers.has("visual-crossing")
-          ? "visual-crossing"
-          : "open-meteo";
+        : providers.has("open-meteo")
+          ? "open-meteo"
+          : providers.has("visual-crossing")
+            ? "visual-crossing"
+            : "static-fallback";
 
     // Only surface the error if we genuinely have no data at all.
     const error = out.length === 0 ? fetchError : null;
@@ -226,3 +240,4 @@ export const fetchBelgradeTemperatures = createServerFn({ method: "POST" })
       fetchedAt: latestFetchedAt || new Date().toISOString(),
     };
   });
+
