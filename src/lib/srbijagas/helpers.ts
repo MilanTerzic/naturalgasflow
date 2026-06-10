@@ -120,6 +120,8 @@ export function buildAnalysis(opts: {
       ts,
       imports_total_mcm: imports_total,
       imports_bg_net_mcm: imports_bg_net,
+      kalotina_mcm: kalotina,
+      kkdHu_mcm: kkdHu,
       domestic_production_mcm: opts.domesticProduction,
       bosnia_mcm: Math.max(0, bosnia),
       bosnia_source: opts.bosnia.method,

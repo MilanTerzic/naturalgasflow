@@ -16,6 +16,8 @@ export interface AnalysisRow {
   // Inputs
   imports_total_mcm: number;          // kireevo + kkdHu + kalotina (gross to RS)
   imports_bg_net_mcm: number;         // kireevo - kkd2 floored at 0
+  kalotina_mcm: number;               // BG → RS Kalotina
+  kkdHu_mcm: number;                  // HU → RS Kiskundorozsma
   domestic_production_mcm: number;
   // Bosnia (assumed)
   bosnia_mcm: number;
