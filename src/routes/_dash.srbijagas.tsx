@@ -223,12 +223,13 @@ function SrbijagasPage() {
       }),
     [months, ttfByMonth, brentByMonth, fxByMonth, officialByMonth, overrides.formula],
   );
-  // Attach regulated tariff series for the price chart.
+  // Attach Source + oil-index series for the price chart.
   const priceRowsWithRegulated = useMemo(
     () =>
       priceRows.map((p) => ({
         ...p,
         regulated_eur_mwh: DEFAULT_REGULATED_PRICE_EUR_MWH[p.month] ?? null,
+        oil_index_eur_mwh: DEFAULT_OIL_INDEX_EUR_MWH[p.month] ?? null,
       })),
     [priceRows],
   );
