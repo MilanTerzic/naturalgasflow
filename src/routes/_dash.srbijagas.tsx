@@ -58,6 +58,11 @@ import {
   toCsv,
 } from "@/lib/srbijagas/helpers";
 import { useSrbijagasOverrides } from "@/lib/srbijagas/storage";
+import {
+  DEFAULT_OFFICIAL_PRICE_EUR_MWH,
+  DEFAULT_REGULATED_PRICE_EUR_MWH,
+  DEFAULT_TTF_EUR_MWH,
+} from "@/lib/srbijagas/default-prices";
 import type { DailyFlowRow } from "@/lib/srbijagas/types";
 import { fmtMcm, fmtShortDate, fmtShortDateYear, fmtTemp } from "@/lib/gas/format";
 import { PALETTE } from "@/lib/gas/config";
@@ -197,9 +202,16 @@ function SrbijagasPage() {
 
   // Price reconstruction
   const months = useMemo(() => monthsBetween(fromISO, toISO), [fromISO, toISO]);
-  const ttfByMonth = useMemo(() => Object.fromEntries(months.map((m) => [m, syntheticTtf(m)])), [months]);
+  const ttfByMonth = useMemo(
+    () => Object.fromEntries(months.map((m) => [m, DEFAULT_TTF_EUR_MWH[m] ?? syntheticTtf(m)])),
+    [months],
+  );
   const brentByMonth = useMemo(() => Object.fromEntries(months.map((m) => [m, syntheticBrent(m)])), [months]);
   const fxByMonth = fxQ.data?.data ?? {};
+  const officialByMonth = useMemo(
+    () => ({ ...DEFAULT_OFFICIAL_PRICE_EUR_MWH, ...overrides.manualPriceMonthly }),
+    [overrides.manualPriceMonthly],
+  );
   const priceRows = useMemo(
     () =>
       reconstructPrice({
@@ -207,10 +219,19 @@ function SrbijagasPage() {
         ttfByMonth,
         brentByMonth,
         fxByMonth,
-        officialByMonth: overrides.manualPriceMonthly,
+        officialByMonth,
         formula: overrides.formula,
       }),
-    [months, ttfByMonth, brentByMonth, fxByMonth, overrides.manualPriceMonthly, overrides.formula],
+    [months, ttfByMonth, brentByMonth, fxByMonth, officialByMonth, overrides.formula],
+  );
+  // Attach regulated tariff series for the price chart.
+  const priceRowsWithRegulated = useMemo(
+    () =>
+      priceRows.map((p) => ({
+        ...p,
+        regulated_eur_mwh: DEFAULT_REGULATED_PRICE_EUR_MWH[p.month] ?? null,
+      })),
+    [priceRows],
   );
 
   // ---------- KPIs ----------
@@ -629,13 +650,14 @@ function SrbijagasPage() {
 
           <ChartCard title="Price comparison" subtitle="€/MWh monthly" height={320}>
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={priceRows} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
+              <LineChart data={priceRowsWithRegulated} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
                 <CartesianGrid stroke={PALETTE.grid} vertical={false} />
                 <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke={PALETTE.axis} />
                 <YAxis tick={{ fontSize: 11 }} stroke={PALETTE.axis} unit=" €" />
                 <Tooltip contentStyle={{ fontSize: 12 }} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Line type="monotone" dataKey="official_eur_mwh" name="Official Srbijagas" stroke={PALETTE.demand} strokeWidth={2} dot={false} connectNulls />
+                <Line type="monotone" dataKey="official_eur_mwh" name="Srbijagas (standard)" stroke={PALETTE.demand} strokeWidth={2} dot={false} connectNulls />
+                <Line type="monotone" dataKey="regulated_eur_mwh" name="Srbijagas (regulated)" stroke={PALETTE.kalotina} strokeWidth={2} dot={false} connectNulls />
                 <Line type="monotone" dataKey="reconstructed_eur_mwh" name="Reconstructed" stroke={PALETTE.production} strokeWidth={2} strokeDasharray="4 3" dot={false} connectNulls />
                 <Line type="monotone" dataKey="ttf_eur_mwh" name="TTF benchmark" stroke={PALETTE.bgImport} dot={false} connectNulls />
                 <Line type="monotone" dataKey="oil_indexed_eur_mwh" name="Oil-indexed" stroke={PALETTE.huMet} dot={false} connectNulls />
