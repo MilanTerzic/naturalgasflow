@@ -20,6 +20,7 @@ export const MAX_STORAGE_WITHDRAWAL = 5.0;
 export const CURVE_SHIFT_DEFAULT = 0.0;
 export const CURVE_DISTORTION_DEFAULT = 1.0;
 export const DEMAND_FLOOR_MCM = 4.0;
+export const MAX_SERBIAN_DAILY_MCM = 19.0;
 
 export const BELGRADE_LAT = 44.7866;
 export const BELGRADE_LON = 20.4489;
