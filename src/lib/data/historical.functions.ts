@@ -93,9 +93,9 @@ function toEntsoeStamp(iso: string, end = false): string {
   return `${y}${m}${day}0000`;
 }
 
-function addYearsIso(iso: string, years: number): string {
+function addDaysIso(iso: string, days: number): string {
   const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCFullYear(d.getUTCFullYear() + years);
+  d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
 function minIso(a: string, b: string): string {
