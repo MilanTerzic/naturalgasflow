@@ -202,9 +202,16 @@ function SrbijagasPage() {
 
   // Price reconstruction
   const months = useMemo(() => monthsBetween(fromISO, toISO), [fromISO, toISO]);
-  const ttfByMonth = useMemo(() => Object.fromEntries(months.map((m) => [m, syntheticTtf(m)])), [months]);
+  const ttfByMonth = useMemo(
+    () => Object.fromEntries(months.map((m) => [m, DEFAULT_TTF_EUR_MWH[m] ?? syntheticTtf(m)])),
+    [months],
+  );
   const brentByMonth = useMemo(() => Object.fromEntries(months.map((m) => [m, syntheticBrent(m)])), [months]);
   const fxByMonth = fxQ.data?.data ?? {};
+  const officialByMonth = useMemo(
+    () => ({ ...DEFAULT_OFFICIAL_PRICE_EUR_MWH, ...overrides.manualPriceMonthly }),
+    [overrides.manualPriceMonthly],
+  );
   const priceRows = useMemo(
     () =>
       reconstructPrice({
@@ -212,10 +219,19 @@ function SrbijagasPage() {
         ttfByMonth,
         brentByMonth,
         fxByMonth,
-        officialByMonth: overrides.manualPriceMonthly,
+        officialByMonth,
         formula: overrides.formula,
       }),
-    [months, ttfByMonth, brentByMonth, fxByMonth, overrides.manualPriceMonthly, overrides.formula],
+    [months, ttfByMonth, brentByMonth, fxByMonth, officialByMonth, overrides.formula],
+  );
+  // Attach regulated tariff series for the price chart.
+  const priceRowsWithRegulated = useMemo(
+    () =>
+      priceRows.map((p) => ({
+        ...p,
+        regulated_eur_mwh: DEFAULT_REGULATED_PRICE_EUR_MWH[p.month] ?? null,
+      })),
+    [priceRows],
   );
 
   // ---------- KPIs ----------
