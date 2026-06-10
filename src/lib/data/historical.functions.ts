@@ -93,9 +93,9 @@ function toEntsoeStamp(iso: string, end = false): string {
   return `${y}${m}${day}0000`;
 }
 
-function addYearsIso(iso: string, years: number): string {
+function addDaysIso(iso: string, days: number): string {
   const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCFullYear(d.getUTCFullYear() + years);
+  d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
 function minIso(a: string, b: string): string {
@@ -191,7 +191,10 @@ export const fetchEntsoeGasGeneration = createServerFn({ method: "POST" })
       // Chunk by 1-year windows (API limit).
       let chunkStart = data.fromISO;
       while (chunkStart <= data.toISO) {
-        const chunkEnd = minIso(addYearsIso(chunkStart, 1), data.toISO);
+        // ENTSO-E caps requests at P1Y; the chunk handler also adds +1 day to the
+        // end stamp to include the last day, so cap windows at 364 days to stay
+        // strictly inside the 1-year limit.
+        const chunkEnd = minIso(addDaysIso(chunkStart, 364), data.toISO);
         const part = await fetchEntsoeChunk(token, chunkStart, chunkEnd);
         Object.assign(merged, part);
         if (chunkEnd === data.toISO) break;
