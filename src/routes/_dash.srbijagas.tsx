@@ -224,15 +224,6 @@ function SrbijagasPage() {
       }),
     [months, ttfByMonth, brentByMonth, fxByMonth, officialByMonth, overrides.formula],
   );
-  // Attach regulated tariff series for the price chart.
-  const priceRowsWithRegulated = useMemo(
-    () =>
-      priceRows.map((p) => ({
-        ...p,
-        regulated_eur_mwh: DEFAULT_REGULATED_PRICE_EUR_MWH[p.month] ?? null,
-      })),
-    [priceRows],
-  );
 
   // ---------- KPIs ----------
   const measured = analysis.filter((r) => r.source === "measured" || r.source === "manual_override");
