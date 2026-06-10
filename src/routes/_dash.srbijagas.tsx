@@ -223,15 +223,17 @@ function SrbijagasPage() {
       }),
     [months, ttfByMonth, brentByMonth, fxByMonth, officialByMonth, overrides.formula],
   );
-  // Attach Source + oil-index series for the price chart.
+  // Price comparison chart uses ONLY the user-provided default series — no reconstruction.
   const priceRowsWithRegulated = useMemo(
     () =>
-      priceRows.map((p) => ({
-        ...p,
-        regulated_eur_mwh: DEFAULT_REGULATED_PRICE_EUR_MWH[p.month] ?? null,
-        oil_index_eur_mwh: DEFAULT_OIL_INDEX_EUR_MWH[p.month] ?? null,
+      months.map((m) => ({
+        month: m,
+        official_eur_mwh: DEFAULT_OFFICIAL_PRICE_EUR_MWH[m] ?? null,
+        regulated_eur_mwh: DEFAULT_REGULATED_PRICE_EUR_MWH[m] ?? null,
+        ttf_eur_mwh: DEFAULT_TTF_EUR_MWH[m] ?? null,
+        oil_index_eur_mwh: DEFAULT_OIL_INDEX_EUR_MWH[m] ?? null,
       })),
-    [priceRows],
+    [months],
   );
 
   // ---------- KPIs ----------
