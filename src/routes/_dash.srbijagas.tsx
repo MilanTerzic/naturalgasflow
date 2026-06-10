@@ -204,41 +204,48 @@ function SrbijagasPage() {
     return monthly.map((m) => {
       const year = m.month.slice(0, 4);
       const s = SHARES[year] ?? fallback;
-      const total = m.serbian_mcm ?? 0;
-      const power = m.power_gas_mcm ?? 0;
-      const industryRaw = total * s.industry;
-      const industryAfter = Math.max(0, industryRaw - power);
+      const days = m.days || 1;
+      // Convert monthly totals to per-day averages so the chart reads in mcm/day,
+      // consistent with the rest of the dashboard.
+      const totalPerDay = (m.serbian_mcm ?? 0) / days;
+      const powerPerDay = (m.power_gas_mcm ?? 0) / days;
+      const industryRawPerDay = totalPerDay * s.industry;
+      const industryAfterPerDay = Math.max(0, industryRawPerDay - powerPerDay);
       return {
         month: m.month,
-        household_mcm: +(total * s.household).toFixed(3),
-        district_mcm: +(total * s.district).toFixed(3),
-        industry_mcm: +industryAfter.toFixed(3),
-        power_mcm: +power.toFixed(3),
-        total_mcm: +total.toFixed(3),
+        household_mcm: +(totalPerDay * s.household).toFixed(3),
+        district_mcm: +(totalPerDay * s.district).toFixed(3),
+        industry_mcm: +industryAfterPerDay.toFixed(3),
+        power_mcm: +powerPerDay.toFixed(3),
+        total_mcm: +totalPerDay.toFixed(3),
       };
     });
   }, [monthly]);
 
   const breakdownYearly = useMemo(() => {
-    const acc: Record<string, { year: string; household_mcm: number; district_mcm: number; industry_mcm: number; power_mcm: number; total_mcm: number }> = {};
-    for (const r of consumptionBreakdown) {
+    // Aggregate weighted by month length so yearly numbers stay in mcm/day.
+    const acc: Record<string, { year: string; household_mcm: number; district_mcm: number; industry_mcm: number; power_mcm: number; total_mcm: number; days: number }> = {};
+    for (let i = 0; i < consumptionBreakdown.length; i++) {
+      const r = consumptionBreakdown[i];
+      const days = monthly[i]?.days ?? 30;
       const y = r.month.slice(0, 4);
-      const a = (acc[y] ??= { year: y, household_mcm: 0, district_mcm: 0, industry_mcm: 0, power_mcm: 0, total_mcm: 0 });
-      a.household_mcm += r.household_mcm;
-      a.district_mcm += r.district_mcm;
-      a.industry_mcm += r.industry_mcm;
-      a.power_mcm += r.power_mcm;
-      a.total_mcm += r.total_mcm;
+      const a = (acc[y] ??= { year: y, household_mcm: 0, district_mcm: 0, industry_mcm: 0, power_mcm: 0, total_mcm: 0, days: 0 });
+      a.household_mcm += r.household_mcm * days;
+      a.district_mcm += r.district_mcm * days;
+      a.industry_mcm += r.industry_mcm * days;
+      a.power_mcm += r.power_mcm * days;
+      a.total_mcm += r.total_mcm * days;
+      a.days += days;
     }
     return Object.values(acc).map((a) => ({
-      ...a,
-      household_mcm: +a.household_mcm.toFixed(1),
-      district_mcm: +a.district_mcm.toFixed(1),
-      industry_mcm: +a.industry_mcm.toFixed(1),
-      power_mcm: +a.power_mcm.toFixed(1),
-      total_mcm: +a.total_mcm.toFixed(1),
+      year: a.year,
+      household_mcm: +(a.household_mcm / Math.max(1, a.days)).toFixed(3),
+      district_mcm: +(a.district_mcm / Math.max(1, a.days)).toFixed(3),
+      industry_mcm: +(a.industry_mcm / Math.max(1, a.days)).toFixed(3),
+      power_mcm: +(a.power_mcm / Math.max(1, a.days)).toFixed(3),
+      total_mcm: +(a.total_mcm / Math.max(1, a.days)).toFixed(3),
     }));
-  }, [consumptionBreakdown]);
+  }, [consumptionBreakdown, monthly]);
 
   // Display-only: smooth extreme outliers (>2.5× or <0.4× prior day) by carry-forward.
   const analysisSmoothed = useMemo(
