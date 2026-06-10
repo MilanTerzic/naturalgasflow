@@ -490,7 +490,7 @@ function SrbijagasPage() {
 
         {/* ---------------- VOLUME HISTORY ---------------- */}
         <TabsContent value="volume" className="space-y-4 pt-3">
-          <ChartCard title="Daily Serbian gas balance" subtitle="mcm/day — imports + production − Bosnia (assumed) = consumption. Extreme spikes carried-forward from prior day." height={340}>
+          <ChartCard title="Daily Serbian gas balance" subtitle="mcm/day — stacked supply (BG net + Kalotina + KKD-HU + production) − Bosnia = consumption line. Extreme spikes carried-forward." height={340}>
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={analysisSmoothed} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
                 <CartesianGrid stroke={PALETTE.grid} vertical={false} />
@@ -502,10 +502,12 @@ function SrbijagasPage() {
                   formatter={(v: unknown, n) => [typeof v === "number" ? `${fmtMcm(v)} mcm/d` : "–", n]}
                   contentStyle={{ fontSize: 12 }} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="imports_bg_net_mcm" stackId="s" name="Imports BG (net)" fill={PALETTE.bgImport} isAnimationActive={false} />
-                <Bar dataKey="imports_total_mcm" stackId="z" name="Imports total" fill="transparent" isAnimationActive={false} hide />
+                <Bar dataKey="imports_bg_net_mcm" stackId="s" name="Imports BG-Kireevo (net)" fill={PALETTE.bgImport} isAnimationActive={false} />
+                <Bar dataKey="kalotina_mcm" stackId="s" name="Imports BG-Kalotina" fill={PALETTE.kalotina} isAnimationActive={false} />
+                <Bar dataKey="kkdHu_mcm" stackId="s" name="Imports HU-KKD" fill={PALETTE.huOthers} isAnimationActive={false} />
+                <Bar dataKey="domestic_production_mcm" stackId="s" name="Domestic production" fill={PALETTE.production} isAnimationActive={false} />
                 <Line type="monotone" dataKey="serbian_consumption_mcm" name="Serbia consumption (est.)" stroke={PALETTE.demand} strokeWidth={2} dot={false} isAnimationActive={false} />
-                <Line type="monotone" dataKey="bosnia_mcm" name="Bosnia (assumed)" stroke={PALETTE.huMet} strokeWidth={1.5} strokeDasharray="4 3" dot={false} isAnimationActive={false} />
+                <Line type="monotone" dataKey="bosnia_mcm" name="Bosnia (deducted)" stroke={PALETTE.huMet} strokeWidth={1.5} strokeDasharray="4 3" dot={false} isAnimationActive={false} />
               </ComposedChart>
             </ResponsiveContainer>
           </ChartCard>
