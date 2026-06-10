@@ -573,6 +573,78 @@ function SrbijagasPage() {
           </div>
         </TabsContent>
 
+        {/* ---------------- CONSUMPTION BREAKDOWN ---------------- */}
+        <TabsContent value="breakdown" className="space-y-4 pt-3">
+          <div className="rounded-md border bg-card p-3 text-xs text-muted-foreground shadow-sm">
+            Serbian consumption split by sector using year-specific shares: <strong>Households</strong>, <strong>District heating</strong>, <strong>Industry &amp; other</strong>. Shares: 2021 (12.9/22.7/64.4), 2022 (13.7/19.6/66.6), 2023 (13.9/19.6/66.5), 2024 (15.6/20.2/64.2), 2026 est. (15.7/20.1/64.2). 2025 interpolated.
+          </div>
+
+          <ChartCard title="Monthly consumption breakdown" subtitle="Stacked area — mcm/month" height={340}>
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={consumptionBreakdown} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
+                <CartesianGrid stroke={PALETTE.grid} vertical={false} />
+                <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke={PALETTE.axis}
+                  tickFormatter={(m) => { const d = new Date(`${m}-01T00:00:00Z`); return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' }); }} />
+                <YAxis tick={{ fontSize: 11 }} stroke={PALETTE.axis} unit=" mcm" />
+                <Tooltip contentStyle={{ fontSize: 12 }} formatter={(v: unknown, n) => [typeof v === "number" ? `${fmtMcm(v)} mcm` : "–", n]} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Area type="monotone" dataKey="industry_mcm" stackId="b" name="Industry & other" stroke={PALETTE.bgImport} fill={PALETTE.bgImport} fillOpacity={0.85} isAnimationActive={false} />
+                <Area type="monotone" dataKey="district_mcm" stackId="b" name="District heating" stroke={PALETTE.huMet} fill={PALETTE.huMet} fillOpacity={0.85} isAnimationActive={false} />
+                <Area type="monotone" dataKey="household_mcm" stackId="b" name="Households" stroke={PALETTE.demand} fill={PALETTE.demand} fillOpacity={0.85} isAnimationActive={false} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
+          <ChartCard title="Yearly consumption by sector" subtitle="Stacked bar — mcm/year" height={280}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={breakdownYearly} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
+                <CartesianGrid stroke={PALETTE.grid} vertical={false} />
+                <XAxis dataKey="year" tick={{ fontSize: 11 }} stroke={PALETTE.axis} />
+                <YAxis tick={{ fontSize: 11 }} stroke={PALETTE.axis} unit=" mcm" />
+                <Tooltip contentStyle={{ fontSize: 12 }} formatter={(v: unknown, n) => [typeof v === "number" ? `${fmtMcm(v)} mcm` : "–", n]} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey="industry_mcm" stackId="y" name="Industry & other" fill={PALETTE.bgImport} isAnimationActive={false} />
+                <Bar dataKey="district_mcm" stackId="y" name="District heating" fill={PALETTE.huMet} isAnimationActive={false} />
+                <Bar dataKey="household_mcm" stackId="y" name="Households" fill={PALETTE.demand} isAnimationActive={false} />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
+          <div className="rounded-md border bg-card p-3 shadow-sm">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-sm font-semibold">Yearly breakdown</h3>
+              <Button size="sm" variant="outline" className="h-7 text-xs"
+                onClick={() => downloadCsv("srbijagas-breakdown.csv", toCsv(breakdownYearly as unknown as Record<string, unknown>[]))}>
+                Export CSV
+              </Button>
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs">Year</TableHead>
+                  <TableHead className="text-right text-xs">Households (mcm)</TableHead>
+                  <TableHead className="text-right text-xs">District heating (mcm)</TableHead>
+                  <TableHead className="text-right text-xs">Industry &amp; other (mcm)</TableHead>
+                  <TableHead className="text-right text-xs">Total (mcm)</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {breakdownYearly.map((r) => (
+                  <TableRow key={r.year}>
+                    <TableCell className="text-xs">{r.year}</TableCell>
+                    <TableCell className="text-right text-xs tabular-nums">{fmtMcm(r.household_mcm)}</TableCell>
+                    <TableCell className="text-right text-xs tabular-nums">{fmtMcm(r.district_mcm)}</TableCell>
+                    <TableCell className="text-right text-xs tabular-nums">{fmtMcm(r.industry_mcm)}</TableCell>
+                    <TableCell className="text-right text-xs tabular-nums font-semibold">{fmtMcm(r.total_mcm)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </TabsContent>
+
+
+
         {/* ---------------- WEATHER & DEMAND ---------------- */}
         <TabsContent value="weather" className="space-y-4 pt-3">
           <ChartCard title="Temperature vs. Serbian gas demand" subtitle="Scatter — daily" height={360}>
