@@ -82,9 +82,31 @@ async function fetchPoint(
   return byDate;
 }
 
+interface CacheEntry {
+  day: string; // YYYY-MM-DD (UTC) of last successful fetch
+  rows: FlowRow[];
+}
+// Module-level in-memory cache: persists across requests on the same server
+// instance. Keyed by the requested window.
+const flowCache = new Map<string, CacheEntry>();
+
+function todayUtc(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export const fetchEntsogFlows = createServerFn({ method: "POST" })
   .inputValidator((d: FetchFlowArgs) => d)
   .handler(async ({ data }): Promise<{ data: FlowRow[]; error: string | null }> => {
+    const cacheKey = `${data.from}|${data.to}`;
+    const today = todayUtc();
+    const cached = flowCache.get(cacheKey);
+
+    // Serve from cache if we already fetched successfully today.
+    if (cached && cached.day === today) {
+      console.log(`[ENTSOG] cache hit for ${cacheKey} (day ${today})`);
+      return { data: cached.rows, error: null };
+    }
+
     try {
       const perPoint = await Promise.all(
         POINT_KEYS.map(async (key) => {
@@ -118,9 +140,21 @@ export const fetchEntsogFlows = createServerFn({ method: "POST" })
         }
         return row;
       });
+
+      // Treat empty result as a soft failure and prefer stale cache.
+      if (rows.length === 0 && cached) {
+        console.warn(`[ENTSOG] empty response, serving stale cache from ${cached.day}`);
+        return { data: cached.rows, error: null };
+      }
+
+      flowCache.set(cacheKey, { day: today, rows });
       return { data: rows, error: null };
     } catch (err) {
       console.error("ENTSOG fetch failed", err);
+      if (cached) {
+        console.warn(`[ENTSOG] serving stale cache from ${cached.day} after error`);
+        return { data: cached.rows, error: null };
+      }
       return { data: [], error: err instanceof Error ? err.message : "Unknown error" };
     }
   });
