@@ -656,10 +656,9 @@ function SrbijagasPage() {
                 <YAxis tick={{ fontSize: 11 }} stroke={PALETTE.axis} unit=" €" />
                 <Tooltip contentStyle={{ fontSize: 12 }} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Line type="monotone" dataKey="official_eur_mwh" name="Srbijagas (standard)" stroke={PALETTE.demand} strokeWidth={2} dot={false} connectNulls />
-                <Line type="monotone" dataKey="regulated_eur_mwh" name="Srbijagas (regulated)" stroke={PALETTE.kalotina} strokeWidth={2} dot={false} connectNulls />
-                <Line type="monotone" dataKey="reconstructed_eur_mwh" name="Reconstructed" stroke={PALETTE.production} strokeWidth={2} strokeDasharray="4 3" dot={false} connectNulls />
-                <Line type="monotone" dataKey="ttf_eur_mwh" name="TTF benchmark" stroke={PALETTE.bgImport} dot={false} connectNulls />
+                <Line type="monotone" dataKey="official_eur_mwh" name="Srbijagas Sales" stroke={PALETTE.demand} strokeWidth={2} dot={false} connectNulls />
+                <Line type="monotone" dataKey="regulated_eur_mwh" name="Srbijagas Source" stroke={PALETTE.kalotina} strokeWidth={2} dot={false} connectNulls />
+                <Line type="monotone" dataKey="ttf_eur_mwh" name="TTF reference" stroke={PALETTE.bgImport} strokeWidth={2} dot={false} connectNulls />
                 <Line type="monotone" dataKey="oil_indexed_eur_mwh" name="Oil-indexed" stroke={PALETTE.huMet} dot={false} connectNulls />
               </LineChart>
             </ResponsiveContainer>
