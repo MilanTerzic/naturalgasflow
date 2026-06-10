@@ -611,6 +611,7 @@ function SrbijagasPage() {
                 <YAxis tick={{ fontSize: 11 }} stroke={PALETTE.axis} unit=" mcm" />
                 <Tooltip contentStyle={{ fontSize: 12 }} formatter={(v: unknown, n) => [typeof v === "number" ? `${fmtMcm(v)} mcm` : "–", n]} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey="power_mcm" stackId="y" name="Gas power plant" fill={PALETTE.kalotina} isAnimationActive={false} />
                 <Bar dataKey="industry_mcm" stackId="y" name="Industry & other" fill={PALETTE.bgImport} isAnimationActive={false} />
                 <Bar dataKey="district_mcm" stackId="y" name="District heating" fill={PALETTE.huMet} isAnimationActive={false} />
                 <Bar dataKey="household_mcm" stackId="y" name="Households" fill={PALETTE.demand} isAnimationActive={false} />
