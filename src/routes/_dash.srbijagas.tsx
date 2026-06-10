@@ -220,13 +220,14 @@ function SrbijagasPage() {
   }, [monthly]);
 
   const breakdownYearly = useMemo(() => {
-    const acc: Record<string, { year: string; household_mcm: number; district_mcm: number; industry_mcm: number; total_mcm: number }> = {};
+    const acc: Record<string, { year: string; household_mcm: number; district_mcm: number; industry_mcm: number; power_mcm: number; total_mcm: number }> = {};
     for (const r of consumptionBreakdown) {
       const y = r.month.slice(0, 4);
-      const a = (acc[y] ??= { year: y, household_mcm: 0, district_mcm: 0, industry_mcm: 0, total_mcm: 0 });
+      const a = (acc[y] ??= { year: y, household_mcm: 0, district_mcm: 0, industry_mcm: 0, power_mcm: 0, total_mcm: 0 });
       a.household_mcm += r.household_mcm;
       a.district_mcm += r.district_mcm;
       a.industry_mcm += r.industry_mcm;
+      a.power_mcm += r.power_mcm;
       a.total_mcm += r.total_mcm;
     }
     return Object.values(acc).map((a) => ({
@@ -234,6 +235,7 @@ function SrbijagasPage() {
       household_mcm: +a.household_mcm.toFixed(1),
       district_mcm: +a.district_mcm.toFixed(1),
       industry_mcm: +a.industry_mcm.toFixed(1),
+      power_mcm: +a.power_mcm.toFixed(1),
       total_mcm: +a.total_mcm.toFixed(1),
     }));
   }, [consumptionBreakdown]);
