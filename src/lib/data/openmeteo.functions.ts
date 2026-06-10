@@ -2,13 +2,16 @@
 import { createServerFn } from "@tanstack/react-start";
 import { BELGRADE_LAT, BELGRADE_LON } from "@/lib/gas/config";
 import type { TempRow } from "@/lib/gas/types";
+import staticTempFallback from "./temp-fallback.json";
+
+const STATIC_FALLBACK: Record<string, number> = staticTempFallback as Record<string, number>;
 
 interface FetchTempArgs {
   from: string; // ISO YYYY-MM-DD
   to: string;
 }
 
-export type WeatherProvider = "open-meteo" | "visual-crossing" | "none";
+export type WeatherProvider = "open-meteo" | "visual-crossing" | "static-fallback" | "none";
 
 export interface TempFetchResult {
   data: TempRow[];
