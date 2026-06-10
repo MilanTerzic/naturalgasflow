@@ -619,6 +619,44 @@ function SrbijagasPage() {
 
         {/* ---------------- PRICE ---------------- */}
         <TabsContent value="price" className="space-y-4 pt-3">
+          <div className="rounded-md border bg-card p-3 shadow-sm">
+            <h3 className="mb-2 text-sm font-semibold">Srbijagas price &amp; formula reconstruction</h3>
+            <p className="mb-3 text-xs text-muted-foreground">
+              <strong>Official price:</strong> manually entered or uploaded (CSV in Manual Overrides).{" "}
+              <strong>Reconstructed:</strong> oil-indexed (lagged Brent → EUR/MWh) and TTF weighted blend + fixed adder.{" "}
+              <strong>Sources:</strong> EUR/USD = ECB (live), TTF + Brent = calibrated monthly series (override via CSV).
+            </p>
+            <div className="grid gap-3 md:grid-cols-5">
+              <div>
+                <Label className="text-xs">Oil weight: {(overrides.formula.oilWeight * 100).toFixed(0)}%</Label>
+                <Slider className="mt-2" value={[overrides.formula.oilWeight * 100]} min={0} max={100} step={5}
+                  onValueChange={(v) => update({ formula: { ...overrides.formula, oilWeight: v[0] / 100 } })} />
+              </div>
+              <div>
+                <Label className="text-xs">TTF weight: {(overrides.formula.ttfWeight * 100).toFixed(0)}%</Label>
+                <Slider className="mt-2" value={[overrides.formula.ttfWeight * 100]} min={0} max={100} step={5}
+                  onValueChange={(v) => update({ formula: { ...overrides.formula, ttfWeight: v[0] / 100 } })} />
+              </div>
+              <div>
+                <Label className="text-xs">Oil lag (months)</Label>
+                <Input type="number" min={0} max={12} className="mt-1 h-8 text-xs"
+                  value={overrides.formula.oilLagMonths}
+                  onChange={(e) => update({ formula: { ...overrides.formula, oilLagMonths: Number(e.target.value) || 0 } })} />
+              </div>
+              <div>
+                <Label className="text-xs">Adder (€/MWh)</Label>
+                <Input type="number" step="0.1" className="mt-1 h-8 text-xs"
+                  value={overrides.formula.addEurMwh}
+                  onChange={(e) => update({ formula: { ...overrides.formula, addEurMwh: Number(e.target.value) || 0 } })} />
+              </div>
+              <div>
+                <Label className="text-xs">Brent→EUR/MWh factor</Label>
+                <Input type="number" step="0.01" className="mt-1 h-8 text-xs"
+                  value={overrides.formula.brentToEurMwhFactor}
+                  onChange={(e) => update({ formula: { ...overrides.formula, brentToEurMwhFactor: Number(e.target.value) || 0.55 } })} />
+              </div>
+            </div>
+          </div>
 
           <ChartCard title="Price comparison" subtitle="€/MWh monthly" height={320}>
             <ResponsiveContainer width="100%" height="100%">
