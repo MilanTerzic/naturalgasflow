@@ -638,11 +638,11 @@ function SrbijagasPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-xs">Year</TableHead>
-                  <TableHead className="text-right text-xs">Households (mcm)</TableHead>
-                  <TableHead className="text-right text-xs">District heating (mcm)</TableHead>
-                  <TableHead className="text-right text-xs">Industry &amp; other (mcm)</TableHead>
-                  <TableHead className="text-right text-xs">Gas power plant (mcm)</TableHead>
-                  <TableHead className="text-right text-xs">Total (mcm)</TableHead>
+                  <TableHead className="text-right text-xs">Households (mcm/d)</TableHead>
+                  <TableHead className="text-right text-xs">District heating (mcm/d)</TableHead>
+                  <TableHead className="text-right text-xs">Industry &amp; other (mcm/d)</TableHead>
+                  <TableHead className="text-right text-xs">Gas power plant (mcm/d)</TableHead>
+                  <TableHead className="text-right text-xs">Total (mcm/d)</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
