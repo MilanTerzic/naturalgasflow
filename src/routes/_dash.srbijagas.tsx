@@ -189,6 +189,50 @@ function SrbijagasPage() {
   const monthly = useMemo(() => aggregateMonthly(analysis), [analysis]);
   const seasonal = useMemo(() => seasonalProfile(monthly), [monthly]);
 
+  // Consumption breakdown by sector (user-provided yearly shares of total consumption).
+  const consumptionBreakdown = useMemo(() => {
+    const SHARES: Record<string, { household: number; district: number; industry: number }> = {
+      "2021": { household: 0.129, district: 0.227, industry: 0.644 },
+      "2022": { household: 0.137, district: 0.196, industry: 0.666 },
+      "2023": { household: 0.139, district: 0.196, industry: 0.665 },
+      "2024": { household: 0.156, district: 0.202, industry: 0.642 },
+      "2025": { household: 0.1565, district: 0.2015, industry: 0.642 },
+      "2026": { household: 0.157, district: 0.201, industry: 0.642 },
+    };
+    const fallback = SHARES["2026"];
+    return monthly.map((m) => {
+      const year = m.month.slice(0, 4);
+      const s = SHARES[year] ?? fallback;
+      const total = m.serbian_mcm ?? 0;
+      return {
+        month: m.month,
+        household_mcm: +(total * s.household).toFixed(3),
+        district_mcm: +(total * s.district).toFixed(3),
+        industry_mcm: +(total * s.industry).toFixed(3),
+        total_mcm: +total.toFixed(3),
+      };
+    });
+  }, [monthly]);
+
+  const breakdownYearly = useMemo(() => {
+    const acc: Record<string, { year: string; household_mcm: number; district_mcm: number; industry_mcm: number; total_mcm: number }> = {};
+    for (const r of consumptionBreakdown) {
+      const y = r.month.slice(0, 4);
+      const a = (acc[y] ??= { year: y, household_mcm: 0, district_mcm: 0, industry_mcm: 0, total_mcm: 0 });
+      a.household_mcm += r.household_mcm;
+      a.district_mcm += r.district_mcm;
+      a.industry_mcm += r.industry_mcm;
+      a.total_mcm += r.total_mcm;
+    }
+    return Object.values(acc).map((a) => ({
+      ...a,
+      household_mcm: +a.household_mcm.toFixed(1),
+      district_mcm: +a.district_mcm.toFixed(1),
+      industry_mcm: +a.industry_mcm.toFixed(1),
+      total_mcm: +a.total_mcm.toFixed(1),
+    }));
+  }, [consumptionBreakdown]);
+
   // Display-only: smooth extreme outliers (>2.5× or <0.4× prior day) by carry-forward.
   const analysisSmoothed = useMemo(
     () =>
