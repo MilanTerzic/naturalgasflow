@@ -634,6 +634,7 @@ function SrbijagasPage() {
                   <TableHead className="text-right text-xs">Households (mcm)</TableHead>
                   <TableHead className="text-right text-xs">District heating (mcm)</TableHead>
                   <TableHead className="text-right text-xs">Industry &amp; other (mcm)</TableHead>
+                  <TableHead className="text-right text-xs">Gas power plant (mcm)</TableHead>
                   <TableHead className="text-right text-xs">Total (mcm)</TableHead>
                 </TableRow>
               </TableHeader>
@@ -644,6 +645,7 @@ function SrbijagasPage() {
                     <TableCell className="text-right text-xs tabular-nums">{fmtMcm(r.household_mcm)}</TableCell>
                     <TableCell className="text-right text-xs tabular-nums">{fmtMcm(r.district_mcm)}</TableCell>
                     <TableCell className="text-right text-xs tabular-nums">{fmtMcm(r.industry_mcm)}</TableCell>
+                    <TableCell className="text-right text-xs tabular-nums">{fmtMcm(r.power_mcm)}</TableCell>
                     <TableCell className="text-right text-xs tabular-nums font-semibold">{fmtMcm(r.total_mcm)}</TableCell>
                   </TableRow>
                 ))}
