@@ -666,12 +666,9 @@ function SrbijagasPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="text-xs">Month</TableHead>
-                    <TableHead className="text-right text-xs">Official</TableHead>
-                    <TableHead className="text-right text-xs">Reconstructed</TableHead>
-                    <TableHead className="text-right text-xs">TTF</TableHead>
-                    <TableHead className="text-right text-xs">Oil-idx</TableHead>
-                    <TableHead className="text-right text-xs">Brent</TableHead>
-                    <TableHead className="text-right text-xs">EUR/USD</TableHead>
+                    <TableHead className="text-right text-xs">Srbijagas Sales</TableHead>
+                    <TableHead className="text-right text-xs">Srbijagas Source</TableHead>
+                    <TableHead className="text-right text-xs">TTF reference</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -681,9 +678,6 @@ function SrbijagasPage() {
                       <TableCell className="text-right text-xs tabular-nums">{p.official_eur_mwh?.toFixed(1) ?? "–"}</TableCell>
                       <TableCell className="text-right text-xs tabular-nums">{p.reconstructed_eur_mwh?.toFixed(1) ?? "–"}</TableCell>
                       <TableCell className="text-right text-xs tabular-nums">{p.ttf_eur_mwh?.toFixed(1) ?? "–"}</TableCell>
-                      <TableCell className="text-right text-xs tabular-nums">{p.oil_indexed_eur_mwh?.toFixed(1) ?? "–"}</TableCell>
-                      <TableCell className="text-right text-xs tabular-nums">{p.brent_usd_bbl?.toFixed(1) ?? "–"}</TableCell>
-                      <TableCell className="text-right text-xs tabular-nums">{p.eur_usd?.toFixed(3) ?? "–"}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
