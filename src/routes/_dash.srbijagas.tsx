@@ -247,17 +247,13 @@ function SrbijagasPage() {
     }));
   }, [consumptionBreakdown, monthly]);
 
-  // Display-only: smooth extreme outliers (>2.5× or <0.4× prior day) by carry-forward.
+  // Display-only: smooth extreme outliers on derived estimates only.
+  // Measured ENTSOG flows (kireevo/kalotina/kkdHu/kkd2) are intentionally NOT
+  // smoothed — those routes are legitimately intermittent (HU→RS in particular
+  // is zero most days with occasional pulses) and carry-forward would invent
+  // phantom flow on real zero days.
   const analysisSmoothed = useMemo(
-    () =>
-      smoothExtremes(analysis, [
-        "serbian_consumption_mcm",
-        "imports_bg_net_mcm",
-        "imports_total_mcm",
-        "kalotina_mcm",
-        "kkdHu_mcm",
-        "bosnia_mcm",
-      ]),
+    () => smoothExtremes(analysis, ["serbian_consumption_mcm", "bosnia_mcm"]),
     [analysis],
   );
 
