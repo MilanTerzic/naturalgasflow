@@ -190,6 +190,7 @@ function SrbijagasPage() {
   const seasonal = useMemo(() => seasonalProfile(monthly), [monthly]);
 
   // Consumption breakdown by sector (user-provided yearly shares of total consumption).
+  // Gas power plant is deducted from the "industry & other" share.
   const consumptionBreakdown = useMemo(() => {
     const SHARES: Record<string, { household: number; district: number; industry: number }> = {
       "2021": { household: 0.129, district: 0.227, industry: 0.644 },
@@ -204,11 +205,15 @@ function SrbijagasPage() {
       const year = m.month.slice(0, 4);
       const s = SHARES[year] ?? fallback;
       const total = m.serbian_mcm ?? 0;
+      const power = m.power_gas_mcm ?? 0;
+      const industryRaw = total * s.industry;
+      const industryAfter = Math.max(0, industryRaw - power);
       return {
         month: m.month,
         household_mcm: +(total * s.household).toFixed(3),
         district_mcm: +(total * s.district).toFixed(3),
-        industry_mcm: +(total * s.industry).toFixed(3),
+        industry_mcm: +industryAfter.toFixed(3),
+        power_mcm: +power.toFixed(3),
         total_mcm: +total.toFixed(3),
       };
     });
