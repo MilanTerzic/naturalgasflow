@@ -248,6 +248,8 @@ function SrbijagasPage() {
         "serbian_consumption_mcm",
         "imports_bg_net_mcm",
         "imports_total_mcm",
+        "kalotina_mcm",
+        "kkdHu_mcm",
         "bosnia_mcm",
       ]),
     [analysis],
