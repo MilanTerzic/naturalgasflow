@@ -34,23 +34,58 @@ interface DailyPick {
   period_type: string;
 }
 
-async function fetchPoint(
+// Split [from,to] into ≤ chunkDays windows. ENTSOG rejects long ranges (HTTP 404)
+// so we chunk into ~1-year slices and merge.
+function isoChunks(from: string, to: string, chunkDays = 365): Array<[string, string]> {
+  const out: Array<[string, string]> = [];
+  const start = new Date(`${from}T00:00:00Z`).getTime();
+  const end = new Date(`${to}T00:00:00Z`).getTime();
+  const step = chunkDays * 86_400_000;
+  let s = start;
+  while (s <= end) {
+    const e = Math.min(s + step - 86_400_000, end);
+    out.push([new Date(s).toISOString().slice(0, 10), new Date(e).toISOString().slice(0, 10)]);
+    s = e + 86_400_000;
+  }
+  return out;
+}
+
+async function fetchPointChunk(
   pd: string,
   from: string,
   to: string,
-): Promise<Map<string, DailyPick>> {
+): Promise<EntsogOperationalRow[]> {
   const url =
     `https://transparency.entsog.eu/api/v1/operationaldata.json` +
     `?pointDirection=${encodeURIComponent(pd)}` +
     `&from=${from}&to=${to}` +
     `&indicator=Physical%20Flow&periodType=day&limit=-1`;
   const res = await fetch(url, { headers: { accept: "application/json" } });
-  if (!res.ok) throw new Error(`ENTSOG ${pd}: HTTP ${res.status}`);
+  if (!res.ok) throw new Error(`ENTSOG ${pd} [${from}→${to}]: HTTP ${res.status}`);
   const json = (await res.json()) as {
     operationaldata?: EntsogOperationalRow[];
     operationalData?: EntsogOperationalRow[];
   };
-  const rows = json.operationaldata ?? json.operationalData ?? [];
+  return json.operationaldata ?? json.operationalData ?? [];
+}
+
+async function fetchPoint(
+  pd: string,
+  from: string,
+  to: string,
+): Promise<Map<string, DailyPick>> {
+  const chunks = isoChunks(from, to, 365);
+  const results = await Promise.all(
+    chunks.map(async ([f, t]) => {
+      try {
+        return await fetchPointChunk(pd, f, t);
+      } catch (err) {
+        console.warn(`[ENTSOG] chunk failed ${pd} ${f}→${t}:`, err);
+        return [] as EntsogOperationalRow[];
+      }
+    }),
+  );
+  const rows = results.flat();
 
   // De-duplication: group by gas day. For each day, keep ONE value.
   // ENTSOG sometimes returns multiple records per day (revisions, sub-periods).
