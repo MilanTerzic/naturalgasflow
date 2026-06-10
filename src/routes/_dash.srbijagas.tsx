@@ -65,7 +65,7 @@ import {
   DEFAULT_OIL_INDEX_EUR_MWH,
 } from "@/lib/srbijagas/default-prices";
 import type { DailyFlowRow } from "@/lib/srbijagas/types";
-import { fmtMcm, fmtShortDate, fmtShortDateYear, fmtTemp } from "@/lib/gas/format";
+import { fmtMcm, fmtShortDate, fmtShortDateYear, fmtMonthYear, fmtTemp } from "@/lib/gas/format";
 import { PALETTE } from "@/lib/gas/config";
 import { useDashboard } from "@/state/dashboard-context";
 
@@ -438,10 +438,10 @@ function SrbijagasPage() {
               <ComposedChart data={analysisSmoothed} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
                 <CartesianGrid stroke={PALETTE.grid} vertical={false} />
                 <XAxis dataKey="ts" type="number" domain={["dataMin", "dataMax"]} scale="time"
-                  tickFormatter={(v) => fmtShortDateYear(new Date(v).toISOString().slice(0, 10))}
+                  tickFormatter={(v) => fmtMonthYear(new Date(v).toISOString().slice(0, 10))}
                   tick={{ fontSize: 11 }} stroke={PALETTE.axis} minTickGap={50} />
                 <YAxis tick={{ fontSize: 11 }} stroke={PALETTE.axis} />
-                <Tooltip labelFormatter={(v) => fmtShortDateYear(new Date(Number(v)).toISOString().slice(0, 10))}
+                <Tooltip labelFormatter={(v) => fmtMonthYear(new Date(Number(v)).toISOString().slice(0, 10))}
                   formatter={(v: unknown, n) => [typeof v === "number" ? `${fmtMcm(v)} mcm/d` : "–", n]}
                   contentStyle={{ fontSize: 12 }} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
@@ -563,7 +563,7 @@ function SrbijagasPage() {
               <LineChart data={analysis} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
                 <CartesianGrid stroke={PALETTE.grid} vertical={false} />
                 <XAxis dataKey="ts" type="number" domain={["dataMin", "dataMax"]} scale="time"
-                  tickFormatter={(v) => fmtShortDateYear(new Date(v).toISOString().slice(0, 10))}
+                  tickFormatter={(v) => fmtMonthYear(new Date(v).toISOString().slice(0, 10))}
                   tick={{ fontSize: 11 }} stroke={PALETTE.axis} />
                 <YAxis tick={{ fontSize: 11 }} stroke={PALETTE.axis} unit="°C" />
                 <Tooltip contentStyle={{ fontSize: 12 }} />
@@ -604,7 +604,7 @@ function SrbijagasPage() {
                 margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
                 <CartesianGrid stroke={PALETTE.grid} vertical={false} />
                 <XAxis dataKey="ts" type="number" domain={["dataMin", "dataMax"]} scale="time"
-                  tickFormatter={(v) => fmtShortDateYear(new Date(v).toISOString().slice(0, 10))}
+                  tickFormatter={(v) => fmtMonthYear(new Date(v).toISOString().slice(0, 10))}
                   tick={{ fontSize: 11 }} stroke={PALETTE.axis} />
                 <YAxis yAxisId="g" tick={{ fontSize: 11 }} stroke={PALETTE.axis} label={{ value: "GWh", angle: -90, position: "insideLeft", style: { fontSize: 11 } }} />
                 <YAxis yAxisId="m" orientation="right" tick={{ fontSize: 11 }} stroke={PALETTE.axis} label={{ value: "mcm", angle: 90, position: "insideRight", style: { fontSize: 11 } }} />
