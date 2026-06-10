@@ -583,7 +583,7 @@ function SrbijagasPage() {
         {/* ---------------- CONSUMPTION BREAKDOWN ---------------- */}
         <TabsContent value="breakdown" className="space-y-4 pt-3">
           <div className="rounded-md border bg-card p-3 text-xs text-muted-foreground shadow-sm">
-            Serbian consumption split by sector using year-specific shares: <strong>Households</strong>, <strong>District heating</strong>, <strong>Industry &amp; other</strong>. Shares: 2021 (12.9/22.7/64.4), 2022 (13.7/19.6/66.6), 2023 (13.9/19.6/66.5), 2024 (15.6/20.2/64.2), 2026 est. (15.7/20.1/64.2). 2025 interpolated.
+            Serbian consumption split by sector using year-specific shares: <strong>Households</strong>, <strong>District heating</strong>, <strong>Industry &amp; other</strong>, and <strong>Gas power plant</strong> (deducted from industry). Shares: 2021 (12.9/22.7/64.4), 2022 (13.7/19.6/66.6), 2023 (13.9/19.6/66.5), 2024 (15.6/20.2/64.2), 2026 est. (15.7/20.1/64.2). 2025 interpolated.
           </div>
 
           <ChartCard title="Monthly consumption breakdown" subtitle="Stacked area — mcm/month" height={340}>
