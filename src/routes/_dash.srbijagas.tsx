@@ -207,18 +207,30 @@ function SrbijagasPage() {
       "2026": { household: 0.157, district: 0.201, industry: 0.642 },
     };
     const fallback = SHARES["2026"];
+    // Seasonal multipliers by month index (0=Jan..11=Dec).
+    // Households: heating peaks in winter, near-zero baseline cooking load in summer.
+    // District heating: strictly heating-season (Oct–Apr), zero May–Sep.
+    // Industry: roughly flat (slight summer bump to absorb the heating share).
+    // Multipliers are applied to the yearly share, then renormalized per month so
+    // the monthly TOTAL consumption stays exactly unchanged.
+    const HH_MULT  = [1.95, 1.80, 1.20, 0.55, 0.15, 0.05, 0.05, 0.05, 0.15, 0.60, 1.40, 1.85];
+    const DH_MULT  = [2.10, 1.95, 1.30, 0.45, 0.00, 0.00, 0.00, 0.00, 0.00, 0.45, 1.50, 1.95];
+    const IND_MULT = [0.85, 0.85, 0.95, 1.05, 1.10, 1.15, 1.15, 1.15, 1.10, 1.05, 0.95, 0.85];
     return monthly.map((m) => {
       const year = m.month.slice(0, 4);
       const s = SHARES[year] ?? fallback;
       const days = m.days || 1;
-      // Convert monthly totals to per-day averages so the chart reads in mcm/day,
-      // consistent with the rest of the dashboard.
       const totalPerDay = (m.serbian_mcm ?? 0) / days;
+      const monthIdx = Math.max(0, Math.min(11, parseInt(m.month.slice(5, 7), 10) - 1));
+      const wHH  = s.household * HH_MULT[monthIdx];
+      const wDH  = s.district  * DH_MULT[monthIdx];
+      const wIND = s.industry  * IND_MULT[monthIdx];
+      const wSum = wHH + wDH + wIND || 1;
       return {
         month: m.month,
-        household_mcm: +(totalPerDay * s.household).toFixed(3),
-        district_mcm: +(totalPerDay * s.district).toFixed(3),
-        industry_mcm: +(totalPerDay * s.industry).toFixed(3),
+        household_mcm: +(totalPerDay * (wHH / wSum)).toFixed(3),
+        district_mcm:  +(totalPerDay * (wDH / wSum)).toFixed(3),
+        industry_mcm:  +(totalPerDay * (wIND / wSum)).toFixed(3),
         total_mcm: +totalPerDay.toFixed(3),
       };
     });
