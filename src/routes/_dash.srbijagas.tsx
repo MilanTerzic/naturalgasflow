@@ -123,33 +123,39 @@ function SrbijagasPage() {
     }
   };
 
+  // Data prior to 2022-01-01 is unavailable from ENTSOG, so clamp the effective
+  // data window for all non-price charts. The price chart uses its own
+  // hardcoded 2021–2026 month range and is unaffected.
+  const DATA_FLOOR_ISO = "2022-01-01";
+  const effFromISO = fromISO < DATA_FLOOR_ISO ? DATA_FLOOR_ISO : fromISO;
+
   // Fetch historical flows (ENTSOG ~2y window enforced upstream).
   const flowsQ = useQuery({
-    queryKey: ["srbijagas-flows", fromISO, toISO],
-    queryFn: () => fetchHistoricalFlows({ data: { from: fromISO, to: toISO } }),
+    queryKey: ["srbijagas-flows", effFromISO, toISO],
+    queryFn: () => fetchHistoricalFlows({ data: { from: effFromISO, to: toISO } }),
     staleTime: 60 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
   const tempsQ = useQuery({
-    queryKey: ["srbijagas-temps", fromISO, toISO],
-    queryFn: () => fetchBelgradeTemperatures({ data: { from: fromISO, to: toISO } }),
+    queryKey: ["srbijagas-temps", effFromISO, toISO],
+    queryFn: () => fetchBelgradeTemperatures({ data: { from: effFromISO, to: toISO } }),
     staleTime: 60 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
   const fxQ = useQuery({
-    queryKey: ["srbijagas-fx", fromISO, toISO],
-    queryFn: () => fetchEcbFx({ data: { fromISO, toISO } }),
+    queryKey: ["srbijagas-fx", effFromISO, toISO],
+    queryFn: () => fetchEcbFx({ data: { fromISO: effFromISO, toISO } }),
     staleTime: 24 * 60 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
   const entsoeQ = useQuery({
-    queryKey: ["srbijagas-entsoe-gas", fromISO, toISO],
-    queryFn: () => fetchEntsoeGasGeneration({ data: { fromISO, toISO } }),
+    queryKey: ["srbijagas-entsoe-gas", effFromISO, toISO],
+    queryFn: () => fetchEntsoeGasGeneration({ data: { fromISO: effFromISO, toISO } }),
     staleTime: 6 * 60 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
 
-  const dates = useMemo(() => dateRangeIso(fromISO, toISO), [fromISO, toISO]);
+  const dates = useMemo(() => dateRangeIso(effFromISO, toISO), [effFromISO, toISO]);
 
   // Adapt FlowRow → DailyFlowRow
   const flows: DailyFlowRow[] = useMemo(() => {
