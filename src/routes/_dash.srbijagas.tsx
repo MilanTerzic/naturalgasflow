@@ -470,6 +470,7 @@ function SrbijagasPage() {
       <Tabs defaultValue="volume" className="w-full">
         <TabsList>
           <TabsTrigger value="volume">Volume History</TabsTrigger>
+          <TabsTrigger value="breakdown">Consumption Breakdown</TabsTrigger>
           <TabsTrigger value="weather">Weather &amp; Demand</TabsTrigger>
           <TabsTrigger value="power">Gas-fired Power</TabsTrigger>
           <TabsTrigger value="price">Srbijagas Price</TabsTrigger>
