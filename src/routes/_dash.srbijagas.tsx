@@ -490,7 +490,7 @@ function SrbijagasPage() {
 
         {/* ---------------- VOLUME HISTORY ---------------- */}
         <TabsContent value="volume" className="space-y-4 pt-3">
-          <ChartCard title="Daily Serbian gas balance" subtitle="mcm/day — stacked supply (BG net + Kalotina + KKD-HU + production) − Bosnia = consumption line. Extreme spikes carried-forward." height={340}>
+          <ChartCard title="Daily Serbian gas balance" subtitle="mcm/day — stacked supply (BG net + Kalotina + KKD-HU + production) − Bosnia. Extreme spikes carried-forward." height={340}>
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={analysisSmoothed} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
                 <CartesianGrid stroke={PALETTE.grid} vertical={false} />
