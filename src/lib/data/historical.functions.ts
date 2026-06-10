@@ -191,7 +191,10 @@ export const fetchEntsoeGasGeneration = createServerFn({ method: "POST" })
       // Chunk by 1-year windows (API limit).
       let chunkStart = data.fromISO;
       while (chunkStart <= data.toISO) {
-        const chunkEnd = minIso(addYearsIso(chunkStart, 1), data.toISO);
+        // ENTSO-E caps requests at P1Y; the chunk handler also adds +1 day to the
+        // end stamp to include the last day, so cap windows at 364 days to stay
+        // strictly inside the 1-year limit.
+        const chunkEnd = minIso(addDaysIso(chunkStart, 364), data.toISO);
         const part = await fetchEntsoeChunk(token, chunkStart, chunkEnd);
         Object.assign(merged, part);
         if (chunkEnd === data.toISO) break;
