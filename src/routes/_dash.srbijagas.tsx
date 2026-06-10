@@ -457,7 +457,7 @@ function SrbijagasPage() {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={monthly} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
                 <CartesianGrid stroke={PALETTE.grid} vertical={false} />
-                <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke={PALETTE.axis} />
+                <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke={PALETTE.axis} tickFormatter={(m) => { const d = new Date(`${m}-01T00:00:00Z`); return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' }); }} />
                 <YAxis tick={{ fontSize: 11 }} stroke={PALETTE.axis} />
                 <Tooltip contentStyle={{ fontSize: 12 }} formatter={(v: unknown, n) => [typeof v === "number" ? `${fmtMcm(v)} mcm` : "–", n]} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
@@ -563,7 +563,7 @@ function SrbijagasPage() {
               <LineChart data={analysis} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
                 <CartesianGrid stroke={PALETTE.grid} vertical={false} />
                 <XAxis dataKey="ts" type="number" domain={["dataMin", "dataMax"]} scale="time"
-                  tickFormatter={(v) => fmtShortDate(new Date(v).toISOString().slice(0, 10))}
+                  tickFormatter={(v) => fmtShortDateYear(new Date(v).toISOString().slice(0, 10))}
                   tick={{ fontSize: 11 }} stroke={PALETTE.axis} />
                 <YAxis tick={{ fontSize: 11 }} stroke={PALETTE.axis} unit="°C" />
                 <Tooltip contentStyle={{ fontSize: 12 }} />
@@ -604,7 +604,7 @@ function SrbijagasPage() {
                 margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
                 <CartesianGrid stroke={PALETTE.grid} vertical={false} />
                 <XAxis dataKey="ts" type="number" domain={["dataMin", "dataMax"]} scale="time"
-                  tickFormatter={(v) => fmtShortDate(new Date(v).toISOString().slice(0, 10))}
+                  tickFormatter={(v) => fmtShortDateYear(new Date(v).toISOString().slice(0, 10))}
                   tick={{ fontSize: 11 }} stroke={PALETTE.axis} />
                 <YAxis yAxisId="g" tick={{ fontSize: 11 }} stroke={PALETTE.axis} label={{ value: "GWh", angle: -90, position: "insideLeft", style: { fontSize: 11 } }} />
                 <YAxis yAxisId="m" orientation="right" tick={{ fontSize: 11 }} stroke={PALETTE.axis} label={{ value: "mcm", angle: 90, position: "insideRight", style: { fontSize: 11 } }} />
@@ -662,7 +662,7 @@ function SrbijagasPage() {
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={priceRowsWithRegulated} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
                 <CartesianGrid stroke={PALETTE.grid} vertical={false} />
-                <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke={PALETTE.axis} />
+                <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke={PALETTE.axis} tickFormatter={(m) => { const d = new Date(`${m}-01T00:00:00Z`); return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' }); }} />
                 <YAxis tick={{ fontSize: 11 }} stroke={PALETTE.axis} unit=" €" />
                 <Tooltip contentStyle={{ fontSize: 12 }} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
