@@ -159,7 +159,7 @@ function dailyCapacitySeries(capacity: CapacityRow[], flows: FlowRow[]): January
     const dates = Array.from(new Set([...capacityByDate.keys(), ...flows.map((f) => f.date)])).sort();
     return {
       key: flowKey,
-      label: POINTS[flowKey],
+      label: `${POINT_TSO[flowKey]} · ${POINTS[flowKey]}`,
       flowKey,
       data: dates.map((date) => {
         const c = capacityByDate.get(date);
