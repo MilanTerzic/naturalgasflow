@@ -311,9 +311,9 @@ export function CapacityCharts({
       {januaryRoutes.length > 0 && (
         <div className="space-y-3">
           <div className="rounded-md border bg-card p-3 shadow-sm">
-            <h3 className="text-sm font-semibold">January 2026 interconnection capacity stacks</h3>
+            <h3 className="text-sm font-semibold">2026 interconnection capacity stacks</h3>
             <p className="mt-1 text-xs text-muted-foreground">
-              Daily ENTSOG snapshot, Jan 01-31 2026. Bars stack booked plus available capacity to technical capacity; the green line is physical flow.
+              Daily ENTSOG snapshot, Jan 01 - Dec 31 2026. Bars stack booked plus available capacity to technical capacity; the green line is physical flow.
             </p>
           </div>
           <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
@@ -372,7 +372,7 @@ function JanuaryCapacityStackCard({ route }: { route: JanuaryRouteSeries }) {
             dataKey="date"
             tick={{ fontSize: 10 }}
             stroke={PALETTE.axis}
-            interval={4}
+            interval={29}
             tickFormatter={(v) => String(v).slice(5)}
           />
           <YAxis
