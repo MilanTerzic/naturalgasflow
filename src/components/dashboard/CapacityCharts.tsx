@@ -69,6 +69,13 @@ const JANUARY_PHYSICAL_POINT_ORDER: FlowPoint[] = [
   "kiskundorozsma_2",
 ];
 
+const POINT_TSO: Record<FlowPoint, string> = {
+  kiskundorozsma_hu: "FGSZ",
+  kireevo: "Bulgartransgaz",
+  kalotina: "Bulgartransgaz",
+  kiskundorozsma_2: "FGSZ",
+};
+
 function summarise(capacity: CapacityRow[], flows: FlowRow[]): RouteSummary[] {
   // Latest flow date that has data.
   const sortedFlows = [...flows].sort((a, b) => (a.date < b.date ? 1 : -1));
@@ -152,7 +159,7 @@ function dailyCapacitySeries(capacity: CapacityRow[], flows: FlowRow[]): January
     const dates = Array.from(new Set([...capacityByDate.keys(), ...flows.map((f) => f.date)])).sort();
     return {
       key: flowKey,
-      label: POINTS[flowKey],
+      label: `${POINT_TSO[flowKey]} · ${POINTS[flowKey]}`,
       flowKey,
       data: dates.map((date) => {
         const c = capacityByDate.get(date);
