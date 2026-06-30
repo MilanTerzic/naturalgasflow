@@ -69,6 +69,13 @@ const JANUARY_PHYSICAL_POINT_ORDER: FlowPoint[] = [
   "kiskundorozsma_2",
 ];
 
+const POINT_TSO: Record<FlowPoint, string> = {
+  kiskundorozsma_hu: "FGSZ",
+  kireevo: "Bulgartransgaz",
+  kalotina: "Bulgartransgaz",
+  kiskundorozsma_2: "FGSZ",
+};
+
 function summarise(capacity: CapacityRow[], flows: FlowRow[]): RouteSummary[] {
   // Latest flow date that has data.
   const sortedFlows = [...flows].sort((a, b) => (a.date < b.date ? 1 : -1));
