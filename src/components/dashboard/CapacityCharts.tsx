@@ -372,7 +372,7 @@ function JanuaryCapacityStackCard({ route }: { route: JanuaryRouteSeries }) {
             dataKey="date"
             tick={{ fontSize: 10 }}
             stroke={PALETTE.axis}
-            interval={4}
+            interval={29}
             tickFormatter={(v) => String(v).slice(5)}
           />
           <YAxis
