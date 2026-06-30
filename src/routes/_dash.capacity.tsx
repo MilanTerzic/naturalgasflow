@@ -74,7 +74,7 @@ function CapacityPage() {
     () =>
       realCapacityAndFlows({
         fromISO: "2026-01-01",
-        toISO: "2026-02-01",
+        toISO: "2027-01-01",
       }),
     [],
   );
