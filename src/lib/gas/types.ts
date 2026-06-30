@@ -54,3 +54,16 @@ export interface CapacityRow {
   currency: "HUF" | "EUR";
   price_unit: string;
 }
+
+export interface CapacityAuctionRow {
+  auction_code: string;
+  network_point: string;
+  product_type: string;
+  status: string;
+  valid_from: string;
+  valid_to: string;
+  offered_mwh: number;
+  entry_tso?: string;
+  exit_tso?: string;
+  source: "RBP";
+}

@@ -69,6 +69,7 @@ export const CAPACITY_DEFS: CapacityDef[] = [
   { tso: "FGSZ", borderPoint: "Kiskundorozsma (HU)/Kiskundorozsma (RS)", direction: "exit", priceUnit: "HUF/kWh/h/day", currency: "HUF" },
   { tso: "Bulgartransgaz", borderPoint: "Kireevo (BG)/Zaychar (RS)", direction: "exit", priceUnit: "EUR/kWh/h/day", currency: "EUR" },
   { tso: "Gastrans", borderPoint: "Kireevo (BG)/Zaychar (RS)", direction: "entry", priceUnit: "EUR/kWh/h/day", currency: "EUR" },
+  { tso: "Bulgartransgaz", borderPoint: "Kalotina (BG)/Dimitrovgrad (RS)", direction: "exit", priceUnit: "EUR/kWh/h/day", currency: "EUR" },
   { tso: "Gastrans", borderPoint: "Kiskundorozsma 2", direction: "exit", priceUnit: "EUR/kWh/h/day", currency: "EUR" },
   { tso: "FGSZ", borderPoint: "Kiskundorozsma 2", direction: "entry", priceUnit: "HUF/kWh/h/day", currency: "HUF" },
 ];

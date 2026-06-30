@@ -1,15 +1,16 @@
 import { useMemo } from "react";
 import {
   Bar,
-  BarChart,
   CartesianGrid,
+  ComposedChart,
   Legend,
+  Line,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
-import { CAPACITY_DEFS, CONVERSION_MCM_TO_MWH, PALETTE } from "@/lib/gas/config";
+import { CAPACITY_DEFS, CONVERSION_MCM_TO_MWH, PALETTE, POINTS } from "@/lib/gas/config";
 import { fmtMcm, fmtPct } from "@/lib/gas/format";
 import type { CapacityRow, FlowRow } from "@/lib/gas/types";
 import type { FlowPoint } from "@/lib/gas/config";
@@ -47,6 +48,26 @@ interface RouteSummary {
   flowKey: FlowPoint | null;
   perDate: { date: string; used_mcm: number; util_pct: number }[];
 }
+
+interface JanuaryRouteSeries {
+  key: string;
+  label: string;
+  flowKey: FlowPoint | null;
+  data: Array<{
+    date: string;
+    technical_mcm: number;
+    booked_mcm: number;
+    available_mcm: number;
+    flow_mcm: number;
+  }>;
+}
+
+const JANUARY_PHYSICAL_POINT_ORDER: FlowPoint[] = [
+  "kiskundorozsma_hu",
+  "kireevo",
+  "kalotina",
+  "kiskundorozsma_2",
+];
 
 function summarise(capacity: CapacityRow[], flows: FlowRow[]): RouteSummary[] {
   // Latest flow date that has data.
@@ -102,6 +123,55 @@ function summarise(capacity: CapacityRow[], flows: FlowRow[]): RouteSummary[] {
 }
 
 // Color ramp 0–120% utilisation: cool → warm → hot.
+// Daily per-point capacity series for the fixed January 2026 stack charts.
+function dailyCapacitySeries(capacity: CapacityRow[], flows: FlowRow[]): JanuaryRouteSeries[] {
+  const flowByDate = new Map(flows.map((f) => [f.date, f]));
+  const capacityByPoint = new Map<FlowPoint, Map<string, { offered_mwh: number; booked_mwh: number }>>();
+
+  for (const d of CAPACITY_DEFS) {
+    const flowKey = flowKeyFor(d);
+    if (!flowKey) continue;
+    const matched = capacity.filter(
+      (r) => r.tso === d.tso && r.border_point === d.borderPoint && r.direction === d.direction,
+    );
+    const capacityByDate =
+      capacityByPoint.get(flowKey) ?? new Map<string, { offered_mwh: number; booked_mwh: number }>();
+    for (const row of matched) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(row.period)) continue;
+      const existing = capacityByDate.get(row.period) ?? { offered_mwh: 0, booked_mwh: 0 };
+      capacityByDate.set(row.period, {
+        offered_mwh: Math.max(existing.offered_mwh, row.offered_mwh),
+        booked_mwh: Math.max(existing.booked_mwh, row.booked_mwh),
+      });
+    }
+    capacityByPoint.set(flowKey, capacityByDate);
+  }
+
+  return JANUARY_PHYSICAL_POINT_ORDER.map((flowKey) => {
+    const capacityByDate = capacityByPoint.get(flowKey) ?? new Map<string, { offered_mwh: number; booked_mwh: number }>();
+    const dates = Array.from(new Set([...capacityByDate.keys(), ...flows.map((f) => f.date)])).sort();
+    return {
+      key: flowKey,
+      label: POINTS[flowKey],
+      flowKey,
+      data: dates.map((date) => {
+        const c = capacityByDate.get(date);
+        const technical = (c?.offered_mwh ?? 0) / CONVERSION_MCM_TO_MWH;
+        const booked = Math.min((c?.booked_mwh ?? 0) / CONVERSION_MCM_TO_MWH, technical);
+        const flow = flowByDate.get(date)?.[flowKey] ?? 0;
+        return {
+          date,
+          technical_mcm: technical,
+          booked_mcm: booked,
+          available_mcm: Math.max(technical - booked, 0),
+          flow_mcm: flow,
+        };
+      }),
+    };
+  })
+    .filter((route) => route.data.some((d) => d.technical_mcm > 0 || d.flow_mcm > 0));
+}
+
 function heatColor(pct: number): string {
   if (!Number.isFinite(pct) || pct <= 0) return "oklch(0.96 0.01 240)";
   const p = Math.min(pct, 120) / 120;
@@ -134,15 +204,26 @@ function monthBucketsBetween(fromISO: string, toISO: string) {
 export function CapacityCharts({
   capacity,
   flows,
+  januaryCapacity,
+  januaryFlows,
   heatmapFromISO,
   heatmapToISO,
 }: {
   capacity: CapacityRow[];
   flows: FlowRow[];
+  januaryCapacity?: CapacityRow[];
+  januaryFlows?: FlowRow[];
   heatmapFromISO?: string;
   heatmapToISO?: string;
 }) {
   const routes = useMemo(() => summarise(capacity, flows), [capacity, flows]);
+  const januaryRoutes = useMemo(
+    () =>
+      januaryCapacity && januaryFlows
+        ? dailyCapacitySeries(januaryCapacity, januaryFlows)
+        : [],
+    [januaryCapacity, januaryFlows],
+  );
 
   // Annual, monthly heatmap. Default window = current gas year if not provided.
   const heatMonths = useMemo(() => {
@@ -190,7 +271,7 @@ export function CapacityCharts({
       {/* Per-route bars: available baseline with booked + used overlay */}
       <ChartCard title="Capacity vs flow — by route" subtitle="Technical · booked · physically used (latest day), mcm/d">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart
+          <ComposedChart
             data={routes.map((r) => ({
               label: r.label,
               available: r.available_mcm,
@@ -223,9 +304,25 @@ export function CapacityCharts({
             <Bar dataKey="available" name="Technical" fill="oklch(0.92 0.02 240)" isAnimationActive={false} />
             <Bar dataKey="booked" name="Booked" fill={PALETTE.bgImport} isAnimationActive={false} />
             <Bar dataKey="used" name="Used" fill={PALETTE.kalotina} isAnimationActive={false} />
-          </BarChart>
+          </ComposedChart>
         </ResponsiveContainer>
       </ChartCard>
+
+      {januaryRoutes.length > 0 && (
+        <div className="space-y-3">
+          <div className="rounded-md border bg-card p-3 shadow-sm">
+            <h3 className="text-sm font-semibold">January 2026 interconnection capacity stacks</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Daily ENTSOG snapshot, Jan 01-31 2026. Bars stack booked plus available capacity to technical capacity; the green line is physical flow.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+            {januaryRoutes.map((route) => (
+              <JanuaryCapacityStackCard key={route.key} route={route} />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Annual heatmap aggregated by month */}
       <div className="rounded-md border bg-card p-3 shadow-sm">
@@ -262,6 +359,80 @@ export function CapacityCharts({
         </div>
       </div>
     </div>
+  );
+}
+
+function JanuaryCapacityStackCard({ route }: { route: JanuaryRouteSeries }) {
+  return (
+    <ChartCard title={route.label} subtitle="mcm/d" height={300}>
+      <ResponsiveContainer width="100%" height="100%">
+        <ComposedChart data={route.data} margin={{ top: 8, right: 16, left: 0, bottom: 4 }}>
+          <CartesianGrid stroke={PALETTE.grid} vertical={false} />
+          <XAxis
+            dataKey="date"
+            tick={{ fontSize: 10 }}
+            stroke={PALETTE.axis}
+            interval={4}
+            tickFormatter={(v) => String(v).slice(5)}
+          />
+          <YAxis
+            tick={{ fontSize: 10 }}
+            stroke={PALETTE.axis}
+            width={42}
+            tickFormatter={(v) => fmtMcm(Number(v))}
+          />
+          <Tooltip
+            labelFormatter={(v) => String(v)}
+            formatter={(v, n) => {
+              const label =
+                n === "booked_mcm"
+                  ? "Booked"
+                  : n === "available_mcm"
+                    ? "Available"
+                    : n === "technical_mcm"
+                      ? "Technical"
+                      : "Physical flow";
+              return [typeof v === "number" ? `${fmtMcm(v)} mcm/d` : "-", label];
+            }}
+            contentStyle={{ fontSize: 12 }}
+          />
+          <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+          <Bar
+            dataKey="booked_mcm"
+            name="Booked"
+            stackId="capacity"
+            fill={PALETTE.bgImport}
+            isAnimationActive={false}
+          />
+          <Bar
+            dataKey="available_mcm"
+            name="Available"
+            stackId="capacity"
+            fill="oklch(0.91 0.02 240)"
+            isAnimationActive={false}
+          />
+          <Line
+            type="monotone"
+            dataKey="technical_mcm"
+            name="Technical"
+            stroke="oklch(0.35 0.03 245)"
+            strokeWidth={1.8}
+            strokeDasharray="5 4"
+            dot={false}
+            isAnimationActive={false}
+          />
+          <Line
+            type="monotone"
+            dataKey="flow_mcm"
+            name="Physical flow"
+            stroke={PALETTE.kalotina}
+            strokeWidth={2.2}
+            dot={false}
+            isAnimationActive={false}
+          />
+        </ComposedChart>
+      </ResponsiveContainer>
+    </ChartCard>
   );
 }
 
