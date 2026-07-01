@@ -80,6 +80,25 @@ function CapacityPage() {
     [],
   );
 
+  // Live ENTSOG physical flow for the whole 2026 window — used to fill the
+  // gap between the snapshot end (2026-05-31) and today.
+  const liveFlows2026Query = useQuery({
+    queryKey: ["live-entsog-flows", "2026"],
+    queryFn: () =>
+      fetchEntsogFlows({ data: { from: "2026-01-01", to: "2026-12-31" } }),
+    staleTime: 60 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  const january2026Flows = useMemo<FlowRow[]>(() => {
+    const live = liveFlows2026Query.data?.data ?? [];
+    if (live.length === 0) return january2026.flows;
+    const byDate = new Map<string, FlowRow>();
+    for (const r of january2026.flows) byDate.set(r.date, r);
+    for (const r of live) byDate.set(r.date, { ...byDate.get(r.date), ...r });
+    return Array.from(byDate.values()).sort((a, b) => (a.date < b.date ? -1 : 1));
+  }, [january2026.flows, liveFlows2026Query.data]);
+
   const liveCapacityQuery = useQuery({
     queryKey: ["live-capacity-bookings", selected.fromISO, selected.toISO],
     queryFn: () =>
