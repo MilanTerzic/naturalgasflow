@@ -198,7 +198,7 @@ function CapacityPage() {
         capacity={capacity}
         flows={flows}
         januaryCapacity={january2026.capacity}
-        januaryFlows={january2026.flows}
+        januaryFlows={january2026Flows}
         heatmapFromISO={selected.fromISO}
         heatmapToISO={selected.toISO}
       />
