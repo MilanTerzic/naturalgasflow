@@ -7,10 +7,11 @@ import { CapacityTable } from "@/components/dashboard/CapacityTable";
 import { Button } from "@/components/ui/button";
 import { dummyCapacity } from "@/lib/gas/dummy";
 import { fetchLiveCapacityBookings } from "@/lib/data/capacity.functions";
+import { fetchEntsogFlows } from "@/lib/data/entsog.functions";
 import { realCapacityAndFlows, SNAPSHOT_RANGE } from "@/lib/gas/real-data";
 import { useDashboardData } from "@/state/use-dashboard-data";
 import { fmtMwh, fmtShortDate, fmtShortDateYear } from "@/lib/gas/format";
-import type { CapacityAuctionRow } from "@/lib/gas/types";
+import type { CapacityAuctionRow, FlowRow } from "@/lib/gas/types";
 import {
   Select,
   SelectContent,
