@@ -47,7 +47,8 @@ async function fetchPage(country: string, from: string, to: string, page: number
     size: "300",
     page: String(page),
   });
-  if (!isEu) params.set("country", country);
+  if (isEu) params.set("type", "EU");
+  else params.set("country", country.toUpperCase());
   const url = `https://agsi.gie.eu/api?${params.toString()}`;
   const res = await fetch(url, {
     headers: { "x-key": key, accept: "application/json" },
