@@ -193,8 +193,8 @@ function StoragePage() {
       : null;
 
   const displayGis = (twh: number | null | undefined) => {
-    if (twh === null || twh === undefined) return "–";
-    return unit === "TWh" ? `${twh.toFixed(2)} TWh` : `${(twh * 1000).toFixed(0)} GWh`;
+    const m = twhToMcm(twh);
+    return m === null ? "–" : `${m.toFixed(1)} mcm`;
   };
 
   const missingKey = query.data?.missingKey;
