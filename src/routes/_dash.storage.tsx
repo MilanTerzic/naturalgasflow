@@ -284,17 +284,17 @@ function StoragePage() {
         />
         <KpiCard
           label="Injection"
-          value={fmt(latest?.injection ?? null, 0, "GWh/d")}
-          hint={`Cap: ${fmt(latest?.injectionCapacity ?? null, 0, "GWh/d")}`}
+          value={fmt(gwhToMcm(latest?.injection ?? null), 2, "mcm/d")}
+          hint={`Cap: ${fmt(gwhToMcm(latest?.injectionCapacity ?? null), 2, "mcm/d")}`}
         />
         <KpiCard
           label="Withdrawal"
-          value={fmt(latest?.withdrawal ?? null, 0, "GWh/d")}
-          hint={`Cap: ${fmt(latest?.withdrawalCapacity ?? null, 0, "GWh/d")}`}
+          value={fmt(gwhToMcm(latest?.withdrawal ?? null), 2, "mcm/d")}
+          hint={`Cap: ${fmt(gwhToMcm(latest?.withdrawalCapacity ?? null), 2, "mcm/d")}`}
         />
         <KpiCard
           label="Net (inj − wdr)"
-          value={fmt(net, 0, "GWh/d")}
+          value={fmt(gwhToMcm(net), 2, "mcm/d")}
           tone={net === null ? "default" : net >= 0 ? "positive" : "negative"}
         />
         <KpiCard
