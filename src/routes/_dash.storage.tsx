@@ -436,7 +436,7 @@ function StoragePage() {
       </ChartCard>
 
       {/* Injection / withdrawal */}
-      <ChartCard title="Injection & withdrawal" subtitle="GWh/d — withdrawal shown negative" height={260}>
+      <ChartCard title="Injection & withdrawal" subtitle="mcm/d — withdrawal shown negative" height={260}>
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={chartData} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
             <CartesianGrid stroke="#e5e7eb" vertical={false} />
@@ -444,7 +444,7 @@ function StoragePage() {
             <YAxis tick={{ fontSize: 11 }} />
             <Tooltip
               labelFormatter={(v) => shortDate(String(v))}
-              formatter={(v, n) => [typeof v === "number" ? `${v.toFixed(0)} GWh/d` : "–", n]}
+              formatter={(v, n) => [typeof v === "number" ? `${v.toFixed(2)} mcm/d` : "–", n]}
               contentStyle={{ fontSize: 12 }}
             />
             <Legend wrapperStyle={{ fontSize: 11 }} />
