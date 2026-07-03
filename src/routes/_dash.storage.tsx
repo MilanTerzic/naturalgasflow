@@ -485,14 +485,14 @@ function StoragePage() {
               <tr className="border-b text-left">
                 <th className="px-2 py-1.5">Date</th>
                 <th className="px-2 py-1.5">Region</th>
-                <th className="px-2 py-1.5 text-right">Gas in storage (TWh)</th>
+                <th className="px-2 py-1.5 text-right">Gas in storage (mcm)</th>
                 <th className="px-2 py-1.5 text-right">Full %</th>
-                <th className="px-2 py-1.5 text-right">WGV (TWh)</th>
-                <th className="px-2 py-1.5 text-right">Injection (GWh/d)</th>
-                <th className="px-2 py-1.5 text-right">Withdrawal (GWh/d)</th>
-                <th className="px-2 py-1.5 text-right">Net (GWh/d)</th>
-                <th className="px-2 py-1.5 text-right">Inj cap</th>
-                <th className="px-2 py-1.5 text-right">Wdr cap</th>
+                <th className="px-2 py-1.5 text-right">WGV (mcm)</th>
+                <th className="px-2 py-1.5 text-right">Injection (mcm/d)</th>
+                <th className="px-2 py-1.5 text-right">Withdrawal (mcm/d)</th>
+                <th className="px-2 py-1.5 text-right">Net (mcm/d)</th>
+                <th className="px-2 py-1.5 text-right">Inj cap (mcm/d)</th>
+                <th className="px-2 py-1.5 text-right">Wdr cap (mcm/d)</th>
                 <th className="px-2 py-1.5">Status</th>
               </tr>
             </thead>
