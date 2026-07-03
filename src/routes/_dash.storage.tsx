@@ -62,6 +62,13 @@ const fmt = (v: number | null | undefined, digits = 2, unit = "") => {
   return `${v.toFixed(digits)}${unit ? " " + unit : ""}`;
 };
 
+// Energy → volume conversion. 1 mcm ≈ 10.51 GWh (user-specified CV).
+const GWH_PER_MCM = 10.51;
+const twhToMcm = (twh: number | null | undefined): number | null =>
+  twh === null || twh === undefined || !Number.isFinite(twh) ? null : (twh * 1000) / GWH_PER_MCM;
+const gwhToMcm = (gwh: number | null | undefined): number | null =>
+  gwh === null || gwh === undefined || !Number.isFinite(gwh) ? null : gwh / GWH_PER_MCM;
+
 const shortDate = (iso: string) => {
   const d = new Date(`${iso}T00:00:00Z`);
   return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
