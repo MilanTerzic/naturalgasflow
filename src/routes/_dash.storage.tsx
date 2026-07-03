@@ -59,7 +59,11 @@ function isoAddYears(iso: string, years: number): string {
 
 const fmt = (v: number | null | undefined, digits = 2, unit = "") => {
   if (v === null || v === undefined || !Number.isFinite(v)) return "–";
-  return `${v.toFixed(digits)}${unit ? " " + unit : ""}`;
+  const formatted = new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(v);
+  return unit ? `${formatted} ${unit}` : formatted;
 };
 
 // Energy → volume conversion. 1 mcm ≈ 10.51 GWh (user-specified CV).
