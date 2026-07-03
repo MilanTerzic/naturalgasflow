@@ -26,7 +26,7 @@ export interface AgsiResponse {
   missingKey?: boolean;
 }
 
-const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours; once fetched, keep for the day
 const cache = new Map<string, { at: number; res: AgsiResponse }>();
 
 function num(v: unknown): number | null {
