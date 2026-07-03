@@ -26,7 +26,7 @@ export interface AgsiResponse {
   missingKey?: boolean;
 }
 
-const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours; once fetched, keep for the day
 const cache = new Map<string, { at: number; res: AgsiResponse }>();
 
 function num(v: unknown): number | null {
@@ -47,7 +47,8 @@ async function fetchPage(country: string, from: string, to: string, page: number
     size: "300",
     page: String(page),
   });
-  if (!isEu) params.set("country", country);
+  if (isEu) params.set("type", "EU");
+  else params.set("country", country.toUpperCase());
   const url = `https://agsi.gie.eu/api?${params.toString()}`;
   const res = await fetch(url, {
     headers: { "x-key": key, accept: "application/json" },
@@ -117,6 +118,12 @@ export const fetchAgsiStorage = createServerFn({ method: "GET" })
       } while (page <= lastPage);
 
       rows.sort((a, b) => a.gasDayStart.localeCompare(b.gasDayStart));
+
+      // If the fresh fetch came back empty but we have prior cached data,
+      // keep serving the cached data instead of blanking the UI.
+      if (rows.length === 0 && hit && hit.res.data.length > 0) {
+        return { ...hit.res, error: "AGSI returned empty; showing cached data" };
+      }
 
       const res: AgsiResponse = {
         country,
