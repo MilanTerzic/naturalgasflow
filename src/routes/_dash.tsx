@@ -1,9 +1,10 @@
-import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useRouter } from "@tanstack/react-router";
 import { Lock } from "lucide-react";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { lockApp } from "@/components/PasswordGate";
 import { DashboardProvider } from "@/state/dashboard-context";
 import { cn } from "@/lib/utils";
+
 
 export const Route = createFileRoute("/_dash")({
   component: DashLayout,
