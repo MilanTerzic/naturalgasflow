@@ -20,6 +20,9 @@ const TABS = [
 ] as const;
 
 function DashLayout() {
+  const router = useRouter();
+  const showSidebar = router.state.location.pathname === "/balance";
+
   return (
     <DashboardProvider>
       <div className="min-h-screen bg-background">
