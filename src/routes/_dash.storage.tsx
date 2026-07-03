@@ -511,14 +511,14 @@ function StoragePage() {
                   <tr key={r.gasDayStart} className="border-b last:border-b-0">
                     <td className="px-2 py-1 tabular-nums">{r.gasDayStart}</td>
                     <td className="px-2 py-1 uppercase">{country}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{fmt(r.gasInStorage, 2)}</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{fmt(twhToMcm(r.gasInStorage), 1)}</td>
                     <td className="px-2 py-1 text-right tabular-nums">{fmt(r.full, 1)}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{fmt(r.workingGasVolume, 2)}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{fmt(r.injection, 0)}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{fmt(r.withdrawal, 0)}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{fmt(net, 0)}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{fmt(r.injectionCapacity, 0)}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{fmt(r.withdrawalCapacity, 0)}</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{fmt(twhToMcm(r.workingGasVolume), 1)}</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{fmt(gwhToMcm(r.injection), 2)}</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{fmt(gwhToMcm(r.withdrawal), 2)}</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{fmt(gwhToMcm(net), 2)}</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{fmt(gwhToMcm(r.injectionCapacity), 2)}</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{fmt(gwhToMcm(r.withdrawalCapacity), 2)}</td>
                     <td className="px-2 py-1">{r.status ?? "–"}</td>
                   </tr>
                 );
