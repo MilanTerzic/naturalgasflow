@@ -81,7 +81,7 @@ function StoragePage() {
   const [from, setFrom] = useState(defaultFrom);
   const [to, setTo] = useState(today);
   const [comparison, setComparison] = useState<Comparison>("avg5");
-  const [unit, setUnit] = useState<"TWh" | "GWh">("TWh");
+  
 
   // For comparisons we fetch a 6-year window ending at `to`.
   const histFrom = useMemo(() => isoAddYears(from, -5), [from]);
