@@ -388,28 +388,19 @@ function StoragePage() {
         </ResponsiveContainer>
       </ChartCard>
 
-      {/* Gas in storage TWh */}
-      <ChartCard title="Gas in storage" subtitle={unit} height={280}>
+      {/* Gas in storage (mcm) */}
+      <ChartCard title="Gas in storage" subtitle="mcm (10.51 GWh/mcm)" height={280}>
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={chartData} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
             <CartesianGrid stroke="#e5e7eb" vertical={false} />
             <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={shortDate} minTickGap={40} />
-            <YAxis
-              tick={{ fontSize: 11 }}
-              tickFormatter={(v) => (unit === "TWh" ? String(v) : String(Math.round(v * 1000)))}
-            />
+            <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => String(Math.round(v))} />
             <Tooltip
               labelFormatter={(v) => shortDate(String(v))}
-              formatter={(v, n) => [
-                typeof v === "number"
-                  ? unit === "TWh"
-                    ? `${v.toFixed(2)} TWh`
-                    : `${(v * 1000).toFixed(0)} GWh`
-                  : "–",
-                n,
-              ]}
+              formatter={(v, n) => [typeof v === "number" ? `${v.toFixed(1)} mcm` : "–", n]}
               contentStyle={{ fontSize: 12 }}
             />
+            <Legend wrapperStyle={{ fontSize: 11 }} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
             <Line
               type="monotone"
