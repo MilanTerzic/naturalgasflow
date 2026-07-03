@@ -66,8 +66,9 @@ function DashLayout() {
           </div>
         </header>
         <div className="flex flex-col lg:flex-row">
-          <Sidebar />
+          {showSidebar && <Sidebar />}
           <main className="min-w-0 flex-1 space-y-4 p-4">
+
             <Outlet />
           </main>
         </div>
