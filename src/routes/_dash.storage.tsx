@@ -261,17 +261,6 @@ function StoragePage() {
               <option value="minmax">Min / Max band</option>
             </select>
           </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-muted-foreground">Unit</span>
-            <select
-              value={unit}
-              onChange={(e) => setUnit(e.target.value as "TWh" | "GWh")}
-              className="rounded border bg-background px-2 py-1"
-            >
-              <option value="TWh">TWh</option>
-              <option value="GWh">GWh</option>
-            </select>
-          </label>
           <div className="ml-auto text-[11px] text-muted-foreground">
             {query.isFetching && <span>Fetching…</span>}
             {query.data?.fetchedAt && (
