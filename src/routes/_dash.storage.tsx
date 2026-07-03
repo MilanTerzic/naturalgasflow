@@ -133,9 +133,9 @@ function StoragePage() {
       return {
         date: r.gasDayStart,
         full: r.full,
-        gasInStorage: r.gasInStorage,
-        injection: r.injection,
-        withdrawal: r.withdrawal !== null ? -r.withdrawal : null,
+        gasInStorage: twhToMcm(r.gasInStorage),
+        injection: gwhToMcm(r.injection),
+        withdrawal: r.withdrawal !== null ? -(gwhToMcm(r.withdrawal) ?? 0) : null,
         injUtil:
           r.injection !== null && r.injectionCapacity
             ? (r.injection / r.injectionCapacity) * 100
@@ -145,9 +145,9 @@ function StoragePage() {
             ? (r.withdrawal / r.withdrawalCapacity) * 100
             : null,
         prevFull: prevYearRow?.full ?? null,
-        prevGis: prevYearRow?.gasInStorage ?? null,
+        prevGis: twhToMcm(prevYearRow?.gasInStorage ?? null),
         avg5Full,
-        avg5Gis,
+        avg5Gis: twhToMcm(avg5Gis),
         minFull,
         maxFull,
         bandDelta: minFull !== null && maxFull !== null ? maxFull - minFull : null,
