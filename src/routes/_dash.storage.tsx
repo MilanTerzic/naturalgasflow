@@ -62,6 +62,13 @@ const fmt = (v: number | null | undefined, digits = 2, unit = "") => {
   return `${v.toFixed(digits)}${unit ? " " + unit : ""}`;
 };
 
+// Energy → volume conversion. 1 mcm ≈ 10.51 GWh (user-specified CV).
+const GWH_PER_MCM = 10.51;
+const twhToMcm = (twh: number | null | undefined): number | null =>
+  twh === null || twh === undefined || !Number.isFinite(twh) ? null : (twh * 1000) / GWH_PER_MCM;
+const gwhToMcm = (gwh: number | null | undefined): number | null =>
+  gwh === null || gwh === undefined || !Number.isFinite(gwh) ? null : gwh / GWH_PER_MCM;
+
 const shortDate = (iso: string) => {
   const d = new Date(`${iso}T00:00:00Z`);
   return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
@@ -74,7 +81,7 @@ function StoragePage() {
   const [from, setFrom] = useState(defaultFrom);
   const [to, setTo] = useState(today);
   const [comparison, setComparison] = useState<Comparison>("avg5");
-  const [unit, setUnit] = useState<"TWh" | "GWh">("TWh");
+  
 
   // For comparisons we fetch a 6-year window ending at `to`.
   const histFrom = useMemo(() => isoAddYears(from, -5), [from]);
@@ -126,9 +133,9 @@ function StoragePage() {
       return {
         date: r.gasDayStart,
         full: r.full,
-        gasInStorage: r.gasInStorage,
-        injection: r.injection,
-        withdrawal: r.withdrawal !== null ? -r.withdrawal : null,
+        gasInStorage: twhToMcm(r.gasInStorage),
+        injection: gwhToMcm(r.injection),
+        withdrawal: r.withdrawal !== null ? -(gwhToMcm(r.withdrawal) ?? 0) : null,
         injUtil:
           r.injection !== null && r.injectionCapacity
             ? (r.injection / r.injectionCapacity) * 100
@@ -138,9 +145,9 @@ function StoragePage() {
             ? (r.withdrawal / r.withdrawalCapacity) * 100
             : null,
         prevFull: prevYearRow?.full ?? null,
-        prevGis: prevYearRow?.gasInStorage ?? null,
+        prevGis: twhToMcm(prevYearRow?.gasInStorage ?? null),
         avg5Full,
-        avg5Gis,
+        avg5Gis: twhToMcm(avg5Gis),
         minFull,
         maxFull,
         bandDelta: minFull !== null && maxFull !== null ? maxFull - minFull : null,
@@ -186,8 +193,8 @@ function StoragePage() {
       : null;
 
   const displayGis = (twh: number | null | undefined) => {
-    if (twh === null || twh === undefined) return "–";
-    return unit === "TWh" ? `${twh.toFixed(2)} TWh` : `${(twh * 1000).toFixed(0)} GWh`;
+    const m = twhToMcm(twh);
+    return m === null ? "–" : `${m.toFixed(1)} mcm`;
   };
 
   const missingKey = query.data?.missingKey;
@@ -254,17 +261,6 @@ function StoragePage() {
               <option value="minmax">Min / Max band</option>
             </select>
           </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-muted-foreground">Unit</span>
-            <select
-              value={unit}
-              onChange={(e) => setUnit(e.target.value as "TWh" | "GWh")}
-              className="rounded border bg-background px-2 py-1"
-            >
-              <option value="TWh">TWh</option>
-              <option value="GWh">GWh</option>
-            </select>
-          </label>
           <div className="ml-auto text-[11px] text-muted-foreground">
             {query.isFetching && <span>Fetching…</span>}
             {query.data?.fetchedAt && (
@@ -288,17 +284,17 @@ function StoragePage() {
         />
         <KpiCard
           label="Injection"
-          value={fmt(latest?.injection ?? null, 0, "GWh/d")}
-          hint={`Cap: ${fmt(latest?.injectionCapacity ?? null, 0, "GWh/d")}`}
+          value={fmt(gwhToMcm(latest?.injection ?? null), 2, "mcm/d")}
+          hint={`Cap: ${fmt(gwhToMcm(latest?.injectionCapacity ?? null), 2, "mcm/d")}`}
         />
         <KpiCard
           label="Withdrawal"
-          value={fmt(latest?.withdrawal ?? null, 0, "GWh/d")}
-          hint={`Cap: ${fmt(latest?.withdrawalCapacity ?? null, 0, "GWh/d")}`}
+          value={fmt(gwhToMcm(latest?.withdrawal ?? null), 2, "mcm/d")}
+          hint={`Cap: ${fmt(gwhToMcm(latest?.withdrawalCapacity ?? null), 2, "mcm/d")}`}
         />
         <KpiCard
           label="Net (inj − wdr)"
-          value={fmt(net, 0, "GWh/d")}
+          value={fmt(gwhToMcm(net), 2, "mcm/d")}
           tone={net === null ? "default" : net >= 0 ? "positive" : "negative"}
         />
         <KpiCard
@@ -392,28 +388,19 @@ function StoragePage() {
         </ResponsiveContainer>
       </ChartCard>
 
-      {/* Gas in storage TWh */}
-      <ChartCard title="Gas in storage" subtitle={unit} height={280}>
+      {/* Gas in storage (mcm) */}
+      <ChartCard title="Gas in storage" subtitle="mcm (10.51 GWh/mcm)" height={280}>
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={chartData} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
             <CartesianGrid stroke="#e5e7eb" vertical={false} />
             <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={shortDate} minTickGap={40} />
-            <YAxis
-              tick={{ fontSize: 11 }}
-              tickFormatter={(v) => (unit === "TWh" ? String(v) : String(Math.round(v * 1000)))}
-            />
+            <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => String(Math.round(v))} />
             <Tooltip
               labelFormatter={(v) => shortDate(String(v))}
-              formatter={(v, n) => [
-                typeof v === "number"
-                  ? unit === "TWh"
-                    ? `${v.toFixed(2)} TWh`
-                    : `${(v * 1000).toFixed(0)} GWh`
-                  : "–",
-                n,
-              ]}
+              formatter={(v, n) => [typeof v === "number" ? `${v.toFixed(1)} mcm` : "–", n]}
               contentStyle={{ fontSize: 12 }}
             />
+            <Legend wrapperStyle={{ fontSize: 11 }} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
             <Line
               type="monotone"
@@ -449,7 +436,7 @@ function StoragePage() {
       </ChartCard>
 
       {/* Injection / withdrawal */}
-      <ChartCard title="Injection & withdrawal" subtitle="GWh/d — withdrawal shown negative" height={260}>
+      <ChartCard title="Injection & withdrawal" subtitle="mcm/d — withdrawal shown negative" height={260}>
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={chartData} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
             <CartesianGrid stroke="#e5e7eb" vertical={false} />
@@ -457,7 +444,7 @@ function StoragePage() {
             <YAxis tick={{ fontSize: 11 }} />
             <Tooltip
               labelFormatter={(v) => shortDate(String(v))}
-              formatter={(v, n) => [typeof v === "number" ? `${v.toFixed(0)} GWh/d` : "–", n]}
+              formatter={(v, n) => [typeof v === "number" ? `${v.toFixed(2)} mcm/d` : "–", n]}
               contentStyle={{ fontSize: 12 }}
             />
             <Legend wrapperStyle={{ fontSize: 11 }} />
@@ -498,14 +485,14 @@ function StoragePage() {
               <tr className="border-b text-left">
                 <th className="px-2 py-1.5">Date</th>
                 <th className="px-2 py-1.5">Region</th>
-                <th className="px-2 py-1.5 text-right">Gas in storage (TWh)</th>
+                <th className="px-2 py-1.5 text-right">Gas in storage (mcm)</th>
                 <th className="px-2 py-1.5 text-right">Full %</th>
-                <th className="px-2 py-1.5 text-right">WGV (TWh)</th>
-                <th className="px-2 py-1.5 text-right">Injection (GWh/d)</th>
-                <th className="px-2 py-1.5 text-right">Withdrawal (GWh/d)</th>
-                <th className="px-2 py-1.5 text-right">Net (GWh/d)</th>
-                <th className="px-2 py-1.5 text-right">Inj cap</th>
-                <th className="px-2 py-1.5 text-right">Wdr cap</th>
+                <th className="px-2 py-1.5 text-right">WGV (mcm)</th>
+                <th className="px-2 py-1.5 text-right">Injection (mcm/d)</th>
+                <th className="px-2 py-1.5 text-right">Withdrawal (mcm/d)</th>
+                <th className="px-2 py-1.5 text-right">Net (mcm/d)</th>
+                <th className="px-2 py-1.5 text-right">Inj cap (mcm/d)</th>
+                <th className="px-2 py-1.5 text-right">Wdr cap (mcm/d)</th>
                 <th className="px-2 py-1.5">Status</th>
               </tr>
             </thead>
@@ -524,14 +511,14 @@ function StoragePage() {
                   <tr key={r.gasDayStart} className="border-b last:border-b-0">
                     <td className="px-2 py-1 tabular-nums">{r.gasDayStart}</td>
                     <td className="px-2 py-1 uppercase">{country}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{fmt(r.gasInStorage, 2)}</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{fmt(twhToMcm(r.gasInStorage), 1)}</td>
                     <td className="px-2 py-1 text-right tabular-nums">{fmt(r.full, 1)}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{fmt(r.workingGasVolume, 2)}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{fmt(r.injection, 0)}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{fmt(r.withdrawal, 0)}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{fmt(net, 0)}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{fmt(r.injectionCapacity, 0)}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{fmt(r.withdrawalCapacity, 0)}</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{fmt(twhToMcm(r.workingGasVolume), 1)}</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{fmt(gwhToMcm(r.injection), 2)}</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{fmt(gwhToMcm(r.withdrawal), 2)}</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{fmt(gwhToMcm(net), 2)}</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{fmt(gwhToMcm(r.injectionCapacity), 2)}</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{fmt(gwhToMcm(r.withdrawalCapacity), 2)}</td>
                     <td className="px-2 py-1">{r.status ?? "–"}</td>
                   </tr>
                 );
