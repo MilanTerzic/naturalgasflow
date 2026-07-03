@@ -59,7 +59,11 @@ function isoAddYears(iso: string, years: number): string {
 
 const fmt = (v: number | null | undefined, digits = 2, unit = "") => {
   if (v === null || v === undefined || !Number.isFinite(v)) return "–";
-  return `${v.toFixed(digits)}${unit ? " " + unit : ""}`;
+  const formatted = new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(v);
+  return unit ? `${formatted} ${unit}` : formatted;
 };
 
 // Energy → volume conversion. 1 mcm ≈ 10.51 GWh (user-specified CV).
@@ -194,7 +198,7 @@ function StoragePage() {
 
   const displayGis = (twh: number | null | undefined) => {
     const m = twhToMcm(twh);
-    return m === null ? "–" : `${m.toFixed(1)} mcm`;
+    return m === null ? "–" : fmt(m, 1, "mcm");
   };
 
   const missingKey = query.data?.missingKey;
@@ -300,13 +304,13 @@ function StoragePage() {
         <KpiCard
           label="Δ vs last year"
           value={displayGis(diffPrevGis)}
-          hint={diffPrevFull !== null ? `${diffPrevFull >= 0 ? "+" : ""}${diffPrevFull.toFixed(1)} pp` : undefined}
+          hint={diffPrevFull !== null ? `${diffPrevFull >= 0 ? "+" : ""}${fmt(diffPrevFull, 1, "pp")}` : undefined}
           tone={diffPrevGis === null ? "default" : diffPrevGis >= 0 ? "positive" : "negative"}
         />
         <KpiCard
           label="Δ vs 5-yr avg"
           value={displayGis(diffAvg5Gis)}
-          hint={diffAvg5Full !== null ? `${diffAvg5Full >= 0 ? "+" : ""}${diffAvg5Full.toFixed(1)} pp` : undefined}
+          hint={diffAvg5Full !== null ? `${diffAvg5Full >= 0 ? "+" : ""}${fmt(diffAvg5Full, 1, "pp")}` : undefined}
           tone={diffAvg5Gis === null ? "default" : diffAvg5Gis >= 0 ? "positive" : "negative"}
         />
       </div>
@@ -324,7 +328,7 @@ function StoragePage() {
             <YAxis tick={{ fontSize: 11 }} domain={[0, 100]} unit="%" />
             <Tooltip
               labelFormatter={(v) => shortDate(String(v))}
-              formatter={(v, n) => [typeof v === "number" ? `${v.toFixed(1)}%` : "–", n]}
+              formatter={(v, n) => [typeof v === "number" ? fmt(v, 1, "%") : "–", n]}
               contentStyle={{ fontSize: 12 }}
             />
             <Legend wrapperStyle={{ fontSize: 11 }} />
@@ -394,13 +398,12 @@ function StoragePage() {
           <ComposedChart data={chartData} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
             <CartesianGrid stroke="#e5e7eb" vertical={false} />
             <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={shortDate} minTickGap={40} />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => String(Math.round(v))} />
+            <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => fmt(Number(v), 0)} />
             <Tooltip
               labelFormatter={(v) => shortDate(String(v))}
-              formatter={(v, n) => [typeof v === "number" ? `${v.toFixed(1)} mcm` : "–", n]}
+              formatter={(v, n) => [typeof v === "number" ? fmt(v, 1, "mcm") : "–", n]}
               contentStyle={{ fontSize: 12 }}
             />
-            <Legend wrapperStyle={{ fontSize: 11 }} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
             <Line
               type="monotone"
@@ -441,10 +444,10 @@ function StoragePage() {
           <ComposedChart data={chartData} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
             <CartesianGrid stroke="#e5e7eb" vertical={false} />
             <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={shortDate} minTickGap={40} />
-            <YAxis tick={{ fontSize: 11 }} />
+            <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => fmt(Number(v), 0)} />
             <Tooltip
               labelFormatter={(v) => shortDate(String(v))}
-              formatter={(v, n) => [typeof v === "number" ? `${v.toFixed(2)} mcm/d` : "–", n]}
+              formatter={(v, n) => [typeof v === "number" ? fmt(v, 2, "mcm/d") : "–", n]}
               contentStyle={{ fontSize: 12 }}
             />
             <Legend wrapperStyle={{ fontSize: 11 }} />
@@ -463,7 +466,7 @@ function StoragePage() {
             <YAxis tick={{ fontSize: 11 }} unit="%" />
             <Tooltip
               labelFormatter={(v) => shortDate(String(v))}
-              formatter={(v, n) => [typeof v === "number" ? `${v.toFixed(1)}%` : "–", n]}
+              formatter={(v, n) => [typeof v === "number" ? fmt(v, 1, "%") : "–", n]}
               contentStyle={{ fontSize: 12 }}
             />
             <Legend wrapperStyle={{ fontSize: 11 }} />
