@@ -1,9 +1,10 @@
-import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useRouter } from "@tanstack/react-router";
 import { Lock } from "lucide-react";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { lockApp } from "@/components/PasswordGate";
 import { DashboardProvider } from "@/state/dashboard-context";
 import { cn } from "@/lib/utils";
+
 
 export const Route = createFileRoute("/_dash")({
   component: DashLayout,
@@ -19,6 +20,9 @@ const TABS = [
 ] as const;
 
 function DashLayout() {
+  const router = useRouter();
+  const showSidebar = router.state.location.pathname === "/balance";
+
   return (
     <DashboardProvider>
       <div className="min-h-screen bg-background">
@@ -62,8 +66,9 @@ function DashLayout() {
           </div>
         </header>
         <div className="flex flex-col lg:flex-row">
-          <Sidebar />
+          {showSidebar && <Sidebar />}
           <main className="min-w-0 flex-1 space-y-4 p-4">
+
             <Outlet />
           </main>
         </div>
