@@ -198,7 +198,7 @@ function StoragePage() {
 
   const displayGis = (twh: number | null | undefined) => {
     const m = twhToMcm(twh);
-    return m === null ? "–" : `${m.toFixed(1)} mcm`;
+    return m === null ? "–" : fmt(m, 1, "mcm");
   };
 
   const missingKey = query.data?.missingKey;
