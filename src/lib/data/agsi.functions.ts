@@ -119,6 +119,12 @@ export const fetchAgsiStorage = createServerFn({ method: "GET" })
 
       rows.sort((a, b) => a.gasDayStart.localeCompare(b.gasDayStart));
 
+      // If the fresh fetch came back empty but we have prior cached data,
+      // keep serving the cached data instead of blanking the UI.
+      if (rows.length === 0 && hit && hit.res.data.length > 0) {
+        return { ...hit.res, error: "AGSI returned empty; showing cached data" };
+      }
+
       const res: AgsiResponse = {
         country,
         from,
