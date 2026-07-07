@@ -111,6 +111,28 @@ export function FlowsChart({
             legendType="none"
           />
         ))}
+        <Line
+          type="monotone"
+          dataKey="diff_actual"
+          name="Kireevo Entry minus Kiskundorozsma 2 Exit"
+          stroke="#6B21A8"
+          strokeWidth={2}
+          dot={false}
+          connectNulls={false}
+          isAnimationActive={false}
+        />
+        <Line
+          type="monotone"
+          dataKey="diff_fcst"
+          name="Kireevo Entry minus Kiskundorozsma 2 Exit (fcst)"
+          stroke="#6B21A8"
+          strokeWidth={2}
+          strokeDasharray="5 4"
+          dot={false}
+          connectNulls={false}
+          isAnimationActive={false}
+          legendType="none"
+        />
       </LineChart>
     </ResponsiveContainer>
   );
