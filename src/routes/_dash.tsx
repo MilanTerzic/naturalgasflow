@@ -21,7 +21,7 @@ const TABS = [
 
 function DashLayout() {
   const router = useRouter();
-  const showSidebar = router.state.location.pathname === "/balance";
+  const showSidebar = router.state.location.pathname === TABS[0].to;
 
   return (
     <DashboardProvider>
