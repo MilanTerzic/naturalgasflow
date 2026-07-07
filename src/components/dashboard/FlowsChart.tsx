@@ -40,6 +40,12 @@ export function FlowsChart({
       out[`${key}_actual`] = isFcst ? null : v;
       out[`${key}_fcst`] = isFcst ? v : null;
     }
+    const kire = row?.kireevo;
+    const kkd2 = row?.kiskundorozsma_2;
+    const diff =
+      kire == null || kkd2 == null || (kire === 0 && kkd2 === 0) ? null : kire - kkd2;
+    out.diff_actual = isFcst ? null : diff;
+    out.diff_fcst = isFcst ? diff : null;
     return out;
   });
 
@@ -105,6 +111,28 @@ export function FlowsChart({
             legendType="none"
           />
         ))}
+        <Line
+          type="monotone"
+          dataKey="diff_actual"
+          name="Kireevo Entry minus Kiskundorozsma 2 Exit"
+          stroke="#6B21A8"
+          strokeWidth={2}
+          dot={false}
+          connectNulls={false}
+          isAnimationActive={false}
+        />
+        <Line
+          type="monotone"
+          dataKey="diff_fcst"
+          name="Kireevo Entry minus Kiskundorozsma 2 Exit (fcst)"
+          stroke="#6B21A8"
+          strokeWidth={2}
+          strokeDasharray="5 4"
+          dot={false}
+          connectNulls={false}
+          isAnimationActive={false}
+          legendType="none"
+        />
       </LineChart>
     </ResponsiveContainer>
   );
