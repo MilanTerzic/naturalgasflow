@@ -182,8 +182,24 @@ export const fetchEntsogFlows = createServerFn({ method: "POST" })
         return { data: cached.rows, error: null };
       }
 
-      flowCache.set(cacheKey, { day: today, rows });
-      return { data: rows, error: null };
+      // Merge with cached rows: for any date missing (or all-zero) in the new
+      // response, fall back to the cached value so a partial ENTSOG outage
+      // doesn't blank out previously-known days.
+      let merged = rows;
+      if (cached) {
+        const byDate = new Map<string, FlowRow>();
+        for (const r of cached.rows) byDate.set(r.date, r);
+        for (const r of rows) {
+          const hasAny =
+            r.kireevo > 0 || r.kalotina > 0 || r.kiskundorozsma_hu > 0 || r.kiskundorozsma_2 > 0;
+          const prev = byDate.get(r.date);
+          if (hasAny || !prev) byDate.set(r.date, r);
+        }
+        merged = Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
+      }
+
+      flowCache.set(cacheKey, { day: today, rows: merged });
+      return { data: merged, error: null };
     } catch (err) {
       console.error("ENTSOG fetch failed", err);
       if (cached) {
@@ -193,3 +209,4 @@ export const fetchEntsogFlows = createServerFn({ method: "POST" })
       return { data: [], error: err instanceof Error ? err.message : "Unknown error" };
     }
   });
+
