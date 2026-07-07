@@ -1,8 +1,9 @@
 import {
+  Area,
   CartesianGrid,
+  ComposedChart,
   Legend,
   Line,
-  LineChart,
   ReferenceArea,
   ResponsiveContainer,
   Tooltip,
@@ -53,7 +54,7 @@ export function FlowsChart({
   const halfDay = 12 * 3_600_000;
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <LineChart data={data} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
+      <ComposedChart data={data} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
         <CartesianGrid stroke={PALETTE.grid} vertical={false} />
         <XAxis
           dataKey="ts"
@@ -76,6 +77,32 @@ export function FlowsChart({
           fillOpacity={0.12}
           stroke={PALETTE.today}
           strokeOpacity={0.4}
+        />
+        <Area
+          type="monotone"
+          dataKey="diff_actual"
+          name="Kireevo Entry minus Kiskundorozsma 2 Exit"
+          stroke="#6B21A8"
+          strokeWidth={2}
+          fill="#6B21A8"
+          fillOpacity={0.1}
+          dot={false}
+          connectNulls={false}
+          isAnimationActive={false}
+        />
+        <Area
+          type="monotone"
+          dataKey="diff_fcst"
+          name="Kireevo Entry minus Kiskundorozsma 2 Exit (fcst)"
+          stroke="#6B21A8"
+          strokeWidth={2}
+          strokeDasharray="5 4"
+          fill="#6B21A8"
+          fillOpacity={0.1}
+          dot={false}
+          connectNulls={false}
+          isAnimationActive={false}
+          legendType="none"
         />
         <Tooltip
           labelFormatter={(v) => fmtShortDate(new Date(Number(v)).toISOString().slice(0, 10))}
@@ -111,29 +138,7 @@ export function FlowsChart({
             legendType="none"
           />
         ))}
-        <Line
-          type="monotone"
-          dataKey="diff_actual"
-          name="Kireevo Entry minus Kiskundorozsma 2 Exit"
-          stroke="#6B21A8"
-          strokeWidth={2}
-          dot={false}
-          connectNulls={false}
-          isAnimationActive={false}
-        />
-        <Line
-          type="monotone"
-          dataKey="diff_fcst"
-          name="Kireevo Entry minus Kiskundorozsma 2 Exit (fcst)"
-          stroke="#6B21A8"
-          strokeWidth={2}
-          strokeDasharray="5 4"
-          dot={false}
-          connectNulls={false}
-          isAnimationActive={false}
-          legendType="none"
-        />
-      </LineChart>
+      </ComposedChart>
     </ResponsiveContainer>
   );
 }
