@@ -40,6 +40,12 @@ export function FlowsChart({
       out[`${key}_actual`] = isFcst ? null : v;
       out[`${key}_fcst`] = isFcst ? v : null;
     }
+    const kire = row?.kireevo;
+    const kkd2 = row?.kiskundorozsma_2;
+    const diff =
+      kire == null || kkd2 == null || (kire === 0 && kkd2 === 0) ? null : kire - kkd2;
+    out.diff_actual = isFcst ? null : diff;
+    out.diff_fcst = isFcst ? diff : null;
     return out;
   });
 
