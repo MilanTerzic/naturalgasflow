@@ -85,7 +85,7 @@ export function FlowsChart({
           stroke="#6B21A8"
           strokeWidth={2}
           fill="#6B21A8"
-          fillOpacity={0.1}
+          fillOpacity={0.05}
           dot={false}
           connectNulls={false}
           isAnimationActive={false}
@@ -98,7 +98,7 @@ export function FlowsChart({
           strokeWidth={2}
           strokeDasharray="5 4"
           fill="#6B21A8"
-          fillOpacity={0.1}
+          fillOpacity={0.05}
           dot={false}
           connectNulls={false}
           isAnimationActive={false}
