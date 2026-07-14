@@ -1,4 +1,4 @@
-import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useRouter } from "@tanstack/react-router";
 import { Fuel, Lock } from "lucide-react";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { lockApp } from "@/components/PasswordGate";
@@ -14,10 +14,14 @@ const TABS = [
   { to: "/flows", label: "Flow Details" },
   { to: "/capacity", label: "Capacity Bookings" },
   { to: "/srbijagas", label: "Srbijagas Full Supply" },
+  { to: "/storage", label: "Gas Storage" },
   { to: "/model", label: "Model & Assumptions" },
 ] as const;
 
 function DashLayout() {
+  const router = useRouter();
+  const showSidebar = router.state.location.pathname === "/balance";
+
   return (
     <DashboardProvider>
       <div className="min-h-screen bg-background">
@@ -72,7 +76,7 @@ function DashLayout() {
           </div>
         </header>
         <div className="flex flex-col lg:flex-row">
-          <Sidebar />
+          {showSidebar && <Sidebar />}
           <main className="min-w-0 flex-1 space-y-4 p-3 sm:p-4 lg:p-5">
             <Outlet />
           </main>
