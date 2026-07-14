@@ -21,6 +21,10 @@ const POINT_COLORS = {
   kalotina: PALETTE.kalotina,
 } as const;
 
+function visibleFlowValue(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
+}
+
 export function FlowsChart({
   flows,
   dates,
@@ -37,14 +41,13 @@ export function FlowsChart({
     const row = flowByDate.get(date);
     const out: Record<string, number | null> = { ts };
     for (const key of Object.keys(POINTS) as (keyof typeof POINTS)[]) {
-      const v = row ? (row[key] as number | undefined) ?? null : null;
+      const v = visibleFlowValue(row ? (row[key] as number | undefined) : null);
       out[`${key}_actual`] = isFcst ? null : v;
       out[`${key}_fcst`] = isFcst ? v : null;
     }
     const kire = row?.kireevo;
     const kkd2 = row?.kiskundorozsma_2;
-    const diff =
-      kire == null || kkd2 == null || (kire === 0 && kkd2 === 0) ? null : kire - kkd2;
+    const diff = kire == null || kkd2 == null ? null : visibleFlowValue(kire - kkd2);
     out.diff_actual = isFcst ? null : diff;
     out.diff_fcst = isFcst ? diff : null;
     return out;
@@ -68,7 +71,14 @@ export function FlowsChart({
         <YAxis
           tick={{ fontSize: 11 }}
           stroke={PALETTE.axis}
-          label={{ value: "mcm/d", angle: -90, position: "insideLeft", offset: 12, style: { fontSize: 11 } }}
+          domain={[0, "auto"]}
+          label={{
+            value: "mcm/d",
+            angle: -90,
+            position: "insideLeft",
+            offset: 12,
+            style: { fontSize: 11 },
+          }}
         />
         <ReferenceArea
           x1={todayTs - halfDay}
