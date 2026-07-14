@@ -1,9 +1,17 @@
+import {
+  ArrowDownToLine,
+  Factory,
+  Flame,
+  Gauge,
+  Thermometer,
+  TrendingDown,
+  TrendingUp,
+} from "lucide-react";
 import { KpiCard } from "./KpiCard";
 import { fmtMcm, fmtTemp } from "@/lib/gas/format";
 import type { BalanceRow } from "@/lib/gas/types";
 
 export function KpiRow({ balance, today }: { balance: BalanceRow[]; today: string }) {
-  // Latest historical (today or last historical row).
   const idx = (() => {
     let i = balance.findIndex((r) => r.date === today);
     if (i === -1) i = balance.length - 1;
@@ -13,10 +21,6 @@ export function KpiRow({ balance, today }: { balance: BalanceRow[]; today: strin
   const prev = balance[idx - 1];
   if (!cur) return null;
 
-  const importHu = cur.kiskundorozsma_entry_mcm;
-  const importBg = cur.imports_from_bulgaria_mcm;
-  const storage = cur.storage_imbalance_mcm;
-  const storageLabel = storage >= 0 ? "Injection / surplus" : "Withdrawal / deficit";
   const delta = (k: keyof BalanceRow) => {
     if (!prev) return null;
     const a = cur[k];
@@ -24,80 +28,109 @@ export function KpiRow({ balance, today }: { balance: BalanceRow[]; today: strin
     if (typeof a !== "number" || typeof b !== "number") return null;
     return a - b;
   };
-  const est = cur.is_estimated;
-  const estHint = est && cur.estimated_from
-    ? `Estimated · from ${cur.estimated_from}`
-    : undefined;
-  // Estimated (carried-forward) flow KPIs are highlighted in green per user request.
-  const flowTone = (): "default" | "positive" =>
-    est ? "positive" : "default";
+
+  const estimatedHint =
+    cur.is_estimated && cur.estimated_from ? `Estimated from ${cur.estimated_from}` : undefined;
+  const balanceTone = cur.storage_imbalance_mcm >= 0 ? "positive" : "negative";
+  const balanceStatus = cur.storage_imbalance_mcm >= 0 ? "Surplus" : "Deficit";
+  const balanceHint =
+    cur.storage_imbalance_mcm >= 0 ? "Potential storage injection" : "Required storage withdrawal";
 
   return (
-    <div className="space-y-2">
-      {est && (
-        <div className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
-          ⓘ Showing <strong>estimated</strong> values for {cur.date} — ENTSOG flow data not yet published,
-          carried forward from {cur.estimated_from}. Estimated KPIs and chart points are highlighted in green.
+    <section aria-label="Today at a glance" className="space-y-3">
+      {cur.is_estimated && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <span className="font-medium">Estimated flow values.</span> ENTSOG flow data for{" "}
+          {cur.date} is not yet published; values are carried forward from {cur.estimated_from}.
         </div>
       )}
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9">
+
+      <div className="grid gap-3 lg:grid-cols-[1fr_1fr_1.25fr]">
         <KpiCard
           label="Forecast demand"
-          value={`${fmtMcm(cur.demand_mcm)} mcm`}
+          value={fmtMcm(cur.demand_mcm)}
+          unit="mcm/day"
           hint="Required Serbian demand"
           delta={delta("demand_mcm")}
+          variant="primary"
+          icon={<Flame />}
         />
         <KpiCard
-          label={est ? "Total supply (est.)" : "Total supply"}
-          value={`${fmtMcm(cur.serbian_available_supply_mcm)} mcm`}
-          hint={estHint ?? "Available to Serbia"}
+          label="Available supply"
+          value={fmtMcm(cur.serbian_available_supply_mcm)}
+          unit="mcm/day"
+          hint={estimatedHint ?? "Total supply available to Serbia"}
           delta={delta("serbian_available_supply_mcm")}
-          tone={flowTone()}
+          variant="primary"
+          icon={<Gauge />}
+          estimated={cur.is_estimated}
         />
         <KpiCard
-          label="Storage ±"
-          value={`${fmtMcm(storage)} mcm`}
-          hint={est ? estHint : storageLabel}
-          tone={est ? "positive" : storage >= 0 ? "positive" : "negative"}
+          label="Gas balance"
+          value={fmtMcm(cur.storage_imbalance_mcm)}
+          unit="mcm/day"
+          hint={
+            cur.is_estimated && estimatedHint ? `${balanceHint} · ${estimatedHint}` : balanceHint
+          }
+          tone={balanceTone}
+          variant="balance"
+          status={balanceStatus}
+          emphasis="strong"
+          icon={cur.storage_imbalance_mcm >= 0 ? <TrendingUp /> : <TrendingDown />}
+          estimated={cur.is_estimated}
         />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <KpiCard
           label="Belgrade temperature"
           value={fmtTemp(cur.temperature_c)}
-          hint={`2-day avg ${fmtTemp(cur.avg_temperature_c)}`}
+          hint={`2-day average ${fmtTemp(cur.avg_temperature_c)}`}
+          icon={<Thermometer />}
         />
         <KpiCard
-          label={est ? "Import HU (est.)" : "Import HU"}
-          value={`${fmtMcm(importHu)} mcm`}
-          hint={estHint ?? "Kiskundorozsma entry"}
+          label="Import from Hungary"
+          value={fmtMcm(cur.kiskundorozsma_entry_mcm)}
+          unit="mcm/day"
+          hint={estimatedHint ?? "Kiskundorozsma entry"}
           delta={delta("kiskundorozsma_entry_mcm")}
-          tone={flowTone()}
+          icon={<ArrowDownToLine />}
+          estimated={cur.is_estimated}
         />
         <KpiCard
-          label={est ? "Import BG net (est.)" : "Import BG (net)"}
-          value={`${fmtMcm(importBg)} mcm`}
-          hint={estHint ?? "Kireevo − KKD-2"}
+          label="Net import from Bulgaria"
+          value={fmtMcm(cur.imports_from_bulgaria_mcm)}
+          unit="mcm/day"
+          hint={estimatedHint ?? "Kireevo less KKD-2 transit"}
           delta={delta("imports_from_bulgaria_mcm")}
-          tone={flowTone()}
+          icon={<ArrowDownToLine />}
+          estimated={cur.is_estimated}
         />
         <KpiCard
-          label={est ? "Kalotina (est.)" : "Kalotina"}
-          value={`${fmtMcm(cur.kalotina_entry_mcm)} mcm`}
-          hint={estHint ?? "BG → RS direct"}
+          label="Kalotina entry"
+          value={fmtMcm(cur.kalotina_entry_mcm)}
+          unit="mcm/day"
+          hint={estimatedHint ?? "Bulgaria to Serbia direct"}
           delta={delta("kalotina_entry_mcm")}
-          tone={flowTone()}
+          icon={<ArrowDownToLine />}
+          estimated={cur.is_estimated}
         />
         <KpiCard
-          label="Production"
-          value={`${fmtMcm(cur.domestic_production_mcm)} mcm`}
-          hint="Domestic, constant"
+          label="Domestic production"
+          value={fmtMcm(cur.domestic_production_mcm)}
+          unit="mcm/day"
+          hint="Domestic constant"
+          icon={<Factory />}
         />
         <KpiCard
-          label={est ? "Bosnia export (est.)" : "Bosnia export"}
-          value={`${fmtMcm(cur.bosnia_consumption_mcm)} mcm`}
-          hint={estHint ?? "Share of BG import"}
-          tone={flowTone()}
+          label="Bosnia export"
+          value={fmtMcm(cur.bosnia_consumption_mcm)}
+          unit="mcm/day"
+          hint={estimatedHint ?? "Share of Bulgaria import"}
+          icon={<ArrowDownToLine />}
+          estimated={cur.is_estimated}
         />
       </div>
-    </div>
+    </section>
   );
 }
