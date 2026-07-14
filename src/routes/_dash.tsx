@@ -20,7 +20,8 @@ const TABS = [
 
 function DashLayout() {
   const router = useRouter();
-  const showSidebar = router.state.location.pathname === "/balance";
+  const pathname = router.state.location.pathname.replace(/\/$/, "") || "/";
+  const showSidebar = pathname === "/balance";
 
   return (
     <DashboardProvider>
