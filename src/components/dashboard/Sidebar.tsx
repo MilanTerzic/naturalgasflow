@@ -83,11 +83,11 @@ function DashboardControls({ compact = false }: { compact?: boolean }) {
         </div>
       )}
 
-      <section className="space-y-3 rounded-lg border bg-card p-3">
-        <div>
-          <h3 className="text-xs font-semibold text-foreground">Data view</h3>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">Live data range and demo mode.</p>
-        </div>
+      <AdvancedSection
+        title="Data view"
+        description="Live data range and demo mode."
+        defaultOpen={true}
+      >
         <div className="flex min-h-10 items-center justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2">
           <div>
             <Label className="text-xs font-medium">Demo data</Label>
@@ -115,7 +115,7 @@ function DashboardControls({ compact = false }: { compact?: boolean }) {
           step={1}
           onChange={(value) => s.setRange(s.rangePastDays, value)}
         />
-      </section>
+      </AdvancedSection>
 
       <AdvancedSection title="Demand scenario" defaultOpen={false}>
         <div className="flex min-h-10 items-center justify-between gap-3">
@@ -183,10 +183,12 @@ function DashboardControls({ compact = false }: { compact?: boolean }) {
 
 function AdvancedSection({
   title,
+  description,
   children,
   defaultOpen,
 }: {
   title: string;
+  description?: string;
   children: ReactNode;
   defaultOpen: boolean;
 }) {
@@ -200,7 +202,14 @@ function AdvancedSection({
           className="flex min-h-10 w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs font-semibold text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           aria-label={`${open ? "Collapse" : "Expand"} ${title}`}
         >
-          {title}
+          <span>
+            <span className="block">{title}</span>
+            {description && (
+              <span className="mt-0.5 block text-[11px] font-normal text-muted-foreground">
+                {description}
+              </span>
+            )}
+          </span>
           <ChevronDown
             className={cn(
               "h-4 w-4 text-muted-foreground transition-transform",
