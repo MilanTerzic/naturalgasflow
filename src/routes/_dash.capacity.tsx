@@ -5,8 +5,9 @@ import { RefreshCw } from "lucide-react";
 import { CapacityCharts } from "@/components/dashboard/CapacityCharts";
 import { CapacityTable } from "@/components/dashboard/CapacityTable";
 import { Button } from "@/components/ui/button";
-import { dummyCapacity } from "@/lib/gas/dummy";
+import { dummyCapacity, dummyFlows } from "@/lib/gas/dummy";
 import { fetchLiveCapacityBookings } from "@/lib/data/capacity.functions";
+import { fetchEntsogFlows } from "@/lib/data/entsog.functions";
 import { realCapacityAndFlows, SNAPSHOT_RANGE } from "@/lib/gas/real-data";
 import { useDashboardData } from "@/state/use-dashboard-data";
 import { useDashboard } from "@/state/dashboard-context";
@@ -71,15 +72,8 @@ function CapacityPage() {
   const [gasYear, setGasYear] = useState(String(currentGasYearStart()));
   const [refreshNonce, setRefreshNonce] = useState(0);
   const selected = options.find((o) => o.value === gasYear) ?? options[1];
-
-  const january2026 = useMemo(
-    () =>
-      realCapacityAndFlows({
-        fromISO: "2026-01-01",
-        toISO: "2026-02-01",
-      }),
-    [],
-  );
+  const calendar2026FromISO = "2026-01-01";
+  const calendar2026ToISO = "2027-01-01";
 
   const liveCapacityQuery = useQuery({
     queryKey: ["live-capacity-bookings", selected.fromISO, selected.toISO, refreshNonce],
@@ -89,6 +83,42 @@ function CapacityPage() {
           from: selected.fromISO,
           to: selected.toISO,
           force: refreshNonce,
+        },
+      }),
+    staleTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    placeholderData: (previous) => previous,
+    enabled: mode === "live",
+  });
+
+  const calendar2026CapacityQuery = useQuery({
+    queryKey: [
+      "live-capacity-bookings-calendar-2026",
+      calendar2026FromISO,
+      calendar2026ToISO,
+      refreshNonce,
+    ],
+    queryFn: () =>
+      fetchLiveCapacityBookings({
+        data: {
+          from: calendar2026FromISO,
+          to: calendar2026ToISO,
+          force: refreshNonce,
+        },
+      }),
+    staleTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    placeholderData: (previous) => previous,
+    enabled: mode === "live",
+  });
+
+  const calendar2026FlowsQuery = useQuery({
+    queryKey: ["flows-calendar-2026", calendar2026FromISO, calendar2026ToISO],
+    queryFn: () =>
+      fetchEntsogFlows({
+        data: {
+          from: calendar2026FromISO,
+          to: calendar2026ToISO,
         },
       }),
     staleTime: 30 * 60 * 1000,
@@ -139,8 +169,47 @@ function CapacityPage() {
   }, [mode, selected.fromISO, selected.toISO, liveFlows, liveCapacityQuery.data]);
 
   const rbpAuctions = liveCapacityQuery.data?.rbpAuctions ?? [];
+  const calendar2026 = useMemo(() => {
+    if (mode === "dummy") {
+      const dates: string[] = [];
+      for (
+        let d = new Date(`${calendar2026FromISO}T00:00:00Z`);
+        d < new Date(`${calendar2026ToISO}T00:00:00Z`);
+        d.setUTCDate(d.getUTCDate() + 1)
+      ) {
+        dates.push(d.toISOString().slice(0, 10));
+      }
+      return {
+        capacity: dummyCapacity({
+          fromISO: calendar2026FromISO,
+          toISO: "2026-12-31",
+        }).rows,
+        flows: dummyFlows(dates),
+      };
+    }
+
+    if ((calendar2026CapacityQuery.data?.capacity.length ?? 0) > 0) {
+      return {
+        capacity: calendar2026CapacityQuery.data!.capacity,
+        flows: calendar2026FlowsQuery.data?.data ?? [],
+      };
+    }
+
+    const fallback = realCapacityAndFlows({
+      fromISO: calendar2026FromISO,
+      toISO: calendar2026ToISO,
+    });
+    return {
+      capacity: fallback.capacity,
+      flows: fallback.flows,
+    };
+  }, [mode, calendar2026CapacityQuery.data, calendar2026FlowsQuery.data]);
   const warnings = [
     ...(liveCapacityQuery.data?.warnings ?? []),
+    ...(calendar2026CapacityQuery.data?.warnings ?? []).map((warning) => `2026 stacks: ${warning}`),
+    ...(calendar2026FlowsQuery.data?.error
+      ? [`2026 stacks: ENTSOG flow data unavailable: ${calendar2026FlowsQuery.data.error}`]
+      : []),
     ...(liveCapacityQuery.data?.error ? [liveCapacityQuery.data.error] : []),
   ];
 
@@ -199,8 +268,8 @@ function CapacityPage() {
       <CapacityCharts
         capacity={capacity}
         flows={flows}
-        januaryCapacity={january2026.capacity}
-        januaryFlows={january2026.flows}
+        calendarCapacity={calendar2026.capacity}
+        calendarFlows={calendar2026.flows}
         heatmapFromISO={selected.fromISO}
         heatmapToISO={selected.toISO}
       />

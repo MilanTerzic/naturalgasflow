@@ -22,7 +22,7 @@ import { fmtMcm, fmtPct, fmtShortDateYear } from "@/lib/gas/format";
 import type { CapacityRow, FlowRow } from "@/lib/gas/types";
 import { ChartCard } from "./ChartCard";
 
-interface JanuaryRouteSeries {
+interface CalendarRouteSeries {
   key: string;
   label: string;
   flowKey: FlowPoint;
@@ -35,7 +35,7 @@ interface JanuaryRouteSeries {
   }>;
 }
 
-const JANUARY_PHYSICAL_POINT_ORDER: FlowPoint[] = [
+const CALENDAR_PHYSICAL_POINT_ORDER: FlowPoint[] = [
   "kiskundorozsma_hu",
   "kireevo",
   "kalotina",
@@ -50,7 +50,7 @@ function fmtMaybePct(v: number | null | undefined) {
   return v == null ? "N/A" : fmtPct(v);
 }
 
-function dailyCapacitySeries(capacity: CapacityRow[], flows: FlowRow[]): JanuaryRouteSeries[] {
+function dailyCapacitySeries(capacity: CapacityRow[], flows: FlowRow[]): CalendarRouteSeries[] {
   const flowByDate = new Map(flows.map((f) => [f.date, f]));
   const capacityByPoint = new Map<
     FlowPoint,
@@ -84,7 +84,7 @@ function dailyCapacitySeries(capacity: CapacityRow[], flows: FlowRow[]): January
     capacityByPoint.set(route.physicalFlowKey, byDate);
   }
 
-  return JANUARY_PHYSICAL_POINT_ORDER.map((flowKey) => {
+  return CALENDAR_PHYSICAL_POINT_ORDER.map((flowKey) => {
     const capacityByDate =
       capacityByPoint.get(flowKey) ??
       new Map<string, { technical_mwh: number | null; booked_mwh: number | null }>();
@@ -164,15 +164,15 @@ function monthBucketsBetween(fromISO: string, toISO: string) {
 export function CapacityCharts({
   capacity,
   flows,
-  januaryCapacity,
-  januaryFlows,
+  calendarCapacity,
+  calendarFlows,
   heatmapFromISO,
   heatmapToISO,
 }: {
   capacity: CapacityRow[];
   flows: FlowRow[];
-  januaryCapacity?: CapacityRow[];
-  januaryFlows?: FlowRow[];
+  calendarCapacity?: CapacityRow[];
+  calendarFlows?: FlowRow[];
   heatmapFromISO?: string;
   heatmapToISO?: string;
 }) {
@@ -182,10 +182,10 @@ export function CapacityCharts({
   const capacityReferenceDate = routes.find(
     (route) => route.capacity_reference_date,
   )?.capacity_reference_date;
-  const januaryRoutes = useMemo(
+  const calendarRoutes = useMemo(
     () =>
-      januaryCapacity && januaryFlows ? dailyCapacitySeries(januaryCapacity, januaryFlows) : [],
-    [januaryCapacity, januaryFlows],
+      calendarCapacity && calendarFlows ? dailyCapacitySeries(calendarCapacity, calendarFlows) : [],
+    [calendarCapacity, calendarFlows],
   );
 
   const heatMonths = useMemo(() => {
@@ -288,18 +288,18 @@ export function CapacityCharts({
         </ResponsiveContainer>
       </ChartCard>
 
-      {januaryRoutes.length > 0 && (
+      {calendarRoutes.length > 0 && (
         <div className="space-y-3">
           <div className="rounded-md border bg-card p-3 shadow-sm">
-            <h3 className="text-sm font-semibold">January 2026 interconnection capacity stacks</h3>
+            <h3 className="text-sm font-semibold">2026 interconnection capacity stacks</h3>
             <p className="mt-1 text-xs text-muted-foreground">
-              Daily ENTSOG snapshot, Jan 01-31 2026. Bars stack booked plus available capacity to
-              technical capacity; the green line is physical flow.
+              Daily ENTSOG capacity, Jan 01-Dec 31 2026. Bars stack booked plus available capacity
+              to technical capacity; the green line is physical flow where measured data exists.
             </p>
           </div>
           <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-            {januaryRoutes.map((route) => (
-              <JanuaryCapacityStackCard key={route.key} route={route} />
+            {calendarRoutes.map((route) => (
+              <CalendarCapacityStackCard key={route.key} route={route} />
             ))}
           </div>
         </div>
@@ -404,7 +404,8 @@ function sourceLabel(route: CapacityRouteSummary) {
   return route.source ?? "N/A";
 }
 
-function JanuaryCapacityStackCard({ route }: { route: JanuaryRouteSeries }) {
+function CalendarCapacityStackCard({ route }: { route: CalendarRouteSeries }) {
+  const tickInterval = Math.max(0, Math.floor(route.data.length / 9));
   return (
     <ChartCard title={route.label} subtitle="mcm/d" height={300}>
       <ResponsiveContainer width="100%" height="100%">
@@ -414,7 +415,7 @@ function JanuaryCapacityStackCard({ route }: { route: JanuaryRouteSeries }) {
             dataKey="date"
             tick={{ fontSize: 10 }}
             stroke={PALETTE.axis}
-            interval={4}
+            interval={tickInterval}
             tickFormatter={(v) => String(v).slice(5)}
           />
           <YAxis
