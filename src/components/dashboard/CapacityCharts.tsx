@@ -10,55 +10,28 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { CAPACITY_DEFS, CONVERSION_MCM_TO_MWH, PALETTE, POINTS } from "@/lib/gas/config";
-import { fmtMcm, fmtPct } from "@/lib/gas/format";
+import { CONVERSION_MCM_TO_MWH, PALETTE, POINTS, type FlowPoint } from "@/lib/gas/config";
+import { CAPACITY_ROUTE_BY_ID } from "@/lib/gas/capacity-routes";
+import {
+  buildCapacityRouteSummaries,
+  deduplicateCapacityAggregate,
+  mwhDayToMcmDay,
+  type CapacityRouteSummary,
+} from "@/lib/gas/capacity-utils";
+import { fmtMcm, fmtPct, fmtShortDateYear } from "@/lib/gas/format";
 import type { CapacityRow, FlowRow } from "@/lib/gas/types";
-import type { FlowPoint } from "@/lib/gas/config";
 import { ChartCard } from "./ChartCard";
-
-// Map a capacity route to the ENTSOG flow key that physically corresponds to it.
-function flowKeyFor(d: (typeof CAPACITY_DEFS)[number]): FlowPoint | null {
-  const bp = d.borderPoint.toLowerCase();
-  if (bp.includes("kiskundorozsma 2")) return "kiskundorozsma_2";
-  if (bp.includes("kiskundorozsma")) return "kiskundorozsma_hu";
-  if (bp.includes("kireevo") || bp.includes("zaychar")) return "kireevo";
-  if (bp.includes("kalotina")) return "kalotina";
-  return null;
-}
-
-function routeLabel(d: (typeof CAPACITY_DEFS)[number]) {
-  const point = d.borderPoint.split("/")[0].trim();
-  return `${d.tso} · ${point} (${d.direction})`;
-}
-
-// All values below are in mcm/day so capacity and physical flow share one unit
-// (flows arrive in mcm/d; capacity is stored in MWh/d and converted via
-// CONVERSION_MCM_TO_MWH).  Used capacity is clamped to technical capacity so
-// rounding / unit slack can never make the bar exceed 100 %.
-interface RouteSummary {
-  key: string;
-  label: string;
-  tso: string;
-  available_mcm: number; // technical capacity
-  booked_mcm: number; // booked across all products (max — never exceeds technical)
-  used_mcm: number; // physical flow on latest date (clamped to technical)
-  used_raw_mcm: number; // unclamped, for tooltips
-  utilisation_booked: number; // booked / available
-  utilisation_used: number; // used / available
-  flowKey: FlowPoint | null;
-  perDate: { date: string; used_mcm: number; util_pct: number }[];
-}
 
 interface JanuaryRouteSeries {
   key: string;
   label: string;
-  flowKey: FlowPoint | null;
+  flowKey: FlowPoint;
   data: Array<{
     date: string;
-    technical_mcm: number;
-    booked_mcm: number;
-    available_mcm: number;
-    flow_mcm: number;
+    technical_mcm: number | null;
+    booked_mcm: number | null;
+    available_mcm: number | null;
+    flow_mcm: number | null;
   }>;
 }
 
@@ -69,127 +42,94 @@ const JANUARY_PHYSICAL_POINT_ORDER: FlowPoint[] = [
   "kiskundorozsma_2",
 ];
 
-const POINT_TSO: Record<FlowPoint, string> = {
-  kiskundorozsma_hu: "FGSZ",
-  kireevo: "Bulgartransgaz",
-  kalotina: "Bulgartransgaz",
-  kiskundorozsma_2: "FGSZ",
-};
-
-function summarise(capacity: CapacityRow[], flows: FlowRow[]): RouteSummary[] {
-  // Latest flow date that has data.
-  const sortedFlows = [...flows].sort((a, b) => (a.date < b.date ? 1 : -1));
-  const latest = sortedFlows.find(
-    (f) => f.kireevo > 0 || f.kalotina > 0 || f.kiskundorozsma_hu > 0,
-  );
-
-  return CAPACITY_DEFS.map((d) => {
-    const matched = capacity.filter(
-      (r) => r.tso === d.tso && r.border_point === d.borderPoint && r.direction === d.direction,
-    );
-    // Collapse across products (daily / monthly / quarterly).  Offered =
-    // technical capacity → take the max.  Booked → take the max across all
-    // products (worst-case commitment); summing would double-count overlapping
-    // products that all reserve the same pipe.  Convert MWh/d → mcm/d so we
-    // can compare against physical flow directly.
-    const availableMwh = matched.reduce((m, r) => Math.max(m, r.offered_mwh), 0);
-    const bookedMwh = matched.reduce((m, r) => Math.max(m, r.booked_mwh), 0);
-    const available = availableMwh / CONVERSION_MCM_TO_MWH;
-    // Booked can never physically exceed technical.
-    const booked = Math.min(bookedMwh / CONVERSION_MCM_TO_MWH, available);
-
-    const flowKey = flowKeyFor(d);
-    const usedRaw = flowKey && latest ? latest[flowKey] ?? 0 : 0;
-    // Clamp physical flow to technical capacity for chart geometry —
-    // measurement / rounding noise occasionally pushes flow a hair past 100 %.
-    const used = available > 0 ? Math.min(usedRaw, available) : usedRaw;
-
-    const perDate = flows.map((f) => {
-      const u = flowKey ? f[flowKey] ?? 0 : 0;
-      return {
-        date: f.date,
-        used_mcm: u,
-        util_pct: available > 0 ? Math.min((u / available) * 100, 120) : 0,
-      };
-    });
-
-    return {
-      key: `${d.tso}|${d.borderPoint}|${d.direction}`,
-      label: routeLabel(d),
-      tso: d.tso,
-      available_mcm: available,
-      booked_mcm: booked,
-      used_mcm: used,
-      used_raw_mcm: usedRaw,
-      utilisation_booked: available > 0 ? (booked / available) * 100 : 0,
-      utilisation_used: available > 0 ? (usedRaw / available) * 100 : 0,
-      flowKey,
-      perDate,
-    };
-  });
+function fmtMaybeMcm(v: number | null | undefined) {
+  return v == null ? "N/A" : fmtMcm(v);
 }
 
-// Color ramp 0–120% utilisation: cool → warm → hot.
-// Daily per-point capacity series for the fixed January 2026 stack charts.
+function fmtMaybePct(v: number | null | undefined) {
+  return v == null ? "N/A" : fmtPct(v);
+}
+
 function dailyCapacitySeries(capacity: CapacityRow[], flows: FlowRow[]): JanuaryRouteSeries[] {
   const flowByDate = new Map(flows.map((f) => [f.date, f]));
-  const capacityByPoint = new Map<FlowPoint, Map<string, { offered_mwh: number; booked_mwh: number }>>();
+  const capacityByPoint = new Map<
+    FlowPoint,
+    Map<string, { technical_mwh: number | null; booked_mwh: number | null }>
+  >();
 
-  for (const d of CAPACITY_DEFS) {
-    const flowKey = flowKeyFor(d);
-    if (!flowKey) continue;
-    const matched = capacity.filter(
-      (r) => r.tso === d.tso && r.border_point === d.borderPoint && r.direction === d.direction,
-    );
-    const capacityByDate =
-      capacityByPoint.get(flowKey) ?? new Map<string, { offered_mwh: number; booked_mwh: number }>();
-    for (const row of matched) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(row.period)) continue;
-      const existing = capacityByDate.get(row.period) ?? { offered_mwh: 0, booked_mwh: 0 };
-      capacityByDate.set(row.period, {
-        offered_mwh: Math.max(existing.offered_mwh, row.offered_mwh),
-        booked_mwh: Math.max(existing.booked_mwh, row.booked_mwh),
-      });
-    }
-    capacityByPoint.set(flowKey, capacityByDate);
+  for (const row of capacity) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(row.period)) continue;
+    const route = row.route_id ? CAPACITY_ROUTE_BY_ID.get(row.route_id) : undefined;
+    if (!route) continue;
+    const byDate =
+      capacityByPoint.get(route.physicalFlowKey) ??
+      new Map<string, { technical_mwh: number | null; booked_mwh: number | null }>();
+    const existing = byDate.get(row.period);
+    const technical = row.technical_mwh ?? row.offered_mwh ?? null;
+    const booked = row.booked_mwh ?? null;
+    byDate.set(row.period, {
+      technical_mwh:
+        existing?.technical_mwh == null
+          ? technical
+          : technical == null
+            ? existing.technical_mwh
+            : Math.max(existing.technical_mwh, technical),
+      booked_mwh:
+        existing?.booked_mwh == null
+          ? booked
+          : booked == null
+            ? existing.booked_mwh
+            : Math.max(existing.booked_mwh, booked),
+    });
+    capacityByPoint.set(route.physicalFlowKey, byDate);
   }
 
   return JANUARY_PHYSICAL_POINT_ORDER.map((flowKey) => {
-    const capacityByDate = capacityByPoint.get(flowKey) ?? new Map<string, { offered_mwh: number; booked_mwh: number }>();
-    const dates = Array.from(new Set([...capacityByDate.keys(), ...flows.map((f) => f.date)])).sort();
+    const capacityByDate =
+      capacityByPoint.get(flowKey) ??
+      new Map<string, { technical_mwh: number | null; booked_mwh: number | null }>();
+    const dates = Array.from(
+      new Set([...capacityByDate.keys(), ...flows.map((f) => f.date)]),
+    ).sort();
     return {
       key: flowKey,
-      label: `${POINT_TSO[flowKey]} · ${POINTS[flowKey]}`,
+      label: POINTS[flowKey],
       flowKey,
       data: dates.map((date) => {
         const c = capacityByDate.get(date);
-        const technical = (c?.offered_mwh ?? 0) / CONVERSION_MCM_TO_MWH;
-        const booked = Math.min((c?.booked_mwh ?? 0) / CONVERSION_MCM_TO_MWH, technical);
-        const flow = flowByDate.get(date)?.[flowKey] ?? 0;
+        const technical = mwhDayToMcmDay(c?.technical_mwh);
+        const booked =
+          c?.booked_mwh == null
+            ? null
+            : Math.min(c.booked_mwh / CONVERSION_MCM_TO_MWH, technical ?? Number.POSITIVE_INFINITY);
+        const flow = flowByDate.get(date)?.[flowKey] ?? null;
         return {
           date,
           technical_mcm: technical,
           booked_mcm: booked,
-          available_mcm: Math.max(technical - booked, 0),
+          available_mcm:
+            technical == null || booked == null ? null : Math.max(technical - booked, 0),
           flow_mcm: flow,
         };
       }),
     };
-  })
-    .filter((route) => route.data.some((d) => d.technical_mcm > 0 || d.flow_mcm > 0));
+  }).filter((route) =>
+    route.data.some(
+      (d) =>
+        (d.technical_mcm != null && d.technical_mcm > 0) || (d.flow_mcm != null && d.flow_mcm > 0),
+    ),
+  );
 }
 
-function heatColor(pct: number): string {
-  if (!Number.isFinite(pct) || pct <= 0) return "oklch(0.96 0.01 240)";
-  const p = Math.min(pct, 120) / 120;
-  // Interpolate hue from 220 (blue) → 30 (orange) → 15 (red).
+function heatColor(pct: number | null): string {
+  if (!Number.isFinite(pct ?? NaN) || (pct ?? 0) <= 0) return "oklch(0.96 0.01 240)";
+  const p = Math.min(pct ?? 0, 120) / 120;
   const hue = 220 - 205 * p;
   const chroma = 0.05 + 0.15 * p;
   const light = 0.92 - 0.45 * p;
   return `oklch(${light.toFixed(3)} ${chroma.toFixed(3)} ${hue.toFixed(1)})`;
 }
 
-// Build the 12 month-buckets that span [fromISO, toISO).
 function monthBucketsBetween(fromISO: string, toISO: string) {
   const from = new Date(`${fromISO}T00:00:00Z`);
   const to = new Date(`${toISO}T00:00:00Z`);
@@ -198,7 +138,20 @@ function monthBucketsBetween(fromISO: string, toISO: string) {
   while (d < to) {
     const y = d.getUTCFullYear();
     const m = d.getUTCMonth();
-    const monthShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][m];
+    const monthShort = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ][m];
     out.push({
       key: `${y}-${String(m + 1).padStart(2, "0")}`,
       label: `${monthShort} ${String(y).slice(-2)}`,
@@ -223,65 +176,83 @@ export function CapacityCharts({
   heatmapFromISO?: string;
   heatmapToISO?: string;
 }) {
-  const routes = useMemo(() => summarise(capacity, flows), [capacity, flows]);
+  const routes = useMemo(() => buildCapacityRouteSummaries(capacity, flows), [capacity, flows]);
+  const aggregate = useMemo(() => deduplicateCapacityAggregate(routes), [routes]);
+  const referenceDate = routes.find((route) => route.flow_reference_date)?.flow_reference_date;
+  const capacityReferenceDate = routes.find(
+    (route) => route.capacity_reference_date,
+  )?.capacity_reference_date;
   const januaryRoutes = useMemo(
     () =>
-      januaryCapacity && januaryFlows
-        ? dailyCapacitySeries(januaryCapacity, januaryFlows)
-        : [],
+      januaryCapacity && januaryFlows ? dailyCapacitySeries(januaryCapacity, januaryFlows) : [],
     [januaryCapacity, januaryFlows],
   );
 
-  // Annual, monthly heatmap. Default window = current gas year if not provided.
   const heatMonths = useMemo(() => {
-    if (heatmapFromISO && heatmapToISO) {
-      return monthBucketsBetween(heatmapFromISO, heatmapToISO);
-    }
+    if (heatmapFromISO && heatmapToISO) return monthBucketsBetween(heatmapFromISO, heatmapToISO);
     const today = new Date();
     const y = today.getUTCMonth() >= 9 ? today.getUTCFullYear() : today.getUTCFullYear() - 1;
     return monthBucketsBetween(`${y}-10-01`, `${y + 1}-10-01`);
   }, [heatmapFromISO, heatmapToISO]);
 
   const todayISO = new Date().toISOString().slice(0, 10);
-
-  const totalAvailable = routes.reduce((s, r) => s + r.available_mcm, 0);
-  const totalBooked = routes.reduce((s, r) => s + r.booked_mcm, 0);
-  const totalUsed = routes.reduce((s, r) => s + r.used_mcm, 0);
+  const bookedPct =
+    aggregate.technical_mcm != null && aggregate.technical_mcm > 0 && aggregate.booked_mcm != null
+      ? (aggregate.booked_mcm / aggregate.technical_mcm) * 100
+      : null;
+  const usedPct =
+    aggregate.technical_mcm != null && aggregate.technical_mcm > 0 && aggregate.used_mcm != null
+      ? (aggregate.used_mcm / aggregate.technical_mcm) * 100
+      : null;
 
   return (
     <div className="space-y-4">
-      {/* Aggregate KPI strip */}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <SummaryKpi
           label="Technical capacity"
-          value={fmtMcm(totalAvailable)}
+          value={fmtMaybeMcm(aggregate.technical_mcm)}
           unit="mcm/d"
           tone="muted"
-          hint="Sum of offered capacity across all border routes."
+          hint={`${aggregate.hint} Capacity reference: ${
+            capacityReferenceDate ? fmtShortDateYear(capacityReferenceDate) : "N/A"
+          }.`}
         />
         <SummaryKpi
           label="Booked"
-          value={fmtMcm(totalBooked)}
+          value={fmtMaybeMcm(aggregate.booked_mcm)}
           unit="mcm/d"
           tone="accent"
-          hint={`${fmtPct((totalBooked / Math.max(totalAvailable, 1)) * 100)} of technical`}
+          hint={
+            bookedPct == null
+              ? "Aggregate firm booked capacity: N/A"
+              : `${fmtPct(bookedPct)} of technical. ${aggregate.hint}`
+          }
         />
         <SummaryKpi
           label="Used (physical flow)"
-          value={fmtMcm(totalUsed)}
+          value={fmtMaybeMcm(aggregate.used_mcm)}
           unit="mcm/d"
           tone="primary"
-          hint={`${fmtPct((totalUsed / Math.max(totalAvailable, 1)) * 100)} of technical · latest day`}
+          hint={
+            usedPct == null
+              ? "Measured physical flow: N/A"
+              : `${fmtPct(usedPct)} of technical. Latest flow date: ${
+                  referenceDate ? fmtShortDateYear(referenceDate) : "N/A"
+                }.`
+          }
         />
       </div>
 
-      {/* Per-route bars: available baseline with booked + used overlay */}
-      <ChartCard title="Capacity vs flow — by route" subtitle="Technical · booked · physically used (latest day), mcm/d">
+      <ChartCard
+        title="Capacity vs flow — by route"
+        subtitle="Technical · aggregate firm booked · physically used, mcm/d"
+      >
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart
             data={routes.map((r) => ({
+              ...r,
               label: r.label,
-              available: r.available_mcm,
+              available: r.technical_mcm,
               booked: r.booked_mcm,
               used: r.used_mcm,
             }))}
@@ -303,12 +274,14 @@ export function CapacityCharts({
               tick={{ fontSize: 11 }}
               stroke={PALETTE.axis}
             />
-            <Tooltip
-              formatter={(v) => (typeof v === "number" ? `${fmtMcm(v)} mcm/d` : "–")}
-              contentStyle={{ fontSize: 12 }}
-            />
+            <Tooltip content={<CapacityRouteTooltip />} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
-            <Bar dataKey="available" name="Technical" fill="oklch(0.92 0.02 240)" isAnimationActive={false} />
+            <Bar
+              dataKey="available"
+              name="Technical"
+              fill="oklch(0.92 0.02 240)"
+              isAnimationActive={false}
+            />
             <Bar dataKey="booked" name="Booked" fill={PALETTE.bgImport} isAnimationActive={false} />
             <Bar dataKey="used" name="Used" fill={PALETTE.kalotina} isAnimationActive={false} />
           </ComposedChart>
@@ -318,9 +291,10 @@ export function CapacityCharts({
       {januaryRoutes.length > 0 && (
         <div className="space-y-3">
           <div className="rounded-md border bg-card p-3 shadow-sm">
-            <h3 className="text-sm font-semibold">2026 interconnection capacity stacks</h3>
+            <h3 className="text-sm font-semibold">January 2026 interconnection capacity stacks</h3>
             <p className="mt-1 text-xs text-muted-foreground">
-              Daily ENTSOG snapshot, Jan 01 - Dec 31 2026. Bars stack booked plus available capacity to technical capacity; the green line is physical flow.
+              Daily ENTSOG snapshot, Jan 01-31 2026. Bars stack booked plus available capacity to
+              technical capacity; the green line is physical flow.
             </p>
           </div>
           <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
@@ -331,14 +305,14 @@ export function CapacityCharts({
         </div>
       )}
 
-      {/* Annual heatmap aggregated by month */}
       <div className="rounded-md border bg-card p-3 shadow-sm">
         <div className="mb-3 flex items-baseline justify-between">
           <div>
             <h3 className="text-sm font-semibold">Utilisation heatmap</h3>
             <p className="text-xs text-muted-foreground">
-              Used / technical capacity, monthly average · {heatMonths[0]?.label} → {heatMonths[heatMonths.length - 1]?.label}.
-              Months without physical-flow data are shown blank.
+              Used / technical capacity, monthly average · {heatMonths[0]?.label} to{" "}
+              {heatMonths[heatMonths.length - 1]?.label}. Months without physical-flow data are
+              shown blank.
             </p>
           </div>
           <HeatLegend />
@@ -354,7 +328,7 @@ export function CapacityCharts({
             {heatMonths.map((m) => (
               <div
                 key={m.key}
-                className="text-[10px] tabular-nums text-muted-foreground text-center pb-1"
+                className="pb-1 text-center text-[10px] tabular-nums text-muted-foreground"
               >
                 {m.label}
               </div>
@@ -369,6 +343,67 @@ export function CapacityCharts({
   );
 }
 
+function CapacityRouteTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload?: CapacityRouteSummary }>;
+}) {
+  const route = active ? payload?.[0]?.payload : undefined;
+  if (!route) return null;
+  return (
+    <div className="max-w-sm rounded-md border bg-white p-3 text-xs shadow">
+      <div className="font-semibold">{route.label}</div>
+      <div className="mt-1 text-muted-foreground">
+        {route.route.borderPoint} · {route.route.direction}
+      </div>
+      <div className="mt-2 grid grid-cols-[1fr_auto] gap-x-4 gap-y-1">
+        <span>Technical capacity</span>
+        <span className="tabular-nums">{fmtMaybeMcm(route.technical_mcm)} mcm/d</span>
+        <span>Aggregate booked capacity</span>
+        <span className="tabular-nums">{fmtMaybeMcm(route.booked_mcm)} mcm/d</span>
+        <span>Physical flow</span>
+        <span className="tabular-nums">{fmtMaybeMcm(route.used_mcm)} mcm/d</span>
+        <span>Capacity source</span>
+        <span>{sourceLabel(route)}</span>
+        <span>Capacity reference date</span>
+        <span>
+          {route.capacity_reference_date ? fmtShortDateYear(route.capacity_reference_date) : "N/A"}
+        </span>
+        <span>Source publication date</span>
+        <span>
+          {route.capacity_source_date ? fmtShortDateYear(route.capacity_source_date) : "N/A"}
+        </span>
+        <span>Flow reference date</span>
+        <span>
+          {route.flow_reference_date ? fmtShortDateYear(route.flow_reference_date) : "N/A"}
+        </span>
+      </div>
+      {route.is_proxy && (
+        <div className="mt-2 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-amber-900">
+          Counterparty-side proxy; no direct Gastrans publication used.
+        </div>
+      )}
+      {route.is_carried_forward && route.capacity_source_date && (
+        <div className="mt-1 text-muted-foreground">
+          Capacity as of {fmtShortDateYear(route.capacity_source_date)}.
+        </div>
+      )}
+      {route.warning && <div className="mt-1 text-amber-800">{route.warning}</div>}
+    </div>
+  );
+}
+
+function sourceLabel(route: CapacityRouteSummary) {
+  if (route.data_status === "unavailable") return "Unavailable";
+  if (route.is_proxy) return "Counterparty proxy";
+  if (route.data_status === "cached") return "Cached";
+  if (route.data_status === "historical") return "Historical";
+  if (route.source === "ENTSOG") return "Live ENTSOG";
+  return route.source ?? "N/A";
+}
+
 function JanuaryCapacityStackCard({ route }: { route: JanuaryRouteSeries }) {
   return (
     <ChartCard title={route.label} subtitle="mcm/d" height={300}>
@@ -379,7 +414,7 @@ function JanuaryCapacityStackCard({ route }: { route: JanuaryRouteSeries }) {
             dataKey="date"
             tick={{ fontSize: 10 }}
             stroke={PALETTE.axis}
-            interval={29}
+            interval={4}
             tickFormatter={(v) => String(v).slice(5)}
           />
           <YAxis
@@ -399,7 +434,7 @@ function JanuaryCapacityStackCard({ route }: { route: JanuaryRouteSeries }) {
                     : n === "technical_mcm"
                       ? "Technical"
                       : "Physical flow";
-              return [typeof v === "number" ? `${fmtMcm(v)} mcm/d` : "-", label];
+              return [typeof v === "number" ? `${fmtMcm(v)} mcm/d` : "N/A", label];
             }}
             contentStyle={{ fontSize: 12 }}
           />
@@ -479,15 +514,14 @@ function RouteHeatRow({
   months,
   todayISO,
 }: {
-  route: RouteSummary;
+  route: CapacityRouteSummary;
   months: { key: string; label: string }[];
   todayISO: string;
 }) {
-  // Group per-date utilisation into month buckets (mean of util_pct across the
-  // days we have data for). Months with zero observed days render blank.
   const byMonth = new Map<string, { sum: number; n: number; usedSum: number }>();
   for (const p of route.perDate) {
-    const k = p.date.slice(0, 7); // YYYY-MM
+    if (p.util_pct == null || p.used_mcm == null) continue;
+    const k = p.date.slice(0, 7);
     const slot = byMonth.get(k) ?? { sum: 0, n: 0, usedSum: 0 };
     slot.sum += p.util_pct;
     slot.usedSum += p.used_mcm;
@@ -506,8 +540,8 @@ function RouteHeatRow({
       {months.map((m) => {
         const slot = byMonth.get(m.key);
         const hasData = !!slot && slot.n > 0;
-        const pct = hasData ? slot!.sum / slot!.n : 0;
-        const avgUsed = hasData ? slot!.usedSum / slot!.n : 0;
+        const pct = hasData ? slot.sum / slot.n : null;
+        const avgUsed = hasData ? slot.usedSum / slot.n : null;
         const isFuture = m.key > todayMonth;
         return (
           <div
@@ -519,7 +553,7 @@ function RouteHeatRow({
             }}
             title={
               hasData
-                ? `${route.label} · ${m.label}: ${fmtPct(pct)} avg (${fmtMcm(avgUsed)} mcm/d avg, ${slot!.n} days)`
+                ? `${route.label} · ${m.label}: ${fmtMaybePct(pct)} avg (${fmtMaybeMcm(avgUsed)} mcm/d avg, ${slot.n} days)`
                 : `${route.label} · ${m.label}: no flow data`
             }
           />

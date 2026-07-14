@@ -42,17 +42,31 @@ export interface BalanceRow {
 }
 
 export interface CapacityRow {
+  route_id?: string;
   tso: string;
   border_point: string;
   direction: "entry" | "exit";
   product: "daily" | "monthly" | "quarterly";
   period: string;
+  technical_mwh?: number | null;
+  // Compatibility alias for older chart/table code. In the capacity chart this
+  // represents technical capacity, not auction offered capacity.
   offered_mwh: number;
-  booked_mwh: number;
+  booked_mwh: number | null;
+  physical_flow_mcm?: number | null;
   utilisation_pct: number;
   price: number;
   currency: "HUF" | "EUR";
   price_unit: string;
+  source?: "ENTSOG" | "ENTSOG counterpart" | "RBP" | "snapshot" | "cache" | "dummy";
+  source_date?: string;
+  capacity_source_date?: string;
+  fetched_at?: string;
+  is_proxy?: boolean;
+  is_carried_forward?: boolean;
+  is_stale?: boolean;
+  data_status?: "live" | "cached" | "historical" | "proxy" | "unavailable";
+  warning?: string;
 }
 
 export interface CapacityAuctionRow {

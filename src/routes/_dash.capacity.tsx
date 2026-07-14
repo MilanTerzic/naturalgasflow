@@ -7,11 +7,11 @@ import { CapacityTable } from "@/components/dashboard/CapacityTable";
 import { Button } from "@/components/ui/button";
 import { dummyCapacity } from "@/lib/gas/dummy";
 import { fetchLiveCapacityBookings } from "@/lib/data/capacity.functions";
-import { fetchEntsogFlows } from "@/lib/data/entsog.functions";
 import { realCapacityAndFlows, SNAPSHOT_RANGE } from "@/lib/gas/real-data";
 import { useDashboardData } from "@/state/use-dashboard-data";
+import { useDashboard } from "@/state/dashboard-context";
 import { fmtMwh, fmtShortDate, fmtShortDateYear } from "@/lib/gas/format";
-import type { CapacityAuctionRow, FlowRow } from "@/lib/gas/types";
+import type { CapacityAuctionRow } from "@/lib/gas/types";
 import {
   Select,
   SelectContent,
@@ -34,8 +34,7 @@ export const Route = createFileRoute("/_dash/capacity")({
       { title: "Capacity Bookings - Serbia Gas Dashboard" },
       {
         name: "description",
-        content:
-          "Cross-border capacity bookings for FGSZ, Bulgartransgaz and Gastrans.",
+        content: "Cross-border capacity bookings for FGSZ, Bulgartransgaz and Gastrans.",
       },
     ],
   }),
@@ -67,54 +66,55 @@ function overlapsSnapshot(fromISO: string, toISO: string) {
 
 function CapacityPage() {
   const { flows: liveFlows } = useDashboardData();
+  const { mode } = useDashboard();
   const options = useMemo(gasYearOptions, []);
   const [gasYear, setGasYear] = useState(String(currentGasYearStart()));
+  const [refreshNonce, setRefreshNonce] = useState(0);
   const selected = options.find((o) => o.value === gasYear) ?? options[1];
 
   const january2026 = useMemo(
     () =>
       realCapacityAndFlows({
         fromISO: "2026-01-01",
-        toISO: "2027-01-01",
+        toISO: "2026-02-01",
       }),
     [],
   );
 
-  // Live ENTSOG physical flow for the whole 2026 window — used to fill the
-  // gap between the snapshot end (2026-05-31) and today.
-  const liveFlows2026Query = useQuery({
-    queryKey: ["live-entsog-flows", "2026"],
-    queryFn: () =>
-      fetchEntsogFlows({ data: { from: "2026-01-01", to: "2026-12-31" } }),
-    staleTime: 60 * 60 * 1000,
-    refetchOnWindowFocus: false,
-  });
-
-  const january2026Flows = useMemo<FlowRow[]>(() => {
-    const live = liveFlows2026Query.data?.data ?? [];
-    if (live.length === 0) return january2026.flows;
-    const byDate = new Map<string, FlowRow>();
-    for (const r of january2026.flows) byDate.set(r.date, r);
-    for (const r of live) byDate.set(r.date, { ...byDate.get(r.date), ...r });
-    return Array.from(byDate.values()).sort((a, b) => (a.date < b.date ? -1 : 1));
-  }, [january2026.flows, liveFlows2026Query.data]);
-
   const liveCapacityQuery = useQuery({
-    queryKey: ["live-capacity-bookings", selected.fromISO, selected.toISO],
+    queryKey: ["live-capacity-bookings", selected.fromISO, selected.toISO, refreshNonce],
     queryFn: () =>
       fetchLiveCapacityBookings({
-        data: { from: selected.fromISO, to: selected.toISO },
+        data: {
+          from: selected.fromISO,
+          to: selected.toISO,
+          force: refreshNonce,
+        },
       }),
     staleTime: 30 * 60 * 1000,
     refetchOnWindowFocus: false,
+    placeholderData: (previous) => previous,
+    enabled: mode === "live",
   });
 
   const { capacity, flows, sourceLabel } = useMemo(() => {
+    if (mode === "dummy") {
+      const d = dummyCapacity({ fromISO: selected.fromISO, toISO: selected.toISO });
+      return {
+        capacity: d.rows,
+        flows: liveFlows,
+        sourceLabel: "Demo capacity data. Not live ENTSOG/RBP data.",
+      };
+    }
+
     if ((liveCapacityQuery.data?.capacity.length ?? 0) > 0) {
+      const hasCached = liveCapacityQuery.data!.capacity.some(
+        (row) => row.data_status === "cached",
+      );
       return {
         capacity: liveCapacityQuery.data!.capacity,
         flows: liveFlows,
-        sourceLabel: `Live ENTSOG capacity refresh (${fmtShortDateYear(liveCapacityQuery.data!.fetchedAt.slice(0, 10))}).`,
+        sourceLabel: `${hasCached ? "Cached" : "Live"} ENTSOG technical and aggregate firm booked capacity refresh (${fmtShortDateYear(liveCapacityQuery.data!.fetchedAt.slice(0, 10))}).`,
       };
     }
 
@@ -126,17 +126,17 @@ function CapacityPage() {
       return {
         capacity: r.capacity,
         flows: r.flows,
-        sourceLabel: `ENTSOG operational data (snapshot ${fmtShortDate(SNAPSHOT_RANGE.fromISO)} -> ${fmtShortDate(SNAPSHOT_RANGE.toISO)}).`,
+        sourceLabel: `Historical ENTSOG snapshot (${fmtShortDate(SNAPSHOT_RANGE.fromISO)} -> ${fmtShortDate(SNAPSHOT_RANGE.toISO)}).`,
       };
     }
 
-    const d = dummyCapacity({ fromISO: selected.fromISO, toISO: selected.toISO });
     return {
-      capacity: d.rows,
+      capacity: [],
       flows: liveFlows,
-      sourceLabel: "Modelled values - outside the available ENTSOG snapshot window.",
+      sourceLabel:
+        "Live capacity unavailable for this gas-year window. Missing values display as N/A.",
     };
-  }, [selected.fromISO, selected.toISO, liveFlows, liveCapacityQuery.data]);
+  }, [mode, selected.fromISO, selected.toISO, liveFlows, liveCapacityQuery.data]);
 
   const rbpAuctions = liveCapacityQuery.data?.rbpAuctions ?? [];
   const warnings = [
@@ -163,11 +163,13 @@ function CapacityPage() {
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => liveCapacityQuery.refetch()}
+            onClick={() => setRefreshNonce((value) => value + 1)}
             disabled={liveCapacityQuery.isFetching}
             title="Refresh live ENTSOG capacity and RBP auction offers"
           >
-            <RefreshCw className={`h-4 w-4 ${liveCapacityQuery.isFetching ? "animate-spin" : ""}`} />
+            <RefreshCw
+              className={`h-4 w-4 ${liveCapacityQuery.isFetching ? "animate-spin" : ""}`}
+            />
             Refresh
           </Button>
           <div className="flex items-center gap-2">
@@ -198,7 +200,7 @@ function CapacityPage() {
         capacity={capacity}
         flows={flows}
         januaryCapacity={january2026.capacity}
-        januaryFlows={january2026Flows}
+        januaryFlows={january2026.flows}
         heatmapFromISO={selected.fromISO}
         heatmapToISO={selected.toISO}
       />
@@ -222,7 +224,8 @@ function RbpAuctionTable({
         <div>
           <h3 className="text-sm font-semibold">RBP auction offers</h3>
           <p className="text-xs text-muted-foreground">
-            Public RBP auction list for the selected period. Offered capacity is auction offer volume, not booked allocation.
+            Public RBP auction list for the selected period. Offered capacity is auction offer
+            volume, not booked allocation.
           </p>
         </div>
         <span className="text-xs text-muted-foreground">
@@ -243,12 +246,16 @@ function RbpAuctionTable({
           {rows.length === 0 ? (
             <TableRow>
               <TableCell colSpan={5} className="py-6 text-center text-xs text-muted-foreground">
-                {isLoading ? "Loading RBP auction offers..." : "No RBP auction offers returned for this period."}
+                {isLoading
+                  ? "Loading RBP auction offers..."
+                  : "No RBP auction offers returned for this period."}
               </TableCell>
             </TableRow>
           ) : (
             rows.map((r) => (
-              <TableRow key={`${r.auction_code}-${r.network_point}-${r.valid_from}-${r.offered_mwh}`}>
+              <TableRow
+                key={`${r.auction_code}-${r.network_point}-${r.valid_from}-${r.offered_mwh}`}
+              >
                 <TableCell className="text-xs">
                   <div className="font-medium">{r.network_point}</div>
                   <div className="text-muted-foreground">{r.auction_code}</div>
@@ -258,7 +265,9 @@ function RbpAuctionTable({
                   {r.valid_from} {"->"} {r.valid_to}
                 </TableCell>
                 <TableCell className="text-xs">{r.status}</TableCell>
-                <TableCell className="text-right text-xs tabular-nums">{fmtMwh(r.offered_mwh)}</TableCell>
+                <TableCell className="text-right text-xs tabular-nums">
+                  {fmtMwh(r.offered_mwh)}
+                </TableCell>
               </TableRow>
             ))
           )}

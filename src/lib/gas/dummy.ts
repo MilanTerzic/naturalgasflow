@@ -1,5 +1,6 @@
 // Realistic dummy data for offline preview. Mirrors dummy.py.
 import { CAPACITY_DEFS } from "./config";
+import { CAPACITY_ROUTES } from "./capacity-routes";
 import type { CapacityRow, FlowRow, TempRow } from "./types";
 
 // Mulberry32 — deterministic PRNG so the dashboard renders identically each load.
@@ -83,7 +84,9 @@ function offeredFor(d: (typeof CAPACITY_DEFS)[number]) {
 }
 
 function monthLabel(d: Date) {
-  const m = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getUTCMonth()];
+  const m = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][
+    d.getUTCMonth()
+  ];
   return `${m} ${d.getUTCFullYear()}`;
 }
 
@@ -101,7 +104,7 @@ function addDays(d: Date, n: number) {
 
 function quarterLabel(d: Date, offset: number) {
   const q0 = Math.floor(d.getUTCMonth() / 3);
-  const q = ((q0 + offset) % 4 + 4) % 4;
+  const q = (((q0 + offset) % 4) + 4) % 4;
   const year = d.getUTCFullYear() + Math.floor((q0 + offset) / 4);
   return `Q${q + 1} ${year}`;
 }
@@ -111,11 +114,10 @@ export interface DummyCapacityRange {
   toISO: string;
 }
 
-export function dummyCapacity(opts?: {
-  fromISO?: string;
-  toISO?: string;
-  yearsAhead?: number;
-}): { rows: CapacityRow[]; range: DummyCapacityRange } {
+export function dummyCapacity(opts?: { fromISO?: string; toISO?: string; yearsAhead?: number }): {
+  rows: CapacityRow[];
+  range: DummyCapacityRange;
+} {
   const rand = mulberry32(11);
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
@@ -160,26 +162,38 @@ export function dummyCapacity(opts?: {
   };
 
   const rows: CapacityRow[] = [];
-  for (const d of CAPACITY_DEFS) {
+  for (const [idx, d] of CAPACITY_DEFS.entries()) {
+    const route = CAPACITY_ROUTES[idx];
     const offered = offeredFor(d);
     for (const product of ["daily", "monthly", "quarterly"] as const) {
       for (const period of periods[product]) {
         const booked = offered * (0.45 + 0.5 * rand());
-        const price = d.currency === "HUF"
-          ? 0.0015 + (0.0040 - 0.0015) * rand()
-          : 0.00002 + (0.00012 - 0.00002) * rand();
+        const price =
+          d.currency === "HUF"
+            ? 0.0015 + (0.004 - 0.0015) * rand()
+            : 0.00002 + (0.00012 - 0.00002) * rand();
         rows.push({
+          route_id: route?.id,
           tso: d.tso,
           border_point: d.borderPoint,
           direction: d.direction,
           product,
           period,
+          technical_mwh: Math.round(offered),
           offered_mwh: Math.round(offered),
           booked_mwh: Math.round(booked),
           utilisation_pct: +((booked / offered) * 100).toFixed(1),
           price,
           currency: d.currency,
           price_unit: d.priceUnit,
+          source: "dummy",
+          source_date: /^\d{4}-\d{2}-\d{2}$/.test(period) ? period : undefined,
+          capacity_source_date: /^\d{4}-\d{2}-\d{2}$/.test(period) ? period : undefined,
+          fetched_at: new Date().toISOString(),
+          is_proxy: route?.sourceStrategy === "counterparty-proxy",
+          is_carried_forward: false,
+          is_stale: false,
+          data_status: "live",
         });
       }
     }
