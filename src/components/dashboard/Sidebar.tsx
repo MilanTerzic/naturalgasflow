@@ -83,39 +83,7 @@ function DashboardControls({ compact = false }: { compact?: boolean }) {
         </div>
       )}
 
-      <AdvancedSection
-        title="Data view"
-        description="Live data range and demo mode."
-        defaultOpen={true}
-      >
-        <div className="flex min-h-10 items-center justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2">
-          <div>
-            <Label className="text-xs font-medium">Demo data</Label>
-            <p className="text-[11px] text-muted-foreground">Offline preview mode</p>
-          </div>
-          <Switch
-            aria-label="Toggle demo data"
-            checked={s.mode === "dummy"}
-            onCheckedChange={(v) => s.setMode(v ? "dummy" : "live")}
-          />
-        </div>
-        <RangeSlider
-          label="Past days"
-          value={s.rangePastDays}
-          min={3}
-          max={60}
-          step={1}
-          onChange={(value) => s.setRange(value, s.rangeFutureDays)}
-        />
-        <RangeSlider
-          label="Future days"
-          value={s.rangeFutureDays}
-          min={0}
-          max={16}
-          step={1}
-          onChange={(value) => s.setRange(s.rangePastDays, value)}
-        />
-      </AdvancedSection>
+      <DataViewSection />
 
       <AdvancedSection title="Demand scenario" defaultOpen={false}>
         <div className="flex min-h-10 items-center justify-between gap-3">
@@ -178,6 +146,64 @@ function DashboardControls({ compact = false }: { compact?: boolean }) {
         Reset scenario assumptions
       </Button>
     </div>
+  );
+}
+
+function DataViewSection() {
+  const s = useDashboard();
+  const [open, setOpen] = useState(true);
+
+  return (
+    <section className="rounded-lg border bg-card">
+      <div className="flex min-h-10 items-start justify-between gap-3 px-3 py-2">
+        <div className="min-w-0">
+          <h3 className="text-xs font-semibold text-foreground">Data view</h3>
+          <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+            Live data range and demo mode.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          aria-label={open ? "Collapse Data view" : "Expand Data view"}
+          aria-expanded={open}
+          onClick={() => setOpen((value) => !value)}
+        >
+          <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} />
+        </button>
+      </div>
+      {open && (
+        <div className="space-y-3 border-t px-3 py-3">
+          <div className="flex min-h-10 items-center justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2">
+            <div>
+              <Label className="text-xs font-medium">Demo data</Label>
+              <p className="text-[11px] text-muted-foreground">Offline preview mode</p>
+            </div>
+            <Switch
+              aria-label="Toggle demo data"
+              checked={s.mode === "dummy"}
+              onCheckedChange={(v) => s.setMode(v ? "dummy" : "live")}
+            />
+          </div>
+          <RangeSlider
+            label="Past days"
+            value={s.rangePastDays}
+            min={3}
+            max={60}
+            step={1}
+            onChange={(value) => s.setRange(value, s.rangeFutureDays)}
+          />
+          <RangeSlider
+            label="Future days"
+            value={s.rangeFutureDays}
+            min={0}
+            max={16}
+            step={1}
+            onChange={(value) => s.setRange(s.rangePastDays, value)}
+          />
+        </div>
+      )}
+    </section>
   );
 }
 
