@@ -43,18 +43,18 @@ export const ENTSOG_POINT_DIRECTIONS: Record<FlowPoint, string> = {
 
 // Palette — matches the original Plotly figures.
 export const PALETTE = {
-  kalotina: "#1B7F3A",
-  bgImport: "#7FB6E2",
-  production: "#34526F",
-  huOthers: "#2E75B6",
+  kalotina: "#17803D",
+  bgImport: "#76A9D6",
+  production: "#3E5F7C",
+  huOthers: "#2563A8",
   huMet: "#ED7D31",
-  demand: "#C00000",
-  temp: "#1F77B4",
-  storagePos: "#2E7D32",
-  storageNeg: "#C00000",
-  today: "#C00000",
-  grid: "rgba(220,220,220,0.7)",
-  axis: "rgba(150,150,150,0.5)",
+  demand: "#A51F2E",
+  temp: "#2563EB",
+  storagePos: "#2F855A",
+  storageNeg: "#B42318",
+  today: "#2563EB",
+  grid: "rgba(203,213,225,0.75)",
+  axis: "rgba(100,116,139,0.65)",
 } as const;
 
 export interface CapacityDef {
@@ -66,10 +66,46 @@ export interface CapacityDef {
 }
 
 export const CAPACITY_DEFS: CapacityDef[] = [
-  { tso: "FGSZ", borderPoint: "Kiskundorozsma (HU)/Kiskundorozsma (RS)", direction: "exit", priceUnit: "HUF/kWh/h/day", currency: "HUF" },
-  { tso: "Bulgartransgaz", borderPoint: "Kireevo (BG)/Zaychar (RS)", direction: "exit", priceUnit: "EUR/kWh/h/day", currency: "EUR" },
-  { tso: "Gastrans", borderPoint: "Kireevo (BG)/Zaychar (RS)", direction: "entry", priceUnit: "EUR/kWh/h/day", currency: "EUR" },
-  { tso: "Bulgartransgaz", borderPoint: "Kalotina (BG)/Dimitrovgrad (RS)", direction: "exit", priceUnit: "EUR/kWh/h/day", currency: "EUR" },
-  { tso: "Gastrans", borderPoint: "Kiskundorozsma 2", direction: "exit", priceUnit: "EUR/kWh/h/day", currency: "EUR" },
-  { tso: "FGSZ", borderPoint: "Kiskundorozsma 2", direction: "entry", priceUnit: "HUF/kWh/h/day", currency: "HUF" },
+  {
+    tso: "FGSZ",
+    borderPoint: "Kiskundorozsma (HU)/Kiskundorozsma (RS)",
+    direction: "exit",
+    priceUnit: "HUF/kWh/h/day",
+    currency: "HUF",
+  },
+  {
+    tso: "Bulgartransgaz",
+    borderPoint: "Kireevo (BG)/Zaychar (RS)",
+    direction: "exit",
+    priceUnit: "EUR/kWh/h/day",
+    currency: "EUR",
+  },
+  {
+    tso: "Gastrans",
+    borderPoint: "Kireevo (BG)/Zaychar (RS)",
+    direction: "entry",
+    priceUnit: "EUR/kWh/h/day",
+    currency: "EUR",
+  },
+  {
+    tso: "Bulgartransgaz",
+    borderPoint: "Kalotina (BG)/Dimitrovgrad (RS)",
+    direction: "exit",
+    priceUnit: "EUR/kWh/h/day",
+    currency: "EUR",
+  },
+  {
+    tso: "Gastrans",
+    borderPoint: "Kiskundorozsma 2",
+    direction: "exit",
+    priceUnit: "EUR/kWh/h/day",
+    currency: "EUR",
+  },
+  {
+    tso: "FGSZ",
+    borderPoint: "Kiskundorozsma 2",
+    direction: "entry",
+    priceUnit: "HUF/kWh/h/day",
+    currency: "HUF",
+  },
 ];

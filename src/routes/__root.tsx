@@ -78,18 +78,37 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Your Digital Companion is a TypeScript application that replicates the functionality of a provided example, focusing on data display and calculations." },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Your Digital Companion is a TypeScript application that replicates the functionality of a provided example, focusing on data display and calculations." },
+      { title: "Serbia Gas Balance & Capacity Dashboard" },
+      {
+        name: "description",
+        content:
+          "Natural gas flows, Serbian demand forecasts, cross-border capacity and gas balance analytics.",
+      },
+      { name: "author", content: "Serbia Gas Balance & Capacity Dashboard" },
+      { property: "og:title", content: "Serbia Gas Balance & Capacity Dashboard" },
+      {
+        property: "og:description",
+        content:
+          "Natural gas flows, Serbian demand forecasts, cross-border capacity and gas balance analytics.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:site", content: "@Lovable" },
-      { name: "twitter:title", content: "Lovable App" },
-      { name: "twitter:description", content: "Your Digital Companion is a TypeScript application that replicates the functionality of a provided example, focusing on data display and calculations." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/88b39ede-5a09-4a1d-9d06-f1377f4e4eca/id-preview-ccbbc16e--c67867c7-35ce-4c34-8aaf-7270e5540dc7.lovable.app-1780177914886.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/88b39ede-5a09-4a1d-9d06-f1377f4e4eca/id-preview-ccbbc16e--c67867c7-35ce-4c34-8aaf-7270e5540dc7.lovable.app-1780177914886.png" },
+      { name: "twitter:title", content: "Serbia Gas Balance & Capacity Dashboard" },
+      {
+        name: "twitter:description",
+        content:
+          "Natural gas flows, Serbian demand forecasts, cross-border capacity and gas balance analytics.",
+      },
+      {
+        property: "og:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/88b39ede-5a09-4a1d-9d06-f1377f4e4eca/id-preview-ccbbc16e--c67867c7-35ce-4c34-8aaf-7270e5540dc7.lovable.app-1780177914886.png",
+      },
+      {
+        name: "twitter:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/88b39ede-5a09-4a1d-9d06-f1377f4e4eca/id-preview-ccbbc16e--c67867c7-35ce-4c34-8aaf-7270e5540dc7.lovable.app-1780177914886.png",
+      },
     ],
     links: [
       {
