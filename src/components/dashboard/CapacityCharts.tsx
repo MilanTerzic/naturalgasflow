@@ -164,6 +164,7 @@ function monthBucketsBetween(fromISO: string, toISO: string) {
 export function CapacityCharts({
   capacity,
   flows,
+  heatmapFlows,
   calendarCapacity,
   calendarFlows,
   heatmapFromISO,
@@ -171,12 +172,17 @@ export function CapacityCharts({
 }: {
   capacity: CapacityRow[];
   flows: FlowRow[];
+  heatmapFlows?: FlowRow[];
   calendarCapacity?: CapacityRow[];
   calendarFlows?: FlowRow[];
   heatmapFromISO?: string;
   heatmapToISO?: string;
 }) {
   const routes = useMemo(() => buildCapacityRouteSummaries(capacity, flows), [capacity, flows]);
+  const heatmapRoutes = useMemo(
+    () => buildCapacityRouteSummaries(capacity, heatmapFlows ?? flows),
+    [capacity, flows, heatmapFlows],
+  );
   const aggregate = useMemo(() => deduplicateCapacityAggregate(routes), [routes]);
   const referenceDate = routes.find((route) => route.flow_reference_date)?.flow_reference_date;
   const capacityReferenceDate = routes.find(
@@ -333,7 +339,7 @@ export function CapacityCharts({
                 {m.label}
               </div>
             ))}
-            {routes.map((r) => (
+            {heatmapRoutes.map((r) => (
               <RouteHeatRow key={r.key} route={r} months={heatMonths} todayISO={todayISO} />
             ))}
           </div>
@@ -521,7 +527,7 @@ function RouteHeatRow({
 }) {
   const byMonth = new Map<string, { sum: number; n: number; usedSum: number }>();
   for (const p of route.perDate) {
-    if (p.util_pct == null || p.used_mcm == null) continue;
+    if (p.util_pct == null || p.used_mcm == null || p.used_mcm <= 0) continue;
     const k = p.date.slice(0, 7);
     const slot = byMonth.get(k) ?? { sum: 0, n: 0, usedSum: 0 };
     slot.sum += p.util_pct;

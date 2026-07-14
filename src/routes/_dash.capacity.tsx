@@ -65,6 +65,18 @@ function overlapsSnapshot(fromISO: string, toISO: string) {
   return fromISO < SNAPSHOT_RANGE.toISO && toISO > SNAPSHOT_RANGE.fromISO;
 }
 
+function dateRangeIso(fromISO: string, toISO: string) {
+  const dates: string[] = [];
+  for (
+    let d = new Date(`${fromISO}T00:00:00Z`);
+    d < new Date(`${toISO}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + 1)
+  ) {
+    dates.push(d.toISOString().slice(0, 10));
+  }
+  return dates;
+}
+
 function CapacityPage() {
   const { flows: liveFlows } = useDashboardData();
   const { mode } = useDashboard();
@@ -127,6 +139,21 @@ function CapacityPage() {
     enabled: mode === "live",
   });
 
+  const selectedPeriodFlowsQuery = useQuery({
+    queryKey: ["flows-capacity-window", selected.fromISO, selected.toISO],
+    queryFn: () =>
+      fetchEntsogFlows({
+        data: {
+          from: selected.fromISO,
+          to: selected.toISO,
+        },
+      }),
+    staleTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    placeholderData: (previous) => previous,
+    enabled: mode === "live",
+  });
+
   const { capacity, flows, sourceLabel } = useMemo(() => {
     if (mode === "dummy") {
       const d = dummyCapacity({ fromISO: selected.fromISO, toISO: selected.toISO });
@@ -169,16 +196,28 @@ function CapacityPage() {
   }, [mode, selected.fromISO, selected.toISO, liveFlows, liveCapacityQuery.data]);
 
   const rbpAuctions = liveCapacityQuery.data?.rbpAuctions ?? [];
+  const selectedPeriodFlows = useMemo(() => {
+    if (mode === "dummy") {
+      return dummyFlows(dateRangeIso(selected.fromISO, selected.toISO));
+    }
+
+    if ((selectedPeriodFlowsQuery.data?.data.length ?? 0) > 0) {
+      return selectedPeriodFlowsQuery.data!.data;
+    }
+
+    if (overlapsSnapshot(selected.fromISO, selected.toISO)) {
+      return realCapacityAndFlows({
+        fromISO: selected.fromISO,
+        toISO: selected.toISO,
+      }).flows;
+    }
+
+    return [];
+  }, [mode, selected.fromISO, selected.toISO, selectedPeriodFlowsQuery.data]);
+
   const calendar2026 = useMemo(() => {
     if (mode === "dummy") {
-      const dates: string[] = [];
-      for (
-        let d = new Date(`${calendar2026FromISO}T00:00:00Z`);
-        d < new Date(`${calendar2026ToISO}T00:00:00Z`);
-        d.setUTCDate(d.getUTCDate() + 1)
-      ) {
-        dates.push(d.toISOString().slice(0, 10));
-      }
+      const dates = dateRangeIso(calendar2026FromISO, calendar2026ToISO);
       return {
         capacity: dummyCapacity({
           fromISO: calendar2026FromISO,
@@ -209,6 +248,11 @@ function CapacityPage() {
     ...(calendar2026CapacityQuery.data?.warnings ?? []).map((warning) => `2026 stacks: ${warning}`),
     ...(calendar2026FlowsQuery.data?.error
       ? [`2026 stacks: ENTSOG flow data unavailable: ${calendar2026FlowsQuery.data.error}`]
+      : []),
+    ...(selectedPeriodFlowsQuery.data?.error
+      ? [
+          `Utilisation heatmap: ENTSOG flow data unavailable: ${selectedPeriodFlowsQuery.data.error}`,
+        ]
       : []),
     ...(liveCapacityQuery.data?.error ? [liveCapacityQuery.data.error] : []),
   ];
@@ -268,6 +312,7 @@ function CapacityPage() {
       <CapacityCharts
         capacity={capacity}
         flows={flows}
+        heatmapFlows={selectedPeriodFlows}
         calendarCapacity={calendar2026.capacity}
         calendarFlows={calendar2026.flows}
         heatmapFromISO={selected.fromISO}
