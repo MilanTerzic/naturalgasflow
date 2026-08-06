@@ -145,9 +145,27 @@ function DashboardControls({ compact = false }: { compact?: boolean }) {
         <RotateCcw className="h-4 w-4" />
         Reset scenario assumptions
       </Button>
+
+      <p className="text-[11px] leading-snug text-muted-foreground">{saveLabel(s.saveState)}</p>
     </div>
   );
 }
+
+function saveLabel(state: ReturnType<typeof useDashboard>["saveState"]) {
+  switch (state) {
+    case "loading":
+      return "Loading saved scenario…";
+    case "saving":
+      return "Saving scenario…";
+    case "saved":
+      return "Scenario saved for everyone";
+    case "error":
+      return "Could not sync saved scenario";
+    default:
+      return "Scenario settings are shared with all viewers";
+  }
+}
+
 
 function DataViewSection() {
   const s = useDashboard();
