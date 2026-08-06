@@ -14,7 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      dashboard_settings: {
+        Row: {
+          bih_share: number
+          curve_distortion: number
+          curve_shift: number
+          domestic_production: number
+          id: string
+          range_future_days: number
+          range_past_days: number
+          updated_at: string
+          use_polynomial: boolean
+        }
+        Insert: {
+          bih_share?: number
+          curve_distortion?: number
+          curve_shift?: number
+          domestic_production?: number
+          id?: string
+          range_future_days?: number
+          range_past_days?: number
+          updated_at?: string
+          use_polynomial?: boolean
+        }
+        Update: {
+          bih_share?: number
+          curve_distortion?: number
+          curve_shift?: number
+          domestic_production?: number
+          id?: string
+          range_future_days?: number
+          range_past_days?: number
+          updated_at?: string
+          use_polynomial?: boolean
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
