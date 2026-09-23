@@ -16,6 +16,7 @@ import {
 import { ChartCard } from "@/components/dashboard/ChartCard";
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { fetchAgsiStorage, type AgsiRow } from "@/lib/data/agsi.functions";
+import { CONVERSION_MCM_TO_GWH } from "@/lib/gas/config";
 
 export const Route = createFileRoute("/_dash/storage")({
   head: () => ({
@@ -66,8 +67,8 @@ const fmt = (v: number | null | undefined, digits = 2, unit = "") => {
   return unit ? `${formatted} ${unit}` : formatted;
 };
 
-// Energy → volume conversion. 1 mcm ≈ 10.51 GWh (user-specified CV).
-const GWH_PER_MCM = 10.51;
+// Energy → volume conversion. Keep one common dashboard GCV assumption.
+const GWH_PER_MCM = CONVERSION_MCM_TO_GWH;
 const twhToMcm = (twh: number | null | undefined): number | null =>
   twh === null || twh === undefined || !Number.isFinite(twh) ? null : (twh * 1000) / GWH_PER_MCM;
 const gwhToMcm = (gwh: number | null | undefined): number | null =>
@@ -393,7 +394,7 @@ function StoragePage() {
       </ChartCard>
 
       {/* Gas in storage (mcm) */}
-      <ChartCard title="Gas in storage" subtitle="mcm (10.51 GWh/mcm)" height={280}>
+      <ChartCard title="Gas in storage" subtitle={`mcm (${GWH_PER_MCM.toFixed(2)} GWh/mcm)`} height={280}>
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={chartData} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
             <CartesianGrid stroke="#e5e7eb" vertical={false} />
