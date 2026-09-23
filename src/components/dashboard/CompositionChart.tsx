@@ -191,9 +191,15 @@ function CompositionTooltip({
               Demand forecast
             </span>
           )}
-          {row?.is_estimated && (
+          {row?.source_type === "provisional" ? (
+            <span className="rounded bg-blue-50 px-1.5 py-0.5 text-blue-800">
+              Provisional · {row.provisional_sources?.map((source) =>
+                source === "renomination" ? "Renomination" : "Nomination",
+              ).join(" + ") ?? "ENTSOG nomination"}
+            </span>
+          ) : row?.is_estimated ? (
             <span className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-800">Estimated</span>
-          )}
+          ) : null}
         </div>
       </div>
       <div className="mt-2 space-y-1.5">
