@@ -1,7 +1,6 @@
 import { createStart, createMiddleware } from "@tanstack/react-start";
 
 import { renderErrorPage } from "./lib/error-page";
-import { attachSupabaseAuth } from "@/integrations/supabase/auth-attacher";
 
 const errorMiddleware = createMiddleware().server(async ({ next }) => {
   try {
@@ -19,6 +18,9 @@ const errorMiddleware = createMiddleware().server(async ({ next }) => {
 });
 
 export const startInstance = createStart(() => ({
-  functionMiddleware: [attachSupabaseAuth],
+  // Authentication is handled by the app's secure server-side session.
+  // Do not initialize the legacy browser Supabase bearer-token middleware globally:
+  // it requires client Supabase env variables even before /login can load.
+  functionMiddleware: [],
   requestMiddleware: [errorMiddleware],
 }));
