@@ -161,12 +161,16 @@ export function buildCapacityRouteSummaries(
       row,
       perDate: flows.map((flow) => {
         const used = flow[route.physicalFlowKey] ?? null;
+        const dateRow = selectCapacityForReferenceDate(capacity, route.id, flow.date);
+        const dateTechnicalMwh =
+          dateRow?.technical_mwh ?? (dateRow ? dateRow.offered_mwh : null);
+        const dateTechnicalMcm = mwhDayToMcmDay(dateTechnicalMwh);
         return {
           date: flow.date,
           used_mcm: used,
           util_pct:
-            technicalMcm != null && technicalMcm > 0 && used != null
-              ? (used / technicalMcm) * 100
+            dateTechnicalMcm != null && dateTechnicalMcm > 0 && used != null
+              ? (used / dateTechnicalMcm) * 100
               : null,
         };
       }),
