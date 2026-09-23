@@ -61,7 +61,7 @@ function BalancePage() {
           <section className="grid gap-4">
             <ChartCard
               title="Serbian gas supply and demand"
-              description="Published or explicitly estimated supply vs demand. Future dates show demand forecast only - mcm/day"
+              description="Physical flow supply; current-day gaps use ENTSOG renomination/nomination before carry-forward. Future dates show demand forecast only - mcm/day"
               height={380}
             >
               <CompositionChart data={balance} today={today} />

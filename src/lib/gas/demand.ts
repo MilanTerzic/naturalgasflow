@@ -88,6 +88,7 @@ type ResolvedPoint = {
   available: boolean;
   sourceType: FlowSourceType;
   estimatedFrom?: string;
+  provisionalSource?: "renomination" | "nomination";
 };
 
 const FLOW_POINTS: FlowPointName[] = [
@@ -103,10 +104,18 @@ function pointPublished(row: FlowRow | undefined, key: FlowPointName) {
   return !row.published_points || row.published_points.includes(key);
 }
 
+function pointOperationalSource(row: FlowRow | undefined, key: FlowPointName) {
+  if (!row) return undefined;
+  const explicit = row.point_source?.[key];
+  if (explicit) return explicit;
+  return pointPublished(row, key) ? "physical_flow" : undefined;
+}
+
 function sourcePriority(sources: FlowSourceType[]): FlowSourceType {
   if (sources.includes("none")) return "none";
   if (sources.includes("future_fallback")) return "future_fallback";
   if (sources.includes("historical_fallback")) return "historical_fallback";
+  if (sources.includes("provisional")) return "provisional";
   return "actual";
 }
 
@@ -152,11 +161,19 @@ export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
     }
 
     const direct = flowByDate.get(date);
-    if (pointPublished(direct, key)) {
+    const directSource = pointOperationalSource(direct, key);
+    if (
+      directSource === "physical_flow" ||
+      (date === todayIso && (directSource === "renomination" || directSource === "nomination"))
+    ) {
       return {
         value: clipLow(direct?.[key] ?? 0, 0),
         available: true,
-        sourceType: "actual",
+        sourceType: directSource === "physical_flow" ? "actual" : "provisional",
+        provisionalSource:
+          directSource === "renomination" || directSource === "nomination"
+            ? directSource
+            : undefined,
       };
     }
 
@@ -218,6 +235,14 @@ export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
       ),
     ).sort();
 
+    const provisionalSources = Array.from(
+      new Set(
+        FLOW_POINTS.map((key) => resolved[key].provisionalSource).filter(
+          (value): value is "renomination" | "nomination" => !!value,
+        ),
+      ),
+    );
+
     const kkdHu = resolved.kiskundorozsma_hu.value;
     const kire = resolved.kireevo.value;
     const kkd2 = resolved.kiskundorozsma_2.value;
@@ -256,6 +281,7 @@ export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
       is_estimated: supplyAvailable && sourceType !== "actual",
       estimated_from: estimatedDates.length ? estimatedDates.join(", ") : undefined,
       source_type: is_forecast ? "none" : sourceType,
+      provisional_sources: provisionalSources.length ? provisionalSources : undefined,
       temperature_c: temp,
       avg_temperature_c: avg,
       temperature_actual_c: is_forecast ? null : temp,

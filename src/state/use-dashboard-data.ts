@@ -81,13 +81,25 @@ export function useDashboardData(): DashboardData {
     flows = dummyFlows(dates);
   }
 
-  // A published zero is real data. Fallback status is based on publication
-  // provenance, not on whether the physical-flow value is greater than zero.
+  // A published zero is real data. Current-day ENTSOG nominations/renominations
+  // also count as operational coverage, but remain explicitly provisional.
   const todayFallback = useMemo(() => {
+    const hasCompleteOperationalCoverage = (row: FlowRow | undefined) => {
+      if (!row) return false;
+      if (row.point_source) {
+        return Boolean(
+          row.point_source.kiskundorozsma_hu &&
+            row.point_source.kireevo &&
+            row.point_source.kiskundorozsma_2 &&
+            row.point_source.kalotina,
+        );
+      }
+      return !row.published_points || row.published_points.length === 4;
+    };
+
     const todayRow = flows.find((f) => f.date === today);
-    const hasToday =
-      !!todayRow && (!todayRow.published_points || todayRow.published_points.length === 4);
-    if (hasToday) return false;
+    if (hasCompleteOperationalCoverage(todayRow)) return false;
+
     const yIdx = dates.indexOf(today) - 1;
     if (yIdx < 0) return false;
     const yesterdayRow = flows.find((f) => f.date === dates[yIdx]);

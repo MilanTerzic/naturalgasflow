@@ -5,7 +5,7 @@ import {
   kwhPerDayToMcmPerDay,
   type FlowPoint,
 } from "@/lib/gas/config";
-import type { FlowRow } from "@/lib/gas/types";
+import type { FlowPointOperationalSource, FlowRow } from "@/lib/gas/types";
 
 interface FetchFlowArgs {
   from: string;
@@ -23,6 +23,8 @@ interface EntsogOperationalRow {
   indicator?: string;
   lastUpdateDateTime?: string;
 }
+
+type OperationalIndicator = "Physical Flow" | "Renomination" | "Nomination";
 
 const POINT_KEYS = Object.keys(ENTSOG_POINT_DIRECTIONS) as FlowPoint[];
 
@@ -54,14 +56,15 @@ async function fetchPointChunk(
   pd: string,
   from: string,
   to: string,
+  indicator: OperationalIndicator,
 ): Promise<EntsogOperationalRow[]> {
   const url =
     `https://transparency.entsog.eu/api/v1/operationaldata.json` +
     `?pointDirection=${encodeURIComponent(pd)}` +
     `&from=${from}&to=${to}` +
-    `&indicator=Physical%20Flow&periodType=day&limit=-1`;
+    `&indicator=${encodeURIComponent(indicator)}&periodType=day&limit=-1`;
   const res = await fetch(url, { headers: { accept: "application/json" } });
-  if (!res.ok) throw new Error(`ENTSOG ${pd} [${from}→${to}]: HTTP ${res.status}`);
+  if (!res.ok) throw new Error(`ENTSOG ${pd} ${indicator} [${from}→${to}]: HTTP ${res.status}`);
   const json = (await res.json()) as {
     operationaldata?: EntsogOperationalRow[];
     operationalData?: EntsogOperationalRow[];
@@ -73,14 +76,15 @@ async function fetchPoint(
   pd: string,
   from: string,
   to: string,
+  indicator: OperationalIndicator,
 ): Promise<Map<string, DailyPick>> {
   const chunks = isoChunks(from, to, 365);
   const results = await Promise.all(
     chunks.map(async ([f, t]) => {
       try {
-        return await fetchPointChunk(pd, f, t);
+        return await fetchPointChunk(pd, f, t, indicator);
       } catch (err) {
-        console.warn(`[ENTSOG] chunk failed ${pd} ${f}→${t}:`, err);
+        console.warn(`[ENTSOG] chunk failed ${pd} ${indicator} ${f}→${t}:`, err);
         return [] as EntsogOperationalRow[];
       }
     }),
@@ -117,6 +121,57 @@ async function fetchPoint(
   return byDate;
 }
 
+interface PointBundle {
+  physical: Map<string, DailyPick>;
+  renomination: Map<string, DailyPick>;
+  nomination: Map<string, DailyPick>;
+}
+
+function belgradeDateIso() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Belgrade",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+function pickForDate(bundle: PointBundle, date: string, today: string): {
+  pick?: DailyPick;
+  source?: FlowPointOperationalSource;
+} {
+  const physical = bundle.physical.get(date);
+  if (physical) return { pick: physical, source: "physical_flow" };
+
+  // Nomination data is a provisional substitute only for the current day.
+  if (date !== today) return {};
+  const renomination = bundle.renomination.get(date);
+  if (renomination) return { pick: renomination, source: "renomination" };
+  const nomination = bundle.nomination.get(date);
+  if (nomination) return { pick: nomination, source: "nomination" };
+  return {};
+}
+
+function inferPointSource(
+  row: FlowRow | undefined,
+  key: FlowPoint,
+): FlowPointOperationalSource | undefined {
+  if (!row) return undefined;
+  const explicit = row.point_source?.[key];
+  if (explicit) return explicit;
+  if (row.published_points?.includes(key)) return "physical_flow";
+  return undefined;
+}
+
+function sourceRank(source: FlowPointOperationalSource | undefined) {
+  if (source === "physical_flow") return 3;
+  if (source === "renomination") return 2;
+  if (source === "nomination") return 1;
+  return 0;
+}
+
 interface CacheEntry {
   at: number;
   rows: FlowRow[];
@@ -151,28 +206,45 @@ export const fetchEntsogFlows = createServerFn({ method: "POST" })
     }
 
     try {
+      const today = belgradeDateIso();
+      const includesToday = data.from <= today && today <= data.to;
+
       const perPoint = await Promise.all(
         POINT_KEYS.map(async (key) => {
-          try {
-            const m = await fetchPoint(ENTSOG_POINT_DIRECTIONS[key], data.from, data.to);
-            console.log(
-              `[ENTSOG] ${key}: ${m.size} unique gas-days returned ` +
-                `(window ${data.from} → ${data.to})`,
-            );
-            return [key, m] as const;
-          } catch (err) {
-            console.warn(`ENTSOG point ${key} failed:`, err);
-            return [key, new Map<string, DailyPick>()] as const;
-          }
+          const pd = ENTSOG_POINT_DIRECTIONS[key];
+          const [physical, renomination, nomination] = await Promise.all([
+            fetchPoint(pd, data.from, data.to, "Physical Flow"),
+            includesToday
+              ? fetchPoint(pd, today, today, "Renomination")
+              : Promise.resolve(new Map<string, DailyPick>()),
+            includesToday
+              ? fetchPoint(pd, today, today, "Nomination")
+              : Promise.resolve(new Map<string, DailyPick>()),
+          ]);
+
+          console.log(
+            `[ENTSOG] ${key}: physical=${physical.size}, ` +
+              `renomination=${renomination.size}, nomination=${nomination.size} ` +
+              `(window ${data.from} → ${data.to})`,
+          );
+          return [key, { physical, renomination, nomination } as PointBundle] as const;
         }),
       );
+
       const allDates = new Set<string>();
-      for (const [, m] of perPoint) for (const d of m.keys()) allDates.add(d);
+      for (const [, bundle] of perPoint) {
+        for (const d of bundle.physical.keys()) allDates.add(d);
+        for (const d of bundle.renomination.keys()) allDates.add(d);
+        for (const d of bundle.nomination.keys()) allDates.add(d);
+      }
       const dates = Array.from(allDates).sort();
       const fetchedAt = new Date().toISOString();
       let sourceUpdatedAt = "";
+
       const rows: FlowRow[] = dates.map((date) => {
         const publishedPoints: FlowPoint[] = [];
+        const provisionalPoints: FlowPoint[] = [];
+        const pointSource: Partial<Record<FlowPoint, FlowPointOperationalSource>> = {};
         const pointLastUpdate: Partial<Record<FlowPoint, string>> = {};
         const row: FlowRow = {
           date,
@@ -181,15 +253,20 @@ export const fetchEntsogFlows = createServerFn({ method: "POST" })
           kiskundorozsma_2: 0,
           kalotina: 0,
           published_points: publishedPoints,
+          provisional_points: provisionalPoints,
+          point_source: pointSource,
           point_last_update: pointLastUpdate,
           fetched_at: fetchedAt,
         };
-        for (const [key, m] of perPoint) {
-          const pick = m.get(date);
-          if (!pick) continue;
+
+        for (const [key, bundle] of perPoint) {
+          const { pick, source } = pickForDate(bundle, date, today);
+          if (!pick || !source) continue;
           row[key] = +pick.value_mcm.toFixed(4);
-          publishedPoints.push(key);
+          pointSource[key] = source;
           pointLastUpdate[key] = pick.last_update;
+          if (source === "physical_flow") publishedPoints.push(key);
+          else provisionalPoints.push(key);
           if (pick.last_update > sourceUpdatedAt) sourceUpdatedAt = pick.last_update;
         }
         return row;
@@ -206,35 +283,62 @@ export const fetchEntsogFlows = createServerFn({ method: "POST" })
         };
       }
 
-      // Merge point-by-point with the previous cache. A published zero is a
-      // valid observation and must overwrite an older non-zero value. Only
-      // points that are genuinely absent from the fresh response use the cache.
+      // Merge point-by-point with the previous cache. Preserve the strongest
+      // available evidence: Physical Flow > Renomination > Nomination.
       let merged = rows;
       if (cached) {
         const byDate = new Map<string, FlowRow>();
         for (const r of cached.rows) byDate.set(r.date, r);
-        for (const r of rows) {
-          const prev = byDate.get(r.date);
+
+        for (const fresh of rows) {
+          const prev = byDate.get(fresh.date);
           if (!prev) {
-            byDate.set(r.date, r);
+            byDate.set(fresh.date, fresh);
             continue;
           }
-          const freshPublished = new Set(r.published_points ?? POINT_KEYS);
-          const priorPublished = new Set(prev.published_points ?? POINT_KEYS);
+
           const combined: FlowRow = {
             ...prev,
-            ...r,
-            published_points: Array.from(new Set([...priorPublished, ...freshPublished])),
-            point_last_update: { ...prev.point_last_update, ...r.point_last_update },
+            ...fresh,
+            published_points: [],
+            provisional_points: [],
+            point_source: {},
+            point_last_update: {},
             fetched_at: fetchedAt,
           };
+
           for (const key of POINT_KEYS) {
-            if (!freshPublished.has(key) && priorPublished.has(key)) {
-              combined[key] = prev[key];
+            const freshSource = inferPointSource(fresh, key);
+            const prevSource = inferPointSource(prev, key);
+            const freshUpdated = fresh.point_last_update?.[key] ?? "";
+            const prevUpdated = prev.point_last_update?.[key] ?? "";
+
+            let useFresh = false;
+            if (freshSource && !prevSource) useFresh = true;
+            else if (freshSource && prevSource) {
+              const freshRank = sourceRank(freshSource);
+              const prevRank = sourceRank(prevSource);
+              useFresh =
+                freshRank > prevRank ||
+                (freshRank === prevRank && freshUpdated >= prevUpdated);
             }
+
+            const chosenRow = useFresh ? fresh : prev;
+            const chosenSource = useFresh ? freshSource : prevSource;
+            const chosenUpdate = useFresh ? freshUpdated : prevUpdated;
+            if (!chosenSource) continue;
+
+            combined[key] = chosenRow[key];
+            combined.point_source![key] = chosenSource;
+            combined.point_last_update![key] = chosenUpdate;
+            if (chosenSource === "physical_flow") combined.published_points!.push(key);
+            else combined.provisional_points!.push(key);
+            if (chosenUpdate > sourceUpdatedAt) sourceUpdatedAt = chosenUpdate;
           }
-          byDate.set(r.date, combined);
+
+          byDate.set(fresh.date, combined);
         }
+
         merged = Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
         if (cached.sourceUpdatedAt > sourceUpdatedAt) sourceUpdatedAt = cached.sourceUpdatedAt;
       }

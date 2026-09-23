@@ -112,3 +112,82 @@ test("raw system deficit is separated from feasible storage action and residual 
   );
   assert.ok(row.residual_gap_mcm < 0);
 });
+
+
+test("current-day renomination fills a missing physical point before carry-forward", () => {
+  const rows = buildBalance({
+    dates: ["2026-09-23", "2026-09-24"],
+    todayIso: "2026-09-24",
+    flows: [
+      {
+        date: "2026-09-23",
+        kiskundorozsma_hu: 1,
+        kireevo: 10,
+        kiskundorozsma_2: 7,
+        kalotina: 1,
+        published_points: complete,
+      },
+      {
+        date: "2026-09-24",
+        kiskundorozsma_hu: 1,
+        kireevo: 10,
+        kiskundorozsma_2: 8,
+        kalotina: 1,
+        published_points: ["kiskundorozsma_hu", "kireevo", "kalotina"],
+        provisional_points: ["kiskundorozsma_2"],
+        point_source: { kiskundorozsma_2: "renomination" },
+      },
+    ],
+    temps: [
+      { date: "2026-09-23", temperature_c: 15 },
+      { date: "2026-09-24", temperature_c: 15 },
+    ],
+  });
+
+  assert.equal(rows[1].supply_available, true);
+  assert.equal(rows[1].is_estimated, true);
+  assert.equal(rows[1].source_type, "provisional");
+  assert.deepEqual(rows[1].provisional_sources, ["renomination"]);
+  assert.equal(rows[1].imports_from_bulgaria_mcm, 2);
+});
+
+test("future nomination-style data is not treated as future physical supply", () => {
+  const rows = buildBalance({
+    dates: ["2026-09-24", "2026-09-25"],
+    todayIso: "2026-09-24",
+    flows: [
+      {
+        date: "2026-09-24",
+        kiskundorozsma_hu: 1,
+        kireevo: 10,
+        kiskundorozsma_2: 7,
+        kalotina: 1,
+        published_points: complete,
+      },
+      {
+        date: "2026-09-25",
+        kiskundorozsma_hu: 1,
+        kireevo: 10,
+        kiskundorozsma_2: 7,
+        kalotina: 1,
+        published_points: [],
+        provisional_points: complete,
+        point_source: {
+          kiskundorozsma_hu: "nomination",
+          kireevo: "nomination",
+          kiskundorozsma_2: "nomination",
+          kalotina: "nomination",
+        },
+      },
+    ],
+    temps: [
+      { date: "2026-09-24", temperature_c: 15 },
+      { date: "2026-09-25", temperature_c: 14 },
+    ],
+  });
+
+  assert.equal(rows[1].supply_available, false);
+  assert.equal(rows[1].source_type, "none");
+  assert.equal(rows[1].serbian_available_supply_mcm > 0, true);
+  assert.equal(rows[1].storage_imbalance_raw_mcm, 0);
+});
