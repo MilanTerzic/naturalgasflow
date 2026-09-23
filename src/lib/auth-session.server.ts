@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { useSession } from "@tanstack/react-start/server";
 
 export type AppSessionData = {
@@ -10,11 +11,19 @@ export type AppSessionData = {
 };
 
 function sessionSecret() {
-  const secret = process.env.SESSION_SECRET;
-  if (!secret || secret.length < 32) {
-    throw new Error("SESSION_SECRET must be configured with at least 32 characters.");
+  const configured = process.env.SESSION_SECRET;
+  if (configured && configured.length >= 32) return configured;
+
+  const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (serviceRole) {
+    return createHash("sha256")
+      .update(`serbia-gas-dashboard-session:${serviceRole}`)
+      .digest("hex");
   }
-  return secret;
+
+  throw new Error(
+    "SESSION_SECRET (32+ chars) or SUPABASE_SERVICE_ROLE_KEY must be configured.",
+  );
 }
 
 export function useAppSession() {
