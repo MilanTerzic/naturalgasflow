@@ -1,7 +1,6 @@
 import { createFileRoute, Link, Outlet, useRouter } from "@tanstack/react-router";
-import { Fuel, Lock } from "lucide-react";
+import { Fuel } from "lucide-react";
 import { Sidebar } from "@/components/dashboard/Sidebar";
-import { lockApp } from "@/components/PasswordGate";
 import { DashboardProvider } from "@/state/dashboard-context";
 import { cn } from "@/lib/utils";
 
@@ -63,16 +62,6 @@ function DashLayout() {
                   </Link>
                 ))}
               </nav>
-              <button
-                type="button"
-                onClick={lockApp}
-                aria-label="Lock the app"
-                title="Lock the app"
-                className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border bg-background px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                <Lock className="h-3.5 w-3.5" />
-                Lock
-              </button>
             </div>
           </div>
         </header>
