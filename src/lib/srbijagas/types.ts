@@ -47,6 +47,7 @@ export interface MonthlyAggRow {
   avg_temp_c: number | null;
   hdd: number;
   days: number;
+  valid_days: number;
 }
 
 export interface PriceRow {
