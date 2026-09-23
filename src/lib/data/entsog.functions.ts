@@ -5,7 +5,7 @@ import {
   kwhPerDayToMcmPerDay,
   type FlowPoint,
 } from "@/lib/gas/config";
-import type { FlowRow } from "@/lib/gas/types";
+import type { FlowPointOperationalSource, FlowRow } from "@/lib/gas/types";
 
 interface FetchFlowArgs {
   from: string;
@@ -23,6 +23,8 @@ interface EntsogOperationalRow {
   indicator?: string;
   lastUpdateDateTime?: string;
 }
+
+type OperationalIndicator = "Physical Flow" | "Renomination" | "Nomination";
 
 const POINT_KEYS = Object.keys(ENTSOG_POINT_DIRECTIONS) as FlowPoint[];
 
@@ -54,14 +56,15 @@ async function fetchPointChunk(
   pd: string,
   from: string,
   to: string,
+  indicator: OperationalIndicator,
 ): Promise<EntsogOperationalRow[]> {
   const url =
     `https://transparency.entsog.eu/api/v1/operationaldata.json` +
     `?pointDirection=${encodeURIComponent(pd)}` +
     `&from=${from}&to=${to}` +
-    `&indicator=Physical%20Flow&periodType=day&limit=-1`;
+    `&indicator=${encodeURIComponent(indicator)}&periodType=day&limit=-1`;
   const res = await fetch(url, { headers: { accept: "application/json" } });
-  if (!res.ok) throw new Error(`ENTSOG ${pd} [${from}→${to}]: HTTP ${res.status}`);
+  if (!res.ok) throw new Error(`ENTSOG ${pd} ${indicator} [${from}→${to}]: HTTP ${res.status}`);
   const json = (await res.json()) as {
     operationaldata?: EntsogOperationalRow[];
     operationalData?: EntsogOperationalRow[];
@@ -73,14 +76,15 @@ async function fetchPoint(
   pd: string,
   from: string,
   to: string,
+  indicator: OperationalIndicator,
 ): Promise<Map<string, DailyPick>> {
   const chunks = isoChunks(from, to, 365);
   const results = await Promise.all(
     chunks.map(async ([f, t]) => {
       try {
-        return await fetchPointChunk(pd, f, t);
+        return await fetchPointChunk(pd, f, t, indicator);
       } catch (err) {
-        console.warn(`[ENTSOG] chunk failed ${pd} ${f}→${t}:`, err);
+        console.warn(`[ENTSOG] chunk failed ${pd} ${indicator} ${f}→${t}:`, err);
         return [] as EntsogOperationalRow[];
       }
     }),
