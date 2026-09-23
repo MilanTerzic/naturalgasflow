@@ -197,7 +197,7 @@ export const fetchEntsogFlows = createServerFn({ method: "POST" })
 
       // Treat empty result as a soft failure and prefer stale cache.
       if (rows.length === 0 && cached) {
-        console.warn(`[ENTSOG] empty response, serving stale cache from ${cached.day}`);
+        console.warn(`[ENTSOG] empty response, serving stale cache fetched ${cached.fetchedAt}`);
         return {
           data: cached.rows,
           error: null,
@@ -206,20 +206,37 @@ export const fetchEntsogFlows = createServerFn({ method: "POST" })
         };
       }
 
-      // Merge with cached rows: for any date missing (or all-zero) in the new
-      // response, fall back to the cached value so a partial ENTSOG outage
-      // doesn't blank out previously-known days.
+      // Merge point-by-point with the previous cache. A published zero is a
+      // valid observation and must overwrite an older non-zero value. Only
+      // points that are genuinely absent from the fresh response use the cache.
       let merged = rows;
       if (cached) {
         const byDate = new Map<string, FlowRow>();
         for (const r of cached.rows) byDate.set(r.date, r);
         for (const r of rows) {
-          const hasAny =
-            r.kireevo > 0 || r.kalotina > 0 || r.kiskundorozsma_hu > 0 || r.kiskundorozsma_2 > 0;
           const prev = byDate.get(r.date);
-          if (hasAny || !prev) byDate.set(r.date, r);
+          if (!prev) {
+            byDate.set(r.date, r);
+            continue;
+          }
+          const freshPublished = new Set(r.published_points ?? POINT_KEYS);
+          const priorPublished = new Set(prev.published_points ?? POINT_KEYS);
+          const combined: FlowRow = {
+            ...prev,
+            ...r,
+            published_points: Array.from(new Set([...priorPublished, ...freshPublished])),
+            point_last_update: { ...prev.point_last_update, ...r.point_last_update },
+            fetched_at: fetchedAt,
+          };
+          for (const key of POINT_KEYS) {
+            if (!freshPublished.has(key) && priorPublished.has(key)) {
+              combined[key] = prev[key];
+            }
+          }
+          byDate.set(r.date, combined);
         }
         merged = Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
+        if (cached.sourceUpdatedAt > sourceUpdatedAt) sourceUpdatedAt = cached.sourceUpdatedAt;
       }
 
       flowCache.set(cacheKey, {
@@ -232,7 +249,7 @@ export const fetchEntsogFlows = createServerFn({ method: "POST" })
     } catch (err) {
       console.error("ENTSOG fetch failed", err);
       if (cached) {
-        console.warn(`[ENTSOG] serving stale cache from ${cached.day} after error`);
+        console.warn(`[ENTSOG] serving stale cache fetched ${cached.fetchedAt} after error`);
         return {
           data: cached.rows,
           error: null,
