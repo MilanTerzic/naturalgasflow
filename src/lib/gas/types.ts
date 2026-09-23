@@ -9,6 +9,8 @@ export type FlowPointName =
   | "kiskundorozsma_2"
   | "kalotina";
 
+export type FlowPointOperationalSource = "physical_flow" | "renomination" | "nomination";
+
 export interface FlowRow {
   date: string;
   kiskundorozsma_hu: number;
@@ -16,14 +18,22 @@ export interface FlowRow {
   kiskundorozsma_2: number;
   kalotina: number;
   kiskundorozsma_hu_met?: number;
-  // When present, distinguishes an actually published zero from a missing point.
-  // Legacy/static rows without this field are treated as fully populated.
+  // Physical-flow points actually published by ENTSOG. A published zero is
+  // therefore distinguishable from a missing point.
   published_points?: FlowPointName[];
+  // Current-day provisional points sourced from ENTSOG renomination/nomination.
+  provisional_points?: FlowPointName[];
+  point_source?: Partial<Record<FlowPointName, FlowPointOperationalSource>>;
   point_last_update?: Partial<Record<FlowPointName, string>>;
   fetched_at?: string;
 }
 
-export type FlowSourceType = "actual" | "historical_fallback" | "future_fallback" | "none";
+export type FlowSourceType =
+  | "actual"
+  | "provisional"
+  | "historical_fallback"
+  | "future_fallback"
+  | "none";
 
 export interface BalanceRow {
   date: string; // ISO date
@@ -32,6 +42,7 @@ export interface BalanceRow {
   is_estimated: boolean; // carried forward from a previous (or future) day when source data was missing
   estimated_from?: string; // ISO date of the source day used for carry-forward
   source_type: FlowSourceType; // why the flow values for this row were selected
+  provisional_sources?: Array<"renomination" | "nomination">;
   temperature_c: number | null;
   avg_temperature_c: number | null;
   temperature_actual_c: number | null;
