@@ -86,14 +86,14 @@ export function useDashboardData(): DashboardData {
   const todayFallback = useMemo(() => {
     const todayRow = flows.find((f) => f.date === today);
     const hasToday =
-      !!todayRow && (!todayRow.published_points || todayRow.published_points.length > 0);
+      !!todayRow && (!todayRow.published_points || todayRow.published_points.length === 4);
     if (hasToday) return false;
     const yIdx = dates.indexOf(today) - 1;
     if (yIdx < 0) return false;
     const yesterdayRow = flows.find((f) => f.date === dates[yIdx]);
     return (
       !!yesterdayRow &&
-      (!yesterdayRow.published_points || yesterdayRow.published_points.length > 0)
+      (!yesterdayRow.published_points || yesterdayRow.published_points.length === 4)
     );
   }, [flows, today, dates]);
 
@@ -102,7 +102,7 @@ export function useDashboardData(): DashboardData {
       .filter(
         (f) =>
           f.date <= today &&
-          (!f.published_points || f.published_points.length > 0),
+          (!f.published_points || f.published_points.length === 4),
       )
       .sort((a, b) => b.date.localeCompare(a.date))[0]?.date ?? "";
   }, [flows, today]);
