@@ -218,6 +218,7 @@ export function seasonalProfile(monthly: MonthlyAggRow[]) {
   // Average by calendar month across all years.
   const groups: Record<string, number[]> = {};
   for (const m of monthly) {
+    if (m.days === 0 || m.valid_days !== m.days) continue;
     const mm = m.month.slice(5, 7);
     (groups[mm] ??= []).push(m.serbian_mcm);
   }
