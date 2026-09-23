@@ -30,18 +30,34 @@ export function KpiRow({ balance, today }: { balance: BalanceRow[]; today: strin
   };
 
   const estimatedHint =
-    cur.is_estimated && cur.estimated_from ? `Estimated from ${cur.estimated_from}` : undefined;
-  const balanceTone = cur.storage_imbalance_mcm >= 0 ? "positive" : "negative";
-  const balanceStatus = cur.storage_imbalance_mcm >= 0 ? "Surplus" : "Deficit";
-  const balanceHint =
-    cur.storage_imbalance_mcm >= 0 ? "Potential storage injection" : "Required storage withdrawal";
+    cur.is_estimated && cur.estimated_from
+      ? `Estimated using published flow observations from ${cur.estimated_from}`
+      : undefined;
+  const supplyAvailable = cur.supply_available;
+  const rawBalance = cur.storage_imbalance_raw_mcm;
+  const balanceTone = !supplyAvailable ? "warning" : rawBalance >= 0 ? "positive" : "negative";
+  const balanceStatus = !supplyAvailable ? "Unavailable" : rawBalance >= 0 ? "Surplus" : "Deficit";
+  const storageActionHint =
+    cur.storage_imbalance_mcm >= 0
+      ? `Storage action: inject up to ${fmtMcm(cur.storage_imbalance_mcm)} mcm/day`
+      : `Storage action: withdraw up to ${fmtMcm(-cur.storage_imbalance_mcm)} mcm/day`;
+  const residualHint =
+    Math.abs(cur.residual_gap_mcm) < 0.005
+      ? "No residual gap after storage"
+      : cur.residual_gap_mcm > 0
+        ? `Residual surplus ${fmtMcm(cur.residual_gap_mcm)} mcm/day`
+        : `Residual deficit ${fmtMcm(-cur.residual_gap_mcm)} mcm/day`;
+  const balanceHint = supplyAvailable
+    ? `${storageActionHint} · ${residualHint}`
+    : "Flow inputs are incomplete; no system balance is calculated.";
 
   return (
     <section aria-label="Today at a glance" className="space-y-3">
       {cur.is_estimated && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          <span className="font-medium">Estimated flow values.</span> ENTSOG flow data for{" "}
-          {cur.date} is not yet published; values are carried forward from {cur.estimated_from}.
+          <span className="font-medium">Estimated flow inputs.</span> One or more ENTSOG points
+          for {cur.date} were unavailable, so published observations from {cur.estimated_from} are
+          used and clearly marked.
         </div>
       )}
 
@@ -57,26 +73,32 @@ export function KpiRow({ balance, today }: { balance: BalanceRow[]; today: strin
         />
         <KpiCard
           label="Available supply"
-          value={fmtMcm(cur.serbian_available_supply_mcm)}
+          value={supplyAvailable ? fmtMcm(cur.serbian_available_supply_mcm) : "-"}
           unit="mcm/day"
-          hint={estimatedHint ?? "Total supply available to Serbia"}
-          delta={delta("serbian_available_supply_mcm")}
+          hint={
+            supplyAvailable
+              ? estimatedHint ?? "Total supply available to Serbia"
+              : "Incomplete flow inputs — supply not calculated"
+          }
+          delta={supplyAvailable ? delta("serbian_available_supply_mcm") : null}
           variant="primary"
           icon={<Gauge />}
           estimated={cur.is_estimated}
         />
         <KpiCard
-          label="Gas balance"
-          value={fmtMcm(cur.storage_imbalance_mcm)}
+          label="System balance"
+          value={supplyAvailable ? fmtMcm(rawBalance) : "-"}
           unit="mcm/day"
           hint={
-            cur.is_estimated && estimatedHint ? `${balanceHint} · ${estimatedHint}` : balanceHint
+            cur.is_estimated && estimatedHint && supplyAvailable
+              ? `${balanceHint} · ${estimatedHint}`
+              : balanceHint
           }
           tone={balanceTone}
           variant="balance"
           status={balanceStatus}
           emphasis="strong"
-          icon={cur.storage_imbalance_mcm >= 0 ? <TrendingUp /> : <TrendingDown />}
+          icon={!supplyAvailable || rawBalance >= 0 ? <TrendingUp /> : <TrendingDown />}
           estimated={cur.is_estimated}
         />
       </div>
@@ -90,28 +112,28 @@ export function KpiRow({ balance, today }: { balance: BalanceRow[]; today: strin
         />
         <KpiCard
           label="Import from Hungary"
-          value={fmtMcm(cur.kiskundorozsma_entry_mcm)}
+          value={supplyAvailable ? fmtMcm(cur.kiskundorozsma_entry_mcm) : "-"}
           unit="mcm/day"
           hint={estimatedHint ?? "Kiskundorozsma entry"}
-          delta={delta("kiskundorozsma_entry_mcm")}
+          delta={supplyAvailable ? delta("kiskundorozsma_entry_mcm") : null}
           icon={<ArrowDownToLine />}
           estimated={cur.is_estimated}
         />
         <KpiCard
           label="Net import from Bulgaria"
-          value={fmtMcm(cur.imports_from_bulgaria_mcm)}
+          value={supplyAvailable ? fmtMcm(cur.imports_from_bulgaria_mcm) : "-"}
           unit="mcm/day"
           hint={estimatedHint ?? "Kireevo less KKD-2 transit"}
-          delta={delta("imports_from_bulgaria_mcm")}
+          delta={supplyAvailable ? delta("imports_from_bulgaria_mcm") : null}
           icon={<ArrowDownToLine />}
           estimated={cur.is_estimated}
         />
         <KpiCard
           label="Kalotina entry"
-          value={fmtMcm(cur.kalotina_entry_mcm)}
+          value={supplyAvailable ? fmtMcm(cur.kalotina_entry_mcm) : "-"}
           unit="mcm/day"
           hint={estimatedHint ?? "Bulgaria to Serbia direct"}
-          delta={delta("kalotina_entry_mcm")}
+          delta={supplyAvailable ? delta("kalotina_entry_mcm") : null}
           icon={<ArrowDownToLine />}
           estimated={cur.is_estimated}
         />
@@ -124,7 +146,7 @@ export function KpiRow({ balance, today }: { balance: BalanceRow[]; today: strin
         />
         <KpiCard
           label="Bosnia export"
-          value={fmtMcm(cur.bosnia_consumption_mcm)}
+          value={supplyAvailable ? fmtMcm(cur.bosnia_consumption_mcm) : "-"}
           unit="mcm/day"
           hint={estimatedHint ?? "Share of Bulgaria import"}
           icon={<ArrowDownToLine />}

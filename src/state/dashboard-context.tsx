@@ -8,10 +8,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { supabase } from "@/integrations/supabase/client";
 
 export type DataMode = "dummy" | "live";
-
 export type SaveState = "idle" | "loading" | "saving" | "saved" | "error";
 
 export interface DashboardSettings {
@@ -34,8 +32,7 @@ export interface DashboardSettings {
 }
 
 const Ctx = createContext<DashboardSettings | null>(null);
-
-const SETTINGS_ID = "global";
+const STORAGE_KEY = "gas-dashboard.scenario.v2";
 
 interface PersistedScenario {
   usePolynomial: boolean;
@@ -47,78 +44,77 @@ interface PersistedScenario {
   rangeFutureDays: number;
 }
 
+const DEFAULTS: PersistedScenario = {
+  usePolynomial: true,
+  curveShift: 1,
+  curveDistortion: 1,
+  domesticProduction: 0.5,
+  bihShare: 0.07,
+  rangePastDays: 10,
+  rangeFutureDays: 10,
+};
+
+function readScenario(): PersistedScenario {
+  if (typeof window === "undefined") return DEFAULTS;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return DEFAULTS;
+    const parsed = JSON.parse(raw) as Partial<PersistedScenario>;
+    return {
+      usePolynomial: parsed.usePolynomial ?? DEFAULTS.usePolynomial,
+      curveShift: Number(parsed.curveShift ?? DEFAULTS.curveShift),
+      curveDistortion: Number(parsed.curveDistortion ?? DEFAULTS.curveDistortion),
+      domesticProduction: Number(parsed.domesticProduction ?? DEFAULTS.domesticProduction),
+      bihShare: Number(parsed.bihShare ?? DEFAULTS.bihShare),
+      rangePastDays: Number(parsed.rangePastDays ?? DEFAULTS.rangePastDays),
+      rangeFutureDays: Number(parsed.rangeFutureDays ?? DEFAULTS.rangeFutureDays),
+    };
+  } catch {
+    return DEFAULTS;
+  }
+}
+
 export function DashboardProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<DataMode>("live");
-  const [rangePastDays, setRangePastDays] = useState(10);
-  const [rangeFutureDays, setRangeFutureDays] = useState(10);
-  const [usePolynomial, setUsePolynomial] = useState(true);
-  const [curveShift, setCurveShift] = useState(1);
-  const [curveDistortion, setCurveDistortion] = useState(1);
-  const [domesticProduction, setDomesticProduction] = useState(0.5);
-  const [bihShare, setBihShare] = useState(0.07);
+  const [rangePastDays, setRangePastDays] = useState(DEFAULTS.rangePastDays);
+  const [rangeFutureDays, setRangeFutureDays] = useState(DEFAULTS.rangeFutureDays);
+  const [usePolynomial, setUsePolynomial] = useState(DEFAULTS.usePolynomial);
+  const [curveShift, setCurveShift] = useState(DEFAULTS.curveShift);
+  const [curveDistortion, setCurveDistortion] = useState(DEFAULTS.curveDistortion);
+  const [domesticProduction, setDomesticProduction] = useState(DEFAULTS.domesticProduction);
+  const [bihShare, setBihShare] = useState(DEFAULTS.bihShare);
   const [saveState, setSaveState] = useState<SaveState>("loading");
 
   const loadedRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Load shared scenario settings once so every visitor sees the saved parameters.
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const { data, error } = await supabase
-        .from("dashboard_settings")
-        .select(
-          "use_polynomial, curve_shift, curve_distortion, domestic_production, bih_share, range_past_days, range_future_days",
-        )
-        .eq("id", SETTINGS_ID)
-        .maybeSingle();
-      if (cancelled) return;
-      if (error) {
-        setSaveState("error");
-        loadedRef.current = true;
-        return;
-      }
-      if (data) {
-        setUsePolynomial(Boolean(data.use_polynomial));
-        setCurveShift(Number(data.curve_shift));
-        setCurveDistortion(Number(data.curve_distortion));
-        setDomesticProduction(Number(data.domestic_production));
-        setBihShare(Number(data.bih_share));
-        setRangePastDays(Number(data.range_past_days));
-        setRangeFutureDays(Number(data.range_future_days));
-      }
-      loadedRef.current = true;
-      setSaveState("idle");
-    })();
-    return () => {
-      cancelled = true;
-    };
+    const saved = readScenario();
+    setUsePolynomial(saved.usePolynomial);
+    setCurveShift(saved.curveShift);
+    setCurveDistortion(saved.curveDistortion);
+    setDomesticProduction(saved.domesticProduction);
+    setBihShare(saved.bihShare);
+    setRangePastDays(saved.rangePastDays);
+    setRangeFutureDays(saved.rangeFutureDays);
+    loadedRef.current = true;
+    setSaveState("idle");
   }, []);
 
   const persist = useCallback((next: PersistedScenario) => {
-    if (!loadedRef.current) return;
+    if (!loadedRef.current || typeof window === "undefined") return;
     if (timerRef.current) clearTimeout(timerRef.current);
     setSaveState("saving");
-    timerRef.current = setTimeout(async () => {
-      const { error } = await supabase.from("dashboard_settings").upsert(
-        {
-          id: SETTINGS_ID,
-          use_polynomial: next.usePolynomial,
-          curve_shift: next.curveShift,
-          curve_distortion: next.curveDistortion,
-          domestic_production: next.domesticProduction,
-          bih_share: next.bihShare,
-          range_past_days: next.rangePastDays,
-          range_future_days: next.rangeFutureDays,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "id" },
-      );
-      setSaveState(error ? "error" : "saved");
-    }, 600);
+    timerRef.current = setTimeout(() => {
+      try {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+        setSaveState("saved");
+      } catch {
+        setSaveState("error");
+      }
+    }, 350);
   }, []);
 
-  // Save whenever a scenario parameter changes (debounced).
   useEffect(() => {
     persist({
       usePolynomial,
@@ -140,11 +136,12 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     rangeFutureDays,
   ]);
 
-  useEffect(() => {
-    return () => {
+  useEffect(
+    () => () => {
       if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, []);
+    },
+    [],
+  );
 
   const value = useMemo<DashboardSettings>(
     () => ({

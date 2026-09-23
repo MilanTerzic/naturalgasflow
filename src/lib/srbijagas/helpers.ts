@@ -1,5 +1,4 @@
 // Aggregation, weather metrics, price reconstruction, CSV utilities.
-import { MAX_SERBIAN_DAILY_MCM } from "@/lib/gas/config";
 import type {
   AnalysisRow,
   BosniaAssumption,
@@ -65,7 +64,10 @@ export function buildAnalysis(opts: {
   return opts.dates.map((date): AnalysisRow => {
     const ts = Date.parse(`${date}T00:00:00Z`);
     const f = flowByDate.get(date);
-    const measured = !!f && (f.kireevo > 0 || f.kalotina > 0 || f.kkdHu > 0);
+    const requiredPoints = ["kireevo", "kiskundorozsma_2", "kiskundorozsma_hu", "kalotina"] as const;
+    const measured =
+      !!f &&
+      (!f.publishedPoints || requiredPoints.every((point) => f.publishedPoints?.includes(point)));
     const kireevo = f?.kireevo ?? 0;
     const kkd2 = f?.kkd2 ?? 0;
     const kkdHu = f?.kkdHu ?? 0;
@@ -107,13 +109,14 @@ export function buildAnalysis(opts: {
           (powerGwh / opts.power.efficiencyPct) / (opts.power.gasCvKwhM3)
         : null;
 
-    let serbianConsumption = imports_total + opts.domesticProduction - bosnia;
     const manualS = opts.manualSerbianDaily[date];
+    let serbianConsumption = measured
+      ? imports_total + opts.domesticProduction - bosnia
+      : 0;
     if (manualS != null) serbianConsumption = manualS;
 
     let source: AnalysisRow["source"] = measured ? "measured" : "missing";
     if (manualS != null) source = "manual_override";
-    else if (!measured && f) source = "estimated";
 
     return {
       date,
@@ -125,7 +128,7 @@ export function buildAnalysis(opts: {
       domestic_production_mcm: opts.domesticProduction,
       bosnia_mcm: Math.max(0, bosnia),
       bosnia_source: opts.bosnia.method,
-      serbian_consumption_mcm: Math.min(MAX_SERBIAN_DAILY_MCM, Math.max(0, serbianConsumption)),
+      serbian_consumption_mcm: Math.max(0, serbianConsumption),
       temperature_c,
       hdd: hdd(temperature_c),
       cdd: cdd(temperature_c),
@@ -151,12 +154,16 @@ export function aggregateMonthly(rows: AnalysisRow[]): MonthlyAggRow[] {
         avg_temp_c: null,
         hdd: 0,
         days: 0,
+        valid_days: 0,
         _tSum: 0,
         _tCount: 0,
       };
       map.set(m, agg);
     }
-    agg.serbian_mcm += r.serbian_consumption_mcm;
+    if (r.source !== "missing") {
+      agg.serbian_mcm += r.serbian_consumption_mcm;
+      agg.valid_days += 1;
+    }
     agg.bosnia_mcm += r.bosnia_mcm;
     if (r.power_gas_equiv_mcm != null) agg.power_gas_mcm += r.power_gas_equiv_mcm;
     if (r.temperature_c != null) {
@@ -176,6 +183,7 @@ export function aggregateMonthly(rows: AnalysisRow[]): MonthlyAggRow[] {
       avg_temp_c: a._tCount > 0 ? +(a._tSum / a._tCount).toFixed(2) : null,
       hdd: +a.hdd.toFixed(0),
       days: a.days,
+      valid_days: a.valid_days,
     }))
     .sort((a, b) => (a.month < b.month ? -1 : 1));
 }
@@ -210,6 +218,7 @@ export function seasonalProfile(monthly: MonthlyAggRow[]) {
   // Average by calendar month across all years.
   const groups: Record<string, number[]> = {};
   for (const m of monthly) {
+    if (m.days === 0 || m.valid_days !== m.days) continue;
     const mm = m.month.slice(5, 7);
     (groups[mm] ??= []).push(m.serbian_mcm);
   }

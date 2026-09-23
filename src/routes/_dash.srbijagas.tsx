@@ -54,7 +54,6 @@ import {
   parseKvCsv,
   reconstructPrice,
   seasonalProfile,
-  smoothExtremes,
   syntheticBrent,
   syntheticTtf,
   toCsv,
@@ -78,7 +77,7 @@ export const Route = createFileRoute("/_dash/srbijagas")({
       {
         name: "description",
         content:
-          "Historical Serbian gas demand, Bosnia assumption, power generation, weather and Srbijagas pricing.",
+          "Historical implied Serbian gas offtake, Bosnia assumptions, power generation, weather and Srbijagas pricing.",
       },
     ],
   }),
@@ -166,6 +165,7 @@ function SrbijagasPage() {
       kkd2: r.kiskundorozsma_2 ?? 0,
       kkdHu: r.kiskundorozsma_hu ?? 0,
       kalotina: r.kalotina ?? 0,
+      publishedPoints: r.published_points,
     }));
   }, [flowsQ.data]);
 
@@ -219,7 +219,7 @@ function SrbijagasPage() {
     return monthly.map((m) => {
       const year = m.month.slice(0, 4);
       const s = SHARES[year] ?? fallback;
-      const days = m.days || 1;
+      const days = m.valid_days || 1;
       const totalPerDay = (m.serbian_mcm ?? 0) / days;
       const monthIdx = Math.max(0, Math.min(11, parseInt(m.month.slice(5, 7), 10) - 1));
       const wHH  = s.household * HH_MULT[monthIdx];
@@ -241,7 +241,7 @@ function SrbijagasPage() {
     const acc: Record<string, { year: string; household_mcm: number; district_mcm: number; industry_mcm: number; total_mcm: number; days: number }> = {};
     for (let i = 0; i < consumptionBreakdown.length; i++) {
       const r = consumptionBreakdown[i];
-      const days = monthly[i]?.days ?? 30;
+      const days = monthly[i]?.valid_days ?? 0;
       const y = r.month.slice(0, 4);
       const a = (acc[y] ??= { year: y, household_mcm: 0, district_mcm: 0, industry_mcm: 0, total_mcm: 0, days: 0 });
       a.household_mcm += r.household_mcm * days;
@@ -258,16 +258,6 @@ function SrbijagasPage() {
       total_mcm: +(a.total_mcm / Math.max(1, a.days)).toFixed(3),
     }));
   }, [consumptionBreakdown, monthly]);
-
-  // Display-only: smooth extreme outliers on derived estimates only.
-  // Measured ENTSOG flows (kireevo/kalotina/kkdHu/kkd2) are intentionally NOT
-  // smoothed — those routes are legitimately intermittent (HU→RS in particular
-  // is zero most days with occasional pulses) and carry-forward would invent
-  // phantom flow on real zero days.
-  const analysisSmoothed = useMemo(
-    () => smoothExtremes(analysis, ["serbian_consumption_mcm", "bosnia_mcm"]),
-    [analysis],
-  );
 
   // Price reconstruction
   const months = useMemo(() => monthsBetween(fromISO, toISO), [fromISO, toISO]);
@@ -320,10 +310,12 @@ function SrbijagasPage() {
   const avgDaily = avg(consumptionValues);
   const maxDaily = consumptionValues.length ? Math.max(...consumptionValues) : 0;
   const minDaily = consumptionValues.length ? Math.min(...consumptionValues) : 0;
-  const avgMonthly = avg(monthly.map((m) => m.serbian_mcm));
-  const peakMonth = monthly.reduce(
+  const completeMonths = monthly.filter((m) => m.days > 0 && m.valid_days === m.days);
+  const avgMonthly = avg(completeMonths.map((m) => m.serbian_mcm));
+  const peakPool = completeMonths.length > 0 ? completeMonths : monthly.filter((m) => m.valid_days > 0);
+  const peakMonth = peakPool.reduce(
     (best, m) => (m.serbian_mcm > (best?.serbian_mcm ?? -1) ? m : best),
-    monthly[0],
+    peakPool[0],
   );
   const avgBosniaMonthly = avg(monthly.map((m) => m.bosnia_mcm));
   const avgPowerGasMonthly = avg(monthly.map((m) => m.power_gas_mcm));
@@ -414,18 +406,18 @@ function SrbijagasPage() {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-6 xl:grid-cols-6">
-        <KpiCard label="Avg daily consumption" value={`${fmtMcm(avgDaily)} mcm`} hint="Serbian, measured days" />
-        <KpiCard label="Max daily consumption" value={`${fmtMcm(maxDaily)} mcm`} hint="Peak day" />
-        <KpiCard label="Min daily consumption" value={`${fmtMcm(minDaily)} mcm`} hint="Lowest day" />
-        <KpiCard label="Avg monthly volume" value={`${fmtMcm(avgMonthly)} mcm`} hint="Per month" />
+        <KpiCard label="Avg implied daily offtake" value={`${fmtMcm(avgDaily)} mcm`} hint="Complete flow-derived days" />
+        <KpiCard label="Max implied daily offtake" value={`${fmtMcm(maxDaily)} mcm`} hint="Peak flow-derived day" />
+        <KpiCard label="Min implied daily offtake" value={`${fmtMcm(minDaily)} mcm`} hint="Lowest flow-derived day" />
+        <KpiCard label="Avg monthly volume" value={`${fmtMcm(avgMonthly)} mcm`} hint="100% flow-coverage months" />
         <KpiCard label="Peak month" value={`${fmtMcm(peakMonth?.serbian_mcm ?? 0)} mcm`} hint={peakMonth?.month ?? "–"} />
         <KpiCard label="Avg Bosnia / month" value={`${fmtMcm(avgBosniaMonthly)} mcm`} hint="Assumed flow" tone="warning" />
         <KpiCard label="Power gas / month" value={`${fmtMcm(avgPowerGasMonthly)} mcm`} hint="From electricity" tone="warning" />
         <KpiCard label="Avg temperature" value={fmtTemp(avgTemp)} hint="Belgrade" />
         <KpiCard label="Total HDD" value={`${totalHdd.toFixed(0)}`} hint="Base 18 °C" />
         <KpiCard label="Avg Srbijagas price" value={avgPrice ? `${avgPrice.toFixed(1)} €/MWh` : "–"} hint="Official entries" />
-        <KpiCard label="Measured days" value={`${dq.measuredCount}/${dq.total}`} hint="Data coverage" />
-        <KpiCard label="Estimated days" value={`${dq.estimatedCount + dq.overrideCount}`} hint="Carry-fwd + manual" tone={dq.estimatedCount + dq.overrideCount > 0 ? "warning" : "default"} />
+        <KpiCard label="Complete flow days" value={`${dq.measuredCount}/${dq.total}`} hint="ENTSOG coverage" />
+        <KpiCard label="Missing flow days" value={`${dq.missingCount}`} hint="Excluded from implied offtake totals" tone={dq.missingCount > 0 ? "warning" : "default"} />
       </div>
 
       {/* Bosnia assumption panel */}
@@ -494,7 +486,7 @@ function SrbijagasPage() {
       <Tabs defaultValue="volume" className="w-full">
         <TabsList>
           <TabsTrigger value="volume">Volume History</TabsTrigger>
-          <TabsTrigger value="breakdown">Consumption Breakdown</TabsTrigger>
+          <TabsTrigger value="breakdown">Modeled Sector Split</TabsTrigger>
           <TabsTrigger value="weather">Weather &amp; Demand</TabsTrigger>
           <TabsTrigger value="power">Gas-fired Power</TabsTrigger>
           <TabsTrigger value="price">Srbijagas Price</TabsTrigger>
@@ -504,9 +496,9 @@ function SrbijagasPage() {
 
         {/* ---------------- VOLUME HISTORY ---------------- */}
         <TabsContent value="volume" className="space-y-4 pt-3">
-          <ChartCard title="Daily Serbian gas balance" subtitle="mcm/day — stacked supply (BG net + Kalotina + KKD-HU + production) − Bosnia. Extreme spikes carried-forward." height={340}>
+          <ChartCard title="Daily flow-derived Serbian supply" subtitle="mcm/day — published cross-border flows + domestic production; Bosnia is an explicit assumption" height={340}>
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={analysisSmoothed} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
+              <ComposedChart data={analysis} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
                 <CartesianGrid stroke={PALETTE.grid} vertical={false} />
                 <XAxis dataKey="ts" type="number" domain={["dataMin", "dataMax"]} scale="time"
                   tickFormatter={(v) => fmtMonthYear(new Date(v).toISOString().slice(0, 10))}
@@ -525,7 +517,7 @@ function SrbijagasPage() {
             </ResponsiveContainer>
           </ChartCard>
 
-          <ChartCard title="Monthly volume profile" subtitle="Serbia consumption + Bosnia assumption + power-gas equivalent" height={300}>
+          <ChartCard title="Monthly volume profile" subtitle="Observed/implied monthly totals; partial months are flagged by coverage" height={300}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={monthly} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
                 <CartesianGrid stroke={PALETTE.grid} vertical={false} />
@@ -533,7 +525,7 @@ function SrbijagasPage() {
                 <YAxis tick={{ fontSize: 11 }} stroke={PALETTE.axis} />
                 <Tooltip contentStyle={{ fontSize: 12 }} formatter={(v: unknown, n) => [typeof v === "number" ? `${fmtMcm(v)} mcm` : "–", n]} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="serbian_mcm" stackId="m" name="Serbia (est.)" fill={PALETTE.bgImport} isAnimationActive={false} />
+                <Bar dataKey="serbian_mcm" stackId="m" name="Serbia implied offtake" fill={PALETTE.bgImport} isAnimationActive={false} />
                 <Bar dataKey="bosnia_mcm" stackId="m" name="Bosnia (assumed)" fill={PALETTE.huMet} isAnimationActive={false} />
                 <Bar dataKey="power_gas_mcm" stackId="m" name="Power-gas (est.)" fill={PALETTE.kalotina} isAnimationActive={false} />
               </BarChart>
@@ -578,6 +570,7 @@ function SrbijagasPage() {
                     <TableHead className="text-right text-xs">Total potential (mcm)</TableHead>
                     <TableHead className="text-right text-xs">Avg T °C</TableHead>
                     <TableHead className="text-right text-xs">HDD</TableHead>
+                    <TableHead className="text-right text-xs">Coverage</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -590,6 +583,9 @@ function SrbijagasPage() {
                       <TableCell className="text-right text-xs tabular-nums font-semibold">{fmtMcm(m.total_potential_mcm)}</TableCell>
                       <TableCell className="text-right text-xs tabular-nums">{m.avg_temp_c?.toFixed(1) ?? "–"}</TableCell>
                       <TableCell className="text-right text-xs tabular-nums">{m.hdd}</TableCell>
+                      <TableCell className="text-right text-xs tabular-nums">
+                        {m.days > 0 ? `${m.valid_days}/${m.days}` : "–"}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -601,10 +597,10 @@ function SrbijagasPage() {
         {/* ---------------- CONSUMPTION BREAKDOWN ---------------- */}
         <TabsContent value="breakdown" className="space-y-4 pt-3">
           <div className="rounded-md border bg-card p-3 text-xs text-muted-foreground shadow-sm">
-            Serbian consumption split by sector using year-specific shares: <strong>Households</strong>, <strong>District heating</strong>, and <strong>Industry &amp; other</strong>. Shares: 2021 (12.9/22.7/64.4), 2022 (13.7/19.6/66.6), 2023 (13.9/19.6/66.5), 2024 (15.6/20.2/64.2), 2026 est. (15.7/20.1/64.2). 2025 interpolated.
+            Modeled allocation of implied Serbian offtake by sector using year-specific assumed shares: <strong>Households</strong>, <strong>District heating</strong>, and <strong>Industry &amp; other</strong>. Shares: 2021 (12.9/22.7/64.4), 2022 (13.7/19.6/66.6), 2023 (13.9/19.6/66.5), 2024 (15.6/20.2/64.2), 2026 est. (15.7/20.1/64.2). 2025 interpolated.
           </div>
 
-          <ChartCard title="Monthly consumption breakdown" subtitle="Stacked area — mcm/day (monthly avg)" height={340}>
+          <ChartCard title="Monthly modeled sector allocation" subtitle="Stacked area — mcm/day on complete flow-derived days" height={340}>
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={consumptionBreakdown} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
                 <CartesianGrid stroke={PALETTE.grid} vertical={false} />
@@ -620,7 +616,7 @@ function SrbijagasPage() {
             </ResponsiveContainer>
           </ChartCard>
 
-          <ChartCard title="Yearly consumption by sector" subtitle="Stacked bar — mcm/day (yearly avg)" height={280}>
+          <ChartCard title="Yearly modeled sector allocation" subtitle="Stacked bar — mcm/day (yearly avg of modeled allocation)" height={280}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={breakdownYearly} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
                 <CartesianGrid stroke={PALETTE.grid} vertical={false} />
@@ -877,7 +873,7 @@ function SrbijagasPage() {
               First row may be a header. Uploads override API-derived values for matching keys; everything labelled as <strong>manual override</strong>.
             </p>
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-              <CsvUpload label="Serbian consumption (mcm/d)" count={Object.keys(overrides.manualSerbianDaily).length}
+              <CsvUpload label="Serbian implied offtake override (mcm/d)" count={Object.keys(overrides.manualSerbianDaily).length}
                 onFile={(f) => uploadKv(f, "manualSerbianDaily")}
                 onClear={() => update({ manualSerbianDaily: {} })} />
               <CsvUpload label="Bosnia consumption (mcm/d)" count={Object.keys(overrides.manualBosniaDaily).length}
@@ -913,8 +909,8 @@ function SrbijagasPage() {
               <Table>
                 <TableBody>
                   <Row k="Total days in window" v={dq.total} />
-                  <Row k="Measured (ENTSOG)" v={dq.measuredCount} />
-                  <Row k="Estimated / carried" v={dq.estimatedCount} />
+                  <Row k="Complete flow-derived days (ENTSOG)" v={dq.measuredCount} />
+                  <Row k="Estimated / carried flow days" v={dq.estimatedCount} />
                   <Row k="Missing flows" v={dq.missingCount} tone={dq.missingCount > 0 ? "warning" : undefined} />
                   <Row k="Manual overrides applied" v={dq.overrideCount} />
                   <Row k="Days without temperature" v={dq.tempMissing} tone={dq.tempMissing > 0 ? "warning" : undefined} />
@@ -928,7 +924,7 @@ function SrbijagasPage() {
                 <li>✅ <strong>Open-Meteo</strong> + <strong>Visual Crossing</strong> fallback — Belgrade temperatures.</li>
                 <li>✅ <strong>ECB Statistical Data Warehouse</strong> — EUR/USD daily reference rate.</li>
                 <li>⚠ <strong>TTF / Brent</strong> — calibrated monthly series; override via CSV upload. <em>To be connected to ICE/Argus feed.</em></li>
-                <li>⚠ <strong>Gas-fired power generation</strong> — not connected. Upload daily GWh via CSV. <em>ENTSO-E integration to be added.</em></li>
+                <li>✅ <strong>ENTSO-E Transparency Platform</strong> — Serbian fossil-gas electricity generation, with CSV override support.</li>
                 <li>⚠ <strong>Srbijagas official price</strong> — manual upload / entry only.</li>
                 <li>ℹ <strong>Bosnia consumption</strong> — always assumed (no public direct measurement).</li>
               </ul>
@@ -964,7 +960,7 @@ function SrbijagasPage() {
                     <TableHead className="text-right text-xs">Imports tot</TableHead>
                     <TableHead className="text-right text-xs">BG net</TableHead>
                     <TableHead className="text-right text-xs">Bosnia (est)</TableHead>
-                    <TableHead className="text-right text-xs">Serbia cons.</TableHead>
+                    <TableHead className="text-right text-xs">Serbia implied</TableHead>
                     <TableHead className="text-right text-xs">T °C</TableHead>
                     <TableHead className="text-right text-xs">HDD</TableHead>
                   </TableRow>
@@ -1077,13 +1073,13 @@ function CommercialInsights({
   const coverage = dq.total > 0 ? (dq.measuredCount / dq.total) * 100 : 0;
   return (
     <ul className="space-y-1 text-xs leading-relaxed">
-      <li>Average monthly Serbian demand over the selected window: <strong>{fmtMcm(avgMonthly)} mcm/month</strong>.</li>
-      <li>Winter peak reached <strong>{fmtMcm(peakMonthVol)} mcm</strong> in <strong>{peakMonth ?? "–"}</strong> — full-supply offers must size for this exposure.</li>
+      <li>Average monthly implied Serbian offtake over the selected window: <strong>{fmtMcm(avgMonthly)} mcm/month</strong>.</li>
+      <li>Winter peak reached <strong>{fmtMcm(peakMonthVol)} mcm</strong> in <strong>{peakMonth ?? "–"}</strong> — use this flow-derived exposure together with contractual demand data when sizing a full-supply offer.</li>
       <li>Bosnia-related assumed flow adds approximately <strong>{fmtMcm(avgBosnia)} mcm/month</strong> under the current assumption — adjust the share/method to test sensitivity.</li>
       {avgPowerGas > 0 && (
         <li>Gas-fired power consumption adds <strong>{fmtMcm(avgPowerGas)} mcm/month</strong> on average. Confirm if this is part of the offer scope.</li>
       )}
-      <li>ENTSOG coverage on this window: <strong>{coverage.toFixed(0)}%</strong> of days measured;
+      <li>ENTSOG coverage on this window: <strong>{coverage.toFixed(0)}%</strong> of days with complete required flow inputs;
         {dq.missingCount > 0 && <> <span className="text-amber-700">{dq.missingCount} days have no flow record</span></>}.
       </li>
       <li className="text-muted-foreground">⚠ Confirm Srbijagas official price series, gas-fired generation feed, and Bosnia consumption assumption before binding an offer.</li>

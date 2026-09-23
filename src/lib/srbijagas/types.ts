@@ -1,3 +1,5 @@
+import type { FlowPointName } from "@/lib/gas/types";
+
 // Types for the Srbijagas Full Supply Analysis tab.
 
 export interface DailyFlowRow {
@@ -6,6 +8,7 @@ export interface DailyFlowRow {
   kkd2: number;               // KKD-2 transit (mcm/d)
   kkdHu: number;              // HU → RS (mcm/d)
   kalotina: number;           // BG → RS Kalotina (mcm/d)
+  publishedPoints?: FlowPointName[];
 }
 
 export type AssumedSource = "measured" | "estimated" | "carried_forward" | "manual_override" | "missing";
@@ -23,7 +26,7 @@ export interface AnalysisRow {
   bosnia_mcm: number;
   bosnia_source: "share_of_net" | "share_of_kireevo_spread" | "constant" | "manual";
   // Demand
-  serbian_consumption_mcm: number;     // imports + production - bosnia (analytical net for full-supply view)
+  serbian_consumption_mcm: number;     // implied offtake = imports + production - Bosnia assumption
   // Weather
   temperature_c: number | null;
   hdd: number | null;
@@ -44,6 +47,7 @@ export interface MonthlyAggRow {
   avg_temp_c: number | null;
   hdd: number;
   days: number;
+  valid_days: number;
 }
 
 export interface PriceRow {

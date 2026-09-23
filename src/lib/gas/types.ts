@@ -3,6 +3,12 @@ export interface TempRow {
   temperature_c: number | null;
 }
 
+export type FlowPointName =
+  | "kiskundorozsma_hu"
+  | "kireevo"
+  | "kiskundorozsma_2"
+  | "kalotina";
+
 export interface FlowRow {
   date: string;
   kiskundorozsma_hu: number;
@@ -10,6 +16,11 @@ export interface FlowRow {
   kiskundorozsma_2: number;
   kalotina: number;
   kiskundorozsma_hu_met?: number;
+  // When present, distinguishes an actually published zero from a missing point.
+  // Legacy/static rows without this field are treated as fully populated.
+  published_points?: FlowPointName[];
+  point_last_update?: Partial<Record<FlowPointName, string>>;
+  fetched_at?: string;
 }
 
 export type FlowSourceType = "actual" | "historical_fallback" | "future_fallback" | "none";
@@ -35,8 +46,14 @@ export interface BalanceRow {
   bosnia_consumption_mcm: number;
   domestic_production_mcm: number;
   serbian_available_supply_mcm: number;
-  storage_imbalance_mcm: number;
+  // False for future days until a genuine supply forecast is available.
+  supply_available: boolean;
+  // Raw system balance = available supply - demand.
   storage_imbalance_raw_mcm: number;
+  // Feasible storage action after injection/withdrawal limits are applied.
+  storage_imbalance_mcm: number;
+  // Portion of the raw imbalance that storage cannot absorb.
+  residual_gap_mcm: number;
   storage_injection_mcm: number;
   storage_withdrawal_mcm: number;
 }

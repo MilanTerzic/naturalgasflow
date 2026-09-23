@@ -167,3 +167,30 @@ test("unavailable values remain null while real zero capacity is preserved", () 
   assert.equal(unavailable?.technical_mcm, null);
   assert.equal(unavailable?.booked_mcm, null);
 });
+
+
+test("historical utilization uses the capacity valid on each flow date", () => {
+  const rows = [
+    baseRow({ period: "2026-01-01", technical_mwh: 10_550, offered_mwh: 10_550 }),
+    baseRow({ period: "2026-01-03", technical_mwh: 21_100, offered_mwh: 21_100 }),
+  ];
+  const summaries = buildCapacityRouteSummaries(rows, [
+    {
+      date: "2026-01-02",
+      kiskundorozsma_hu: 0.5,
+      kireevo: 0,
+      kalotina: 0,
+      kiskundorozsma_2: 0,
+    },
+    {
+      date: "2026-01-04",
+      kiskundorozsma_hu: 0.5,
+      kireevo: 0,
+      kalotina: 0,
+      kiskundorozsma_2: 0,
+    },
+  ]);
+  const route = summaries.find((summary) => summary.route.id === "fgsz-kiskundorozsma-hu-exit");
+  assert.equal(route?.perDate[0].util_pct, 50);
+  assert.equal(route?.perDate[1].util_pct, 25);
+});

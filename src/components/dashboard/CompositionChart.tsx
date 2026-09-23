@@ -31,10 +31,17 @@ const tooltipNum = (v: unknown) => (typeof v === "number" ? `${fmtMcm(v)} mcm/da
 
 export function CompositionChart({ data, today }: { data: BalanceRow[]; today: string }) {
   const todayTs = Date.parse(`${today}T00:00:00Z`);
+  const chartData = data.map((row) => ({
+    ...row,
+    chart_bg_available: row.supply_available ? row.imports_from_bulgaria_available_mcm : null,
+    chart_kalotina: row.supply_available ? row.kalotina_entry_mcm : null,
+    chart_hungary: row.supply_available ? row.kiskundorozsma_entry_mcm : null,
+    chart_production: row.supply_available ? row.domestic_production_mcm : null,
+  }));
 
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <ComposedChart data={data} margin={{ top: 18, right: 18, left: 0, bottom: 8 }}>
+      <ComposedChart data={chartData} margin={{ top: 18, right: 18, left: 0, bottom: 8 }}>
         <CartesianGrid stroke={PALETTE.grid} vertical={false} />
         <XAxis
           dataKey="ts"
@@ -76,7 +83,7 @@ export function CompositionChart({ data, today }: { data: BalanceRow[]; today: s
         />
         <Area
           type="monotone"
-          dataKey="imports_from_bulgaria_available_mcm"
+          dataKey="chart_bg_available"
           stackId="supply"
           name="Bulgaria available"
           stroke={PALETTE.bgImport}
@@ -86,7 +93,7 @@ export function CompositionChart({ data, today }: { data: BalanceRow[]; today: s
         />
         <Area
           type="monotone"
-          dataKey="kalotina_entry_mcm"
+          dataKey="chart_kalotina"
           stackId="supply"
           name="Kalotina entry"
           stroke={PALETTE.kalotina}
@@ -96,7 +103,7 @@ export function CompositionChart({ data, today }: { data: BalanceRow[]; today: s
         />
         <Area
           type="monotone"
-          dataKey="kiskundorozsma_entry_mcm"
+          dataKey="chart_hungary"
           stackId="supply"
           name="Hungary entry"
           stroke={PALETTE.huOthers}
@@ -106,7 +113,7 @@ export function CompositionChart({ data, today }: { data: BalanceRow[]; today: s
         />
         <Area
           type="monotone"
-          dataKey="domestic_production_mcm"
+          dataKey="chart_production"
           stackId="supply"
           name="Domestic production"
           stroke={PALETTE.production}
@@ -180,7 +187,9 @@ function CompositionTooltip({
         <div className="font-semibold text-foreground">{date}</div>
         <div className="flex gap-1">
           {row?.is_forecast && (
-            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-700">Forecast</span>
+            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-700">
+              Demand forecast
+            </span>
           )}
           {row?.is_estimated && (
             <span className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-800">Estimated</span>

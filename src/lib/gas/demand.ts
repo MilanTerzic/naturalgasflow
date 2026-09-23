@@ -1,17 +1,23 @@
-// Demand model + balance builder. Direct port of demand.py.
+// Demand model + balance builder.
 import {
   BIH_SHARE,
   CURVE_DISTORTION_DEFAULT,
   CURVE_SHIFT_DEFAULT,
   DOMESTIC_PRODUCTION_MCM,
   LINEAR_COEFFS,
+  MAX_SERBIAN_DAILY_MCM,
   MAX_STORAGE_INJECTION,
   MAX_STORAGE_WITHDRAWAL,
   POLY_COEFFS,
 } from "./config";
-import type { BalanceRow, FlowRow, TempRow } from "./types";
+import type {
+  BalanceRow,
+  FlowPointName,
+  FlowRow,
+  FlowSourceType,
+  TempRow,
+} from "./types";
 
-// numpy.polyval: highest power first.
 export function polyval(coeffs: readonly number[], x: number): number {
   let acc = 0;
   for (const c of coeffs) acc = acc * x + c;
@@ -30,7 +36,9 @@ export function forecastDemand(
   const usePoly = opts.usePolynomial ?? true;
   const shift = opts.curveShift ?? CURVE_SHIFT_DEFAULT;
   const distortion =
-    !opts.curveDistortion || opts.curveDistortion === 0 ? CURVE_DISTORTION_DEFAULT : opts.curveDistortion;
+    !opts.curveDistortion || opts.curveDistortion === 0
+      ? CURVE_DISTORTION_DEFAULT
+      : opts.curveDistortion;
   const coeffs = usePoly ? POLY_COEFFS : LINEAR_COEFFS;
   return polyval(coeffs, avgTempC) * distortion + shift;
 }
@@ -62,7 +70,7 @@ const clip = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi
 const clipLow = (v: number, lo: number) => (v < lo ? lo : v);
 
 export interface BuildBalanceArgs {
-  dates: string[]; // ISO daily
+  dates: string[];
   todayIso: string;
   flows: FlowRow[];
   temps: TempRow[];
@@ -73,6 +81,33 @@ export interface BuildBalanceArgs {
   domesticProduction?: number;
   maxStorageInjection?: number;
   maxStorageWithdrawal?: number;
+}
+
+type ResolvedPoint = {
+  value: number;
+  available: boolean;
+  sourceType: FlowSourceType;
+  estimatedFrom?: string;
+};
+
+const FLOW_POINTS: FlowPointName[] = [
+  "kiskundorozsma_hu",
+  "kireevo",
+  "kiskundorozsma_2",
+  "kalotina",
+];
+
+function pointPublished(row: FlowRow | undefined, key: FlowPointName) {
+  if (!row) return false;
+  // Legacy/static datasets predate point-level provenance and are treated as complete.
+  return !row.published_points || row.published_points.includes(key);
+}
+
+function sourcePriority(sources: FlowSourceType[]): FlowSourceType {
+  if (sources.includes("none")) return "none";
+  if (sources.includes("future_fallback")) return "future_fallback";
+  if (sources.includes("historical_fallback")) return "historical_fallback";
+  return "actual";
 }
 
 export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
@@ -96,7 +131,6 @@ export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
   const flowByDate = new Map<string, FlowRow>();
   for (const r of flows) flowByDate.set(r.date, r);
 
-  // Build temperature series with 2-day rolling avg.
   const tempSeries: (number | null)[] = dates.map((d) => {
     const v = tempByDate.get(d);
     return v == null ? null : v;
@@ -109,69 +143,51 @@ export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
     return vals.reduce((s, v) => s + v, 0) / vals.length;
   });
 
-  // --- Flow selection per day ---
-  // Rule: trust actual ENTSOG values when present; never sum them with
-  // estimates. If a day has no usable actual data, carry forward the most
-  // recent historical day. If no historical exists, use the nearest future
-  // day as a last-resort fallback. Track source type per day for the UI.
-  const flowDaily: Record<string, FlowRow | undefined> = {};
-  const estimatedFrom: Record<string, string | undefined> = {};
-  const sourceType: Record<string, "actual" | "historical_fallback" | "future_fallback" | "none"> = {};
-  for (const d of dates) flowDaily[d] = flowByDate.get(d);
+  const resolvePoint = (index: number, key: FlowPointName): ResolvedPoint => {
+    const date = dates[index];
 
-  // "Usable" = at least one of the import points has a positive value.
-  // A row of all zeros is treated as missing (ENTSOG hasn't published yet).
-  const hasUsableFlow = (r: FlowRow | undefined) => !!r && (r.kireevo > 0 || r.kalotina > 0 || r.kiskundorozsma_hu > 0);
+    // Physical Flow is an observation, not a future supply forecast.
+    if (date > todayIso) {
+      return { value: 0, available: false, sourceType: "none" };
+    }
 
-  const todayIdx = dates.indexOf(todayIso);
-  const lastHistoricalIdx = todayIdx >= 0 ? todayIdx : dates.length - 1;
+    const direct = flowByDate.get(date);
+    if (pointPublished(direct, key)) {
+      return {
+        value: clipLow(direct?.[key] ?? 0, 0),
+        available: true,
+        sourceType: "actual",
+      };
+    }
 
-  for (let i = 0; i <= lastHistoricalIdx; i++) {
-    const dKey = dates[i];
-    if (hasUsableFlow(flowDaily[dKey])) {
-      sourceType[dKey] = "actual";
-      continue;
+    // Fill a missing historical point from the most recent published observation.
+    for (let back = index - 1; back >= 0; back -= 1) {
+      const srcDate = dates[back];
+      const row = flowByDate.get(srcDate);
+      if (!pointPublished(row, key)) continue;
+      return {
+        value: clipLow(row?.[key] ?? 0, 0),
+        available: true,
+        sourceType: "historical_fallback",
+        estimatedFrom: srcDate,
+      };
     }
-    // Walk back for the most recent historical day with real data.
-    let filled = false;
-    for (let back = 1; back <= i; back++) {
-      const srcKey = dates[i - back];
-      const srcRow = flowDaily[srcKey];
-      if (!hasUsableFlow(srcRow)) continue;
-      flowDaily[dKey] = { ...(srcRow as FlowRow), date: dKey };
-      estimatedFrom[dKey] = srcKey;
-      sourceType[dKey] = "historical_fallback";
-      filled = true;
-      break;
-    }
-    if (filled) continue;
-    // Last-resort: walk forward for the nearest future day with real data.
-    for (let fwd = i + 1; fwd < dates.length; fwd++) {
-      const srcKey = dates[fwd];
-      const srcRow = flowDaily[srcKey];
-      if (!hasUsableFlow(srcRow)) continue;
-      flowDaily[dKey] = { ...(srcRow as FlowRow), date: dKey };
-      estimatedFrom[dKey] = srcKey;
-      sourceType[dKey] = "future_fallback";
-      filled = true;
-      break;
-    }
-    if (!filled) sourceType[dKey] = "none";
-  }
 
-  // Debug log: one line per historical day showing what was selected and why.
-  if (typeof console !== "undefined") {
-    for (let i = 0; i <= lastHistoricalIdx; i++) {
-      const dKey = dates[i];
-      const r = flowDaily[dKey];
-      console.debug(
-        `[balance] ${dKey} src=${sourceType[dKey] ?? "none"}` +
-          (estimatedFrom[dKey] ? ` from=${estimatedFrom[dKey]}` : "") +
-          ` kireevo=${r?.kireevo ?? 0} kkd2=${r?.kiskundorozsma_2 ?? 0}` +
-          ` kkdHu=${r?.kiskundorozsma_hu ?? 0} kal=${r?.kalotina ?? 0}`,
-      );
+    // For old gaps only, use the nearest later observation that is still not in the future.
+    for (let fwd = index + 1; fwd < dates.length && dates[fwd] <= todayIso; fwd += 1) {
+      const srcDate = dates[fwd];
+      const row = flowByDate.get(srcDate);
+      if (!pointPublished(row, key)) continue;
+      return {
+        value: clipLow(row?.[key] ?? 0, 0),
+        available: true,
+        sourceType: "future_fallback",
+        estimatedFrom: srcDate,
+      };
     }
-  }
+
+    return { value: 0, available: false, sourceType: "none" };
+  };
 
   return dates.map((date, i): BalanceRow => {
     const ts = Date.parse(`${date}T00:00:00Z`);
@@ -184,50 +200,64 @@ export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
       curveShift,
       curveDistortion,
     });
-    const demand = Math.min(19, clipLow(demandRaw, 0));
+    const demand = Math.min(MAX_SERBIAN_DAILY_MCM, clipLow(demandRaw, 0));
 
-    const f = flowDaily[date] ?? {
-      date,
-      kiskundorozsma_hu: 0,
-      kireevo: 0,
-      kiskundorozsma_2: 0,
-      kalotina: 0,
-    };
-    const kkdHu = clipLow(f.kiskundorozsma_hu || 0, 0);
-    const kire = clipLow(f.kireevo || 0, 0);
-    const kkd2 = clipLow(f.kiskundorozsma_2 || 0, 0);
-    const kal = clipLow(f.kalotina || 0, 0);
+    const resolved = Object.fromEntries(
+      FLOW_POINTS.map((key) => [key, resolvePoint(i, key)]),
+    ) as Record<FlowPointName, ResolvedPoint>;
 
-    // Gastrans Serbia component = Kireevo exit BG - KKD-2 entry HU, floored at 0.
-    // This isolates the gas physically entering Serbia, not regional transit.
+    const sourceType = sourcePriority(FLOW_POINTS.map((key) => resolved[key].sourceType));
+    const supplyAvailable =
+      !is_forecast && FLOW_POINTS.every((key) => resolved[key].available);
+
+    const estimatedDates = Array.from(
+      new Set(
+        FLOW_POINTS.map((key) => resolved[key].estimatedFrom).filter(
+          (value): value is string => !!value,
+        ),
+      ),
+    ).sort();
+
+    const kkdHu = resolved.kiskundorozsma_hu.value;
+    const kire = resolved.kireevo.value;
+    const kkd2 = resolved.kiskundorozsma_2.value;
+    const kal = resolved.kalotina.value;
+
     const imports_from_bulgaria_mcm = clipLow(kire - kkd2, 0);
     const bosnia_consumption_mcm = clipLow(imports_from_bulgaria_mcm * bihShare, 0);
-    const imports_from_bulgaria_available_mcm = clipLow(imports_from_bulgaria_mcm - bosnia_consumption_mcm, 0);
+    const imports_from_bulgaria_available_mcm = clipLow(
+      imports_from_bulgaria_mcm - bosnia_consumption_mcm,
+      0,
+    );
 
-    // Total Supply formula:
-    //   max(Kireevo - KKD-2, 0) + KKD HU + Kalotina + production - Bosnia export
-    // Bosnia export is deducted exactly once here.
     const serbian_available_supply_mcm =
-      imports_from_bulgaria_mcm + kal + kkdHu + domesticProduction - bosnia_consumption_mcm;
+      imports_from_bulgaria_mcm +
+      kal +
+      kkdHu +
+      domesticProduction -
+      bosnia_consumption_mcm;
 
-    const storage_imbalance_raw_mcm = serbian_available_supply_mcm - demand;
-    const storage_imbalance_mcm = clip(storage_imbalance_raw_mcm, -maxStorageWithdrawal, maxStorageInjection);
+    const storage_imbalance_raw_mcm = supplyAvailable
+      ? serbian_available_supply_mcm - demand
+      : 0;
+    const storage_imbalance_mcm = supplyAvailable
+      ? clip(storage_imbalance_raw_mcm, -maxStorageWithdrawal, maxStorageInjection)
+      : 0;
+    const residual_gap_mcm = supplyAvailable
+      ? storage_imbalance_raw_mcm - storage_imbalance_mcm
+      : 0;
     const storage_injection_mcm = Math.max(storage_imbalance_mcm, 0);
     const storage_withdrawal_mcm = -Math.min(storage_imbalance_mcm, 0);
 
-    const src = is_forecast ? "actual" : (sourceType[date] ?? "none");
     return {
       date,
       ts,
       is_forecast,
-      is_estimated: !is_forecast && src !== "actual" && src !== "none",
-      estimated_from: estimatedFrom[date],
-      source_type: src,
+      is_estimated: supplyAvailable && sourceType !== "actual",
+      estimated_from: estimatedDates.length ? estimatedDates.join(", ") : undefined,
+      source_type: is_forecast ? "none" : sourceType,
       temperature_c: temp,
       avg_temperature_c: avg,
-      // Duplicate the boundary value (date === todayIso) into BOTH the
-      // actual and forecast series so the solid and dashed lines join
-      // instead of leaving a one-day gap at "today".
       temperature_actual_c: is_forecast ? null : temp,
       temperature_forecast_c: is_forecast || date === todayIso ? temp : null,
       demand_mcm: demand,
@@ -240,8 +270,10 @@ export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
       bosnia_consumption_mcm,
       domestic_production_mcm: domesticProduction,
       serbian_available_supply_mcm,
+      supply_available: supplyAvailable,
       storage_imbalance_raw_mcm,
       storage_imbalance_mcm,
+      residual_gap_mcm,
       storage_injection_mcm,
       storage_withdrawal_mcm,
     };

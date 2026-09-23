@@ -158,11 +158,11 @@ function saveLabel(state: ReturnType<typeof useDashboard>["saveState"]) {
     case "saving":
       return "Saving scenario…";
     case "saved":
-      return "Scenario saved for everyone";
+      return "Scenario saved on this device";
     case "error":
-      return "Could not sync saved scenario";
+      return "Could not save scenario locally";
     default:
-      return "Scenario settings are shared with all viewers";
+      return "Scenario settings are local to this browser";
   }
 }
 
