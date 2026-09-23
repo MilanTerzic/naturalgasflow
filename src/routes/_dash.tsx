@@ -1,10 +1,17 @@
-import { createFileRoute, Link, Outlet, useRouter } from "@tanstack/react-router";
-import { Fuel } from "lucide-react";
+import { createFileRoute, Link, Outlet, redirect, useNavigate, useRouter } from "@tanstack/react-router";
+import { Fuel, LogOut } from "lucide-react";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { DashboardProvider } from "@/state/dashboard-context";
 import { cn } from "@/lib/utils";
+import { hasAppSession, signOut } from "@/lib/auth";
 
 export const Route = createFileRoute("/_dash")({
+  ssr: false,
+  beforeLoad: async () => {
+    if (!(await hasAppSession())) {
+      throw redirect({ to: "/login" });
+    }
+  },
   component: DashLayout,
 });
 
@@ -19,6 +26,12 @@ const TABS = [
 
 function DashLayout() {
   const router = useRouter();
+  const navigate = useNavigate();
+
+  const logout = async () => {
+    await signOut();
+    await navigate({ to: "/login", replace: true });
+  };
   const pathname = router.state.location.pathname.replace(/\/$/, "") || "/";
   const showSidebar = pathname === "/balance";
 
@@ -62,6 +75,14 @@ function DashLayout() {
                   </Link>
                 ))}
               </nav>
+              <button
+                type="button"
+                onClick={logout}
+                className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border bg-background px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                Sign out
+              </button>
             </div>
           </div>
         </header>
