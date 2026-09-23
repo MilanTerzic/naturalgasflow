@@ -81,15 +81,31 @@ export function useDashboardData(): DashboardData {
     flows = dummyFlows(dates);
   }
 
-  // Detect "today fallback": no flow row for today, but yesterday is available.
+  // A published zero is real data. Fallback status is based on publication
+  // provenance, not on whether the physical-flow value is greater than zero.
   const todayFallback = useMemo(() => {
-    const hasToday = flows.some((f) => f.date === today && (f.kireevo > 0 || f.kalotina > 0 || f.kiskundorozsma_hu > 0));
+    const todayRow = flows.find((f) => f.date === today);
+    const hasToday =
+      !!todayRow && (!todayRow.published_points || todayRow.published_points.length > 0);
     if (hasToday) return false;
     const yIdx = dates.indexOf(today) - 1;
     if (yIdx < 0) return false;
-    const y = dates[yIdx];
-    return flows.some((f) => f.date === y && (f.kireevo > 0 || f.kalotina > 0));
+    const yesterdayRow = flows.find((f) => f.date === dates[yIdx]);
+    return (
+      !!yesterdayRow &&
+      (!yesterdayRow.published_points || yesterdayRow.published_points.length > 0)
+    );
   }, [flows, today, dates]);
+
+  const dataThrough = useMemo(() => {
+    return [...flows]
+      .filter(
+        (f) =>
+          f.date <= today &&
+          (!f.published_points || f.published_points.length > 0),
+      )
+      .sort((a, b) => b.date.localeCompare(a.date))[0]?.date ?? "";
+  }, [flows, today]);
 
   const balance = useMemo(
     () =>
@@ -121,6 +137,7 @@ export function useDashboardData(): DashboardData {
 
   // Validation: warn on day-over-day total-supply jumps > 50%.
   for (let i = 1; i < balance.length; i++) {
+    if (!balance[i - 1].supply_available || !balance[i].supply_available) continue;
     const a = balance[i - 1].serbian_available_supply_mcm;
     const b = balance[i].serbian_available_supply_mcm;
     if (a > 1 && Math.abs(b - a) / a > 0.5 && !balance[i].is_forecast) {
@@ -142,6 +159,6 @@ export function useDashboardData(): DashboardData {
     warnings,
     isLoading: s.mode === "live" && (tempQuery.isLoading || flowQuery.isLoading),
     todayFallback,
-    refreshedAt: today,
+    refreshedAt: dataThrough,
   };
 }
