@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "test": "node --test --experimental-strip-types tests/*.test.mjs",
+    "test": "bun test tests/*.test.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
