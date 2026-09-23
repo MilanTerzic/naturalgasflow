@@ -87,12 +87,12 @@ export function useDashboardData(): DashboardData {
     const hasCompleteOperationalCoverage = (row: FlowRow | undefined) => {
       if (!row) return false;
       if (row.point_source) {
-        return [
-          "kiskundorozsma_hu",
-          "kireevo",
-          "kiskundorozsma_2",
-          "kalotina",
-        ].every((key) => !!row.point_source?.[key as keyof typeof row.point_source]);
+        return Boolean(
+          row.point_source.kiskundorozsma_hu &&
+            row.point_source.kireevo &&
+            row.point_source.kiskundorozsma_2 &&
+            row.point_source.kalotina,
+        );
       }
       return !row.published_points || row.published_points.length === 4;
     };
