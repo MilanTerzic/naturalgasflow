@@ -115,7 +115,7 @@ export function KpiRow({ balance, today }: { balance: BalanceRow[]; today: strin
           value={supplyAvailable ? fmtMcm(cur.kiskundorozsma_entry_mcm) : "-"}
           unit="mcm/day"
           hint={estimatedHint ?? "Kiskundorozsma entry"}
-          delta={delta("kiskundorozsma_entry_mcm")}
+          delta={supplyAvailable ? delta("kiskundorozsma_entry_mcm") : null}
           icon={<ArrowDownToLine />}
           estimated={cur.is_estimated}
         />
@@ -124,7 +124,7 @@ export function KpiRow({ balance, today }: { balance: BalanceRow[]; today: strin
           value={supplyAvailable ? fmtMcm(cur.imports_from_bulgaria_mcm) : "-"}
           unit="mcm/day"
           hint={estimatedHint ?? "Kireevo less KKD-2 transit"}
-          delta={delta("imports_from_bulgaria_mcm")}
+          delta={supplyAvailable ? delta("imports_from_bulgaria_mcm") : null}
           icon={<ArrowDownToLine />}
           estimated={cur.is_estimated}
         />
@@ -133,7 +133,7 @@ export function KpiRow({ balance, today }: { balance: BalanceRow[]; today: strin
           value={supplyAvailable ? fmtMcm(cur.kalotina_entry_mcm) : "-"}
           unit="mcm/day"
           hint={estimatedHint ?? "Bulgaria to Serbia direct"}
-          delta={delta("kalotina_entry_mcm")}
+          delta={supplyAvailable ? delta("kalotina_entry_mcm") : null}
           icon={<ArrowDownToLine />}
           estimated={cur.is_estimated}
         />
