@@ -154,12 +154,16 @@ export function aggregateMonthly(rows: AnalysisRow[]): MonthlyAggRow[] {
         avg_temp_c: null,
         hdd: 0,
         days: 0,
+        valid_days: 0,
         _tSum: 0,
         _tCount: 0,
       };
       map.set(m, agg);
     }
-    agg.serbian_mcm += r.serbian_consumption_mcm;
+    if (r.source !== "missing") {
+      agg.serbian_mcm += r.serbian_consumption_mcm;
+      agg.valid_days += 1;
+    }
     agg.bosnia_mcm += r.bosnia_mcm;
     if (r.power_gas_equiv_mcm != null) agg.power_gas_mcm += r.power_gas_equiv_mcm;
     if (r.temperature_c != null) {
@@ -179,6 +183,7 @@ export function aggregateMonthly(rows: AnalysisRow[]): MonthlyAggRow[] {
       avg_temp_c: a._tCount > 0 ? +(a._tSum / a._tCount).toFixed(2) : null,
       hdd: +a.hdd.toFixed(0),
       days: a.days,
+      valid_days: a.valid_days,
     }))
     .sort((a, b) => (a.month < b.month ? -1 : 1));
 }
