@@ -206,28 +206,45 @@ export const fetchEntsogFlows = createServerFn({ method: "POST" })
     }
 
     try {
+      const today = belgradeDateIso();
+      const includesToday = data.from <= today && today <= data.to;
+
       const perPoint = await Promise.all(
         POINT_KEYS.map(async (key) => {
-          try {
-            const m = await fetchPoint(ENTSOG_POINT_DIRECTIONS[key], data.from, data.to);
-            console.log(
-              `[ENTSOG] ${key}: ${m.size} unique gas-days returned ` +
-                `(window ${data.from} → ${data.to})`,
-            );
-            return [key, m] as const;
-          } catch (err) {
-            console.warn(`ENTSOG point ${key} failed:`, err);
-            return [key, new Map<string, DailyPick>()] as const;
-          }
+          const pd = ENTSOG_POINT_DIRECTIONS[key];
+          const [physical, renomination, nomination] = await Promise.all([
+            fetchPoint(pd, data.from, data.to, "Physical Flow"),
+            includesToday
+              ? fetchPoint(pd, today, today, "Renomination")
+              : Promise.resolve(new Map<string, DailyPick>()),
+            includesToday
+              ? fetchPoint(pd, today, today, "Nomination")
+              : Promise.resolve(new Map<string, DailyPick>()),
+          ]);
+
+          console.log(
+            `[ENTSOG] ${key}: physical=${physical.size}, ` +
+              `renomination=${renomination.size}, nomination=${nomination.size} ` +
+              `(window ${data.from} → ${data.to})`,
+          );
+          return [key, { physical, renomination, nomination } as PointBundle] as const;
         }),
       );
+
       const allDates = new Set<string>();
-      for (const [, m] of perPoint) for (const d of m.keys()) allDates.add(d);
+      for (const [, bundle] of perPoint) {
+        for (const d of bundle.physical.keys()) allDates.add(d);
+        for (const d of bundle.renomination.keys()) allDates.add(d);
+        for (const d of bundle.nomination.keys()) allDates.add(d);
+      }
       const dates = Array.from(allDates).sort();
       const fetchedAt = new Date().toISOString();
       let sourceUpdatedAt = "";
+
       const rows: FlowRow[] = dates.map((date) => {
         const publishedPoints: FlowPoint[] = [];
+        const provisionalPoints: FlowPoint[] = [];
+        const pointSource: Partial<Record<FlowPoint, FlowPointOperationalSource>> = {};
         const pointLastUpdate: Partial<Record<FlowPoint, string>> = {};
         const row: FlowRow = {
           date,
@@ -236,15 +253,20 @@ export const fetchEntsogFlows = createServerFn({ method: "POST" })
           kiskundorozsma_2: 0,
           kalotina: 0,
           published_points: publishedPoints,
+          provisional_points: provisionalPoints,
+          point_source: pointSource,
           point_last_update: pointLastUpdate,
           fetched_at: fetchedAt,
         };
-        for (const [key, m] of perPoint) {
-          const pick = m.get(date);
-          if (!pick) continue;
+
+        for (const [key, bundle] of perPoint) {
+          const { pick, source } = pickForDate(bundle, date, today);
+          if (!pick || !source) continue;
           row[key] = +pick.value_mcm.toFixed(4);
-          publishedPoints.push(key);
+          pointSource[key] = source;
           pointLastUpdate[key] = pick.last_update;
+          if (source === "physical_flow") publishedPoints.push(key);
+          else provisionalPoints.push(key);
           if (pick.last_update > sourceUpdatedAt) sourceUpdatedAt = pick.last_update;
         }
         return row;
