@@ -14,7 +14,7 @@ export type Database = {
   }
   public: {
     Tables: {
-      app_user_access: {
+      gas_user_access: {
         Row: {
           email: string
           last_login_at: string | null
