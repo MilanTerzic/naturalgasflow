@@ -54,7 +54,6 @@ import {
   parseKvCsv,
   reconstructPrice,
   seasonalProfile,
-  smoothExtremes,
   syntheticBrent,
   syntheticTtf,
   toCsv,
@@ -260,16 +259,6 @@ function SrbijagasPage() {
     }));
   }, [consumptionBreakdown, monthly]);
 
-  // Display-only: smooth extreme outliers on derived estimates only.
-  // Measured ENTSOG flows (kireevo/kalotina/kkdHu/kkd2) are intentionally NOT
-  // smoothed — those routes are legitimately intermittent (HU→RS in particular
-  // is zero most days with occasional pulses) and carry-forward would invent
-  // phantom flow on real zero days.
-  const analysisSmoothed = useMemo(
-    () => smoothExtremes(analysis, ["serbian_consumption_mcm", "bosnia_mcm"]),
-    [analysis],
-  );
-
   // Price reconstruction
   const months = useMemo(() => monthsBetween(fromISO, toISO), [fromISO, toISO]);
   const ttfByMonth = useMemo(
@@ -321,10 +310,12 @@ function SrbijagasPage() {
   const avgDaily = avg(consumptionValues);
   const maxDaily = consumptionValues.length ? Math.max(...consumptionValues) : 0;
   const minDaily = consumptionValues.length ? Math.min(...consumptionValues) : 0;
-  const avgMonthly = avg(monthly.map((m) => m.serbian_mcm));
-  const peakMonth = monthly.reduce(
+  const completeMonths = monthly.filter((m) => m.days > 0 && m.valid_days === m.days);
+  const avgMonthly = avg(completeMonths.map((m) => m.serbian_mcm));
+  const peakPool = completeMonths.length > 0 ? completeMonths : monthly.filter((m) => m.valid_days > 0);
+  const peakMonth = peakPool.reduce(
     (best, m) => (m.serbian_mcm > (best?.serbian_mcm ?? -1) ? m : best),
-    monthly[0],
+    peakPool[0],
   );
   const avgBosniaMonthly = avg(monthly.map((m) => m.bosnia_mcm));
   const avgPowerGasMonthly = avg(monthly.map((m) => m.power_gas_mcm));
@@ -418,7 +409,7 @@ function SrbijagasPage() {
         <KpiCard label="Avg implied daily offtake" value={`${fmtMcm(avgDaily)} mcm`} hint="Complete flow-derived days" />
         <KpiCard label="Max implied daily offtake" value={`${fmtMcm(maxDaily)} mcm`} hint="Peak flow-derived day" />
         <KpiCard label="Min implied daily offtake" value={`${fmtMcm(minDaily)} mcm`} hint="Lowest flow-derived day" />
-        <KpiCard label="Avg monthly volume" value={`${fmtMcm(avgMonthly)} mcm`} hint="Per month" />
+        <KpiCard label="Avg monthly volume" value={`${fmtMcm(avgMonthly)} mcm`} hint="100% flow-coverage months" />
         <KpiCard label="Peak month" value={`${fmtMcm(peakMonth?.serbian_mcm ?? 0)} mcm`} hint={peakMonth?.month ?? "–"} />
         <KpiCard label="Avg Bosnia / month" value={`${fmtMcm(avgBosniaMonthly)} mcm`} hint="Assumed flow" tone="warning" />
         <KpiCard label="Power gas / month" value={`${fmtMcm(avgPowerGasMonthly)} mcm`} hint="From electricity" tone="warning" />
@@ -507,7 +498,7 @@ function SrbijagasPage() {
         <TabsContent value="volume" className="space-y-4 pt-3">
           <ChartCard title="Daily flow-derived Serbian supply" subtitle="mcm/day — published cross-border flows + domestic production; Bosnia is an explicit assumption" height={340}>
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={analysisSmoothed} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
+              <ComposedChart data={analysis} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
                 <CartesianGrid stroke={PALETTE.grid} vertical={false} />
                 <XAxis dataKey="ts" type="number" domain={["dataMin", "dataMax"]} scale="time"
                   tickFormatter={(v) => fmtMonthYear(new Date(v).toISOString().slice(0, 10))}
@@ -526,7 +517,7 @@ function SrbijagasPage() {
             </ResponsiveContainer>
           </ChartCard>
 
-          <ChartCard title="Monthly volume profile" subtitle="Implied Serbian offtake + Bosnia assumption + power-gas equivalent" height={300}>
+          <ChartCard title="Monthly volume profile" subtitle="Observed/implied monthly totals; partial months are flagged by coverage" height={300}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={monthly} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
                 <CartesianGrid stroke={PALETTE.grid} vertical={false} />
@@ -579,6 +570,7 @@ function SrbijagasPage() {
                     <TableHead className="text-right text-xs">Total potential (mcm)</TableHead>
                     <TableHead className="text-right text-xs">Avg T °C</TableHead>
                     <TableHead className="text-right text-xs">HDD</TableHead>
+                    <TableHead className="text-right text-xs">Coverage</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -591,6 +583,9 @@ function SrbijagasPage() {
                       <TableCell className="text-right text-xs tabular-nums font-semibold">{fmtMcm(m.total_potential_mcm)}</TableCell>
                       <TableCell className="text-right text-xs tabular-nums">{m.avg_temp_c?.toFixed(1) ?? "–"}</TableCell>
                       <TableCell className="text-right text-xs tabular-nums">{m.hdd}</TableCell>
+                      <TableCell className="text-right text-xs tabular-nums">
+                        {m.days > 0 ? `${m.valid_days}/${m.days}` : "–"}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
