@@ -13,9 +13,24 @@ function ownerEmail() {
 }
 
 function publicAuthClient() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_PUBLISHABLE_KEY;
-  if (!url || !key) throw new Error("Supabase authentication is not configured on the server.");
+  // Lovable exposes the browser-safe Supabase values as VITE_* variables.
+  // Accept the non-Vite aliases when present, but do not require duplicate values.
+  const url =
+    process.env.SUPABASE_URL ??
+    process.env.VITE_SUPABASE_URL ??
+    import.meta.env.VITE_SUPABASE_URL;
+  const key =
+    process.env.SUPABASE_PUBLISHABLE_KEY ??
+    process.env.VITE_SUPABASE_PUBLISHABLE_KEY ??
+    import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ??
+    process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!url || !key) {
+    throw new Error(
+      "Supabase authentication is not configured. Connect Supabase in Lovable Cloud so VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY are available.",
+    );
+  }
+
   return createClient(url, key, {
     auth: {
       persistSession: false,
