@@ -118,28 +118,36 @@ async function fetchPoint(
 }
 
 interface CacheEntry {
-  day: string; // YYYY-MM-DD (UTC) of last successful fetch
+  at: number;
   rows: FlowRow[];
+  fetchedAt: string;
+  sourceUpdatedAt: string;
 }
-// Module-level in-memory cache: persists across requests on the same server
-// instance. Keyed by the requested window.
+// Current-day physical-flow values can be revised during the gas day, so do not
+// cache them for an entire UTC day.
+const FLOW_CACHE_TTL_MS = 30 * 60 * 1000;
 const flowCache = new Map<string, CacheEntry>();
-
-function todayUtc(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export const fetchEntsogFlows = createServerFn({ method: "POST" })
   .inputValidator((d: FetchFlowArgs) => d)
-  .handler(async ({ data }): Promise<{ data: FlowRow[]; error: string | null }> => {
+  .handler(async ({ data }): Promise<{
+    data: FlowRow[];
+    error: string | null;
+    fetchedAt: string;
+    sourceUpdatedAt: string;
+  }> => {
     const cacheKey = `${data.from}|${data.to}`;
-    const today = todayUtc();
     const cached = flowCache.get(cacheKey);
+    const now = Date.now();
 
-    // Serve from cache if we already fetched successfully today.
-    if (cached && cached.day === today) {
-      console.log(`[ENTSOG] cache hit for ${cacheKey} (day ${today})`);
-      return { data: cached.rows, error: null };
+    if (cached && now - cached.at < FLOW_CACHE_TTL_MS) {
+      console.log(`[ENTSOG] cache hit for ${cacheKey}`);
+      return {
+        data: cached.rows,
+        error: null,
+        fetchedAt: cached.fetchedAt,
+        sourceUpdatedAt: cached.sourceUpdatedAt,
+      };
     }
 
     try {
@@ -161,17 +169,28 @@ export const fetchEntsogFlows = createServerFn({ method: "POST" })
       const allDates = new Set<string>();
       for (const [, m] of perPoint) for (const d of m.keys()) allDates.add(d);
       const dates = Array.from(allDates).sort();
+      const fetchedAt = new Date().toISOString();
+      let sourceUpdatedAt = "";
       const rows: FlowRow[] = dates.map((date) => {
+        const publishedPoints: FlowPoint[] = [];
+        const pointLastUpdate: Partial<Record<FlowPoint, string>> = {};
         const row: FlowRow = {
           date,
           kiskundorozsma_hu: 0,
           kireevo: 0,
           kiskundorozsma_2: 0,
           kalotina: 0,
+          published_points: publishedPoints,
+          point_last_update: pointLastUpdate,
+          fetched_at: fetchedAt,
         };
         for (const [key, m] of perPoint) {
           const pick = m.get(date);
-          row[key] = pick ? +pick.value_mcm.toFixed(4) : 0;
+          if (!pick) continue;
+          row[key] = +pick.value_mcm.toFixed(4);
+          publishedPoints.push(key);
+          pointLastUpdate[key] = pick.last_update;
+          if (pick.last_update > sourceUpdatedAt) sourceUpdatedAt = pick.last_update;
         }
         return row;
       });
@@ -179,7 +198,12 @@ export const fetchEntsogFlows = createServerFn({ method: "POST" })
       // Treat empty result as a soft failure and prefer stale cache.
       if (rows.length === 0 && cached) {
         console.warn(`[ENTSOG] empty response, serving stale cache from ${cached.day}`);
-        return { data: cached.rows, error: null };
+        return {
+          data: cached.rows,
+          error: null,
+          fetchedAt: cached.fetchedAt,
+          sourceUpdatedAt: cached.sourceUpdatedAt,
+        };
       }
 
       // Merge with cached rows: for any date missing (or all-zero) in the new
@@ -198,15 +222,30 @@ export const fetchEntsogFlows = createServerFn({ method: "POST" })
         merged = Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
       }
 
-      flowCache.set(cacheKey, { day: today, rows: merged });
-      return { data: merged, error: null };
+      flowCache.set(cacheKey, {
+        at: now,
+        rows: merged,
+        fetchedAt,
+        sourceUpdatedAt,
+      });
+      return { data: merged, error: null, fetchedAt, sourceUpdatedAt };
     } catch (err) {
       console.error("ENTSOG fetch failed", err);
       if (cached) {
         console.warn(`[ENTSOG] serving stale cache from ${cached.day} after error`);
-        return { data: cached.rows, error: null };
+        return {
+          data: cached.rows,
+          error: null,
+          fetchedAt: cached.fetchedAt,
+          sourceUpdatedAt: cached.sourceUpdatedAt,
+        };
       }
-      return { data: [], error: err instanceof Error ? err.message : "Unknown error" };
+      return {
+        data: [],
+        error: err instanceof Error ? err.message : "Unknown error",
+        fetchedAt: new Date().toISOString(),
+        sourceUpdatedAt: "",
+      };
     }
   });
 
