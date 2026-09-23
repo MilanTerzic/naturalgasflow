@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_user_access: {
+        Row: {
+          created_at: string
+          email: string
+          last_login_at: string | null
+          reviewed_at: string | null
+          role: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          last_login_at?: string | null
+          reviewed_at?: string | null
+          role?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          last_login_at?: string | null
+          reviewed_at?: string | null
+          role?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       dashboard_settings: {
         Row: {
           bih_share: number
