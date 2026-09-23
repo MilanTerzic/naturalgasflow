@@ -174,8 +174,9 @@ export function ModelPanel({
         <div className="border-b p-3">
           <h3 className="text-sm font-semibold">Per-day source &amp; balance trace</h3>
           <p className="text-xs text-muted-foreground">
-            For each day: what data was used (actual / historical fallback / future fallback),
-            the source date if estimated, and the computed supply &amp; storage.
+            For each day: what data was used, the source date if estimated, and the computed
+            supply/system balance. Future rows show demand forecast only until a real supply
+            forecasting method is configured.
           </p>
         </div>
         <ScrollArea className="h-96">
@@ -188,7 +189,7 @@ export function ModelPanel({
                 <TableHead className="text-right">Temp °C</TableHead>
                 <TableHead className="text-right">Demand</TableHead>
                 <TableHead className="text-right">Supply</TableHead>
-                <TableHead className="text-right">Storage ±</TableHead>
+                <TableHead className="text-right">System balance</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -196,15 +197,15 @@ export function ModelPanel({
                 <TableRow key={r.date} className={r.is_estimated ? "bg-emerald-50/60" : undefined}>
                   <TableCell>{fmtShortDate(r.date)}</TableCell>
                   <TableCell className="text-xs">
-                    {r.is_forecast ? "forecast" : r.source_type.replace("_", " ")}
+                    {r.is_forecast ? "demand forecast only" : r.source_type.replace("_", " ")}
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
                     {r.estimated_from ?? "—"}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{fmtTemp(r.temperature_c)}</TableCell>
                   <TableCell className="text-right tabular-nums">{fmtMcm(r.demand_mcm)}</TableCell>
-                  <TableCell className="text-right tabular-nums">{fmtMcm(r.serbian_available_supply_mcm)}</TableCell>
-                  <TableCell className="text-right tabular-nums">{fmtMcm(r.storage_imbalance_mcm)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{fmtMcm(r.supply_available ? r.serbian_available_supply_mcm : null)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{fmtMcm(r.supply_available ? r.storage_imbalance_raw_mcm : null)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
