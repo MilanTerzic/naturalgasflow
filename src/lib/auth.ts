@@ -4,7 +4,7 @@ async function currentApprovedAccess(userId: string) {
   try {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data, error } = await supabaseAdmin
-      .from("app_user_access")
+      .from("gas_user_access")
       .select("status,role,email")
       .eq("user_id", userId)
       .maybeSingle();
