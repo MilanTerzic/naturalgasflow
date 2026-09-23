@@ -61,7 +61,7 @@ function BalancePage() {
           <section className="grid gap-4">
             <ChartCard
               title="Serbian gas supply and demand"
-              description="Daily available supply by source compared with required demand - mcm/day"
+              description="Published or explicitly estimated supply vs demand. Future dates show demand forecast only - mcm/day"
               height={380}
             >
               <CompositionChart data={balance} today={today} />
@@ -76,7 +76,7 @@ function BalancePage() {
               </ChartCard>
               <ChartCard
                 title="Daily gas balance"
-                description="Estimated balancing requirement: positive values indicate surplus; negative values indicate storage withdrawal requirement - mcm/day"
+                description="Raw supply-demand balance through available flow data. Future balance is intentionally blank - mcm/day"
                 height={260}
               >
                 <StorageChart data={balance} today={today} />
@@ -108,7 +108,7 @@ function BalancePageHeader({
             Serbian Gas Balance
           </h2>
           <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-            Daily supply, demand, cross-border flows and estimated storage balancing requirement.
+            Daily supply and demand with explicit source quality, storage response limits and residual balance gap.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 lg:justify-end">
