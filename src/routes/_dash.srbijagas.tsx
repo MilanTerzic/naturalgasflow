@@ -166,6 +166,7 @@ function SrbijagasPage() {
       kkd2: r.kiskundorozsma_2 ?? 0,
       kkdHu: r.kiskundorozsma_hu ?? 0,
       kalotina: r.kalotina ?? 0,
+      publishedPoints: r.published_points,
     }));
   }, [flowsQ.data]);
 
