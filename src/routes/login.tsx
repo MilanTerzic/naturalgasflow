@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Fuel } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import { signInAccount, signUpAccount } from "@/lib/account-auth.functions";
 export const Route = createFileRoute("/login")({
   beforeLoad: async () => {
     if (await hasAppSession()) {
-      window?.location;
+      throw redirect({ to: "/balance" });
     }
   },
   head: () => ({
