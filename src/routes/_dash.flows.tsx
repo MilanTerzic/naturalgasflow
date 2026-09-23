@@ -25,11 +25,10 @@ function FlowsPage() {
     for (const date of dates) {
       const row = flowByDate.get(date);
       if (!row) continue;
-      const kire = row.kireevo;
-      const kkd2 = row.kiskundorozsma_2;
-      if (kire == null || kkd2 == null) continue;
-      if (kire === 0 && kkd2 === 0) continue;
-      diffs.push({ date, value: kire - kkd2 });
+      const hasKireevo = !row.published_points || row.published_points.includes("kireevo");
+      const hasKkd2 = !row.published_points || row.published_points.includes("kiskundorozsma_2");
+      if (!hasKireevo || !hasKkd2) continue;
+      diffs.push({ date, value: row.kireevo - row.kiskundorozsma_2 });
     }
     if (diffs.length === 0) {
       return { latest: null, avg: null, max: null, min: null };
@@ -66,7 +65,7 @@ function FlowsPage() {
         <KpiCard label="Minimum" value={fmt(diffStats.min)} tone="negative" />
       </div>
 
-      <ChartCard title="Per-point flows (mcm/day)" subtitle="solid = historical, dashed = forecast" height={460}>
+      <ChartCard title="Per-point flows (mcm/day)" subtitle="published ENTSOG Physical Flow; missing points remain blank" height={460}>
         <FlowsChart flows={flows} dates={dates} today={today} />
       </ChartCard>
 
