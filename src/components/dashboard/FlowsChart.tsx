@@ -12,7 +12,7 @@ import {
 } from "recharts";
 import { PALETTE, POINTS } from "@/lib/gas/config";
 import { fmtMcm, fmtShortDate } from "@/lib/gas/format";
-import type { FlowRow } from "@/lib/gas/types";
+import type { FlowPointName, FlowRow } from "@/lib/gas/types";
 
 const POINT_COLORS = {
   kiskundorozsma_hu: PALETTE.huOthers,
@@ -21,8 +21,8 @@ const POINT_COLORS = {
   kalotina: PALETTE.kalotina,
 } as const;
 
-function visibleFlowValue(value: number | null | undefined) {
-  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
+function isPublished(row: FlowRow | undefined, key: FlowPointName) {
+  return !!row && (!row.published_points || row.published_points.includes(key));
 }
 
 export function FlowsChart({
@@ -37,24 +37,23 @@ export function FlowsChart({
   const flowByDate = new Map(flows.map((f) => [f.date, f]));
   const data = dates.map((date) => {
     const ts = Date.parse(`${date}T00:00:00Z`);
-    const isFcst = date > today;
     const row = flowByDate.get(date);
     const out: Record<string, number | null> = { ts };
-    for (const key of Object.keys(POINTS) as (keyof typeof POINTS)[]) {
-      const v = visibleFlowValue(row ? (row[key] as number | undefined) : null);
-      out[`${key}_actual`] = isFcst ? null : v;
-      out[`${key}_fcst`] = isFcst ? v : null;
+
+    for (const key of Object.keys(POINTS) as FlowPointName[]) {
+      out[key] = date <= today && isPublished(row, key) ? (row?.[key] ?? 0) : null;
     }
-    const kire = row?.kireevo;
-    const kkd2 = row?.kiskundorozsma_2;
-    const diff = kire == null || kkd2 == null ? null : visibleFlowValue(kire - kkd2);
-    out.diff_actual = isFcst ? null : diff;
-    out.diff_fcst = isFcst ? diff : null;
+
+    out.diff =
+      date <= today && isPublished(row, "kireevo") && isPublished(row, "kiskundorozsma_2")
+        ? (row?.kireevo ?? 0) - (row?.kiskundorozsma_2 ?? 0)
+        : null;
     return out;
   });
 
   const todayTs = Date.parse(`${today}T00:00:00Z`);
   const halfDay = 12 * 3_600_000;
+
   return (
     <ResponsiveContainer width="100%" height="100%">
       <ComposedChart data={data} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
@@ -71,7 +70,6 @@ export function FlowsChart({
         <YAxis
           tick={{ fontSize: 11 }}
           stroke={PALETTE.axis}
-          domain={[0, "auto"]}
           label={{
             value: "mcm/d",
             angle: -90,
@@ -90,7 +88,7 @@ export function FlowsChart({
         />
         <Area
           type="monotone"
-          dataKey="diff_actual"
+          dataKey="diff"
           name="Kireevo Entry minus Kiskundorozsma 2 Exit"
           stroke="#6B21A8"
           strokeWidth={2}
@@ -100,52 +98,23 @@ export function FlowsChart({
           connectNulls={false}
           isAnimationActive={false}
         />
-        <Area
-          type="monotone"
-          dataKey="diff_fcst"
-          name="Kireevo Entry minus Kiskundorozsma 2 Exit (fcst)"
-          stroke="#6B21A8"
-          strokeWidth={2}
-          strokeDasharray="5 4"
-          fill="#6B21A8"
-          fillOpacity={0.05}
-          dot={false}
-          connectNulls={false}
-          isAnimationActive={false}
-          legendType="none"
-        />
         <Tooltip
           labelFormatter={(v) => fmtShortDate(new Date(Number(v)).toISOString().slice(0, 10))}
           formatter={(v, n) => [typeof v === "number" ? `${fmtMcm(v)} mcm/d` : "–", n]}
           contentStyle={{ fontSize: 12 }}
         />
         <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} iconType="line" />
-        {(Object.keys(POINTS) as (keyof typeof POINTS)[]).map((key) => (
+        {(Object.keys(POINTS) as FlowPointName[]).map((key) => (
           <Line
-            key={`${key}-a`}
+            key={key}
             type="monotone"
-            dataKey={`${key}_actual`}
+            dataKey={key}
             name={POINTS[key]}
             stroke={POINT_COLORS[key]}
             strokeWidth={2}
             dot={false}
             connectNulls={false}
             isAnimationActive={false}
-          />
-        ))}
-        {(Object.keys(POINTS) as (keyof typeof POINTS)[]).map((key) => (
-          <Line
-            key={`${key}-f`}
-            type="monotone"
-            dataKey={`${key}_fcst`}
-            name={`${POINTS[key]} (fcst)`}
-            stroke={POINT_COLORS[key]}
-            strokeWidth={2}
-            strokeDasharray="5 4"
-            dot={false}
-            connectNulls={false}
-            isAnimationActive={false}
-            legendType="none"
           />
         ))}
       </ComposedChart>
