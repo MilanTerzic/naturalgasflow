@@ -283,35 +283,62 @@ export const fetchEntsogFlows = createServerFn({ method: "POST" })
         };
       }
 
-      // Merge point-by-point with the previous cache. A published zero is a
-      // valid observation and must overwrite an older non-zero value. Only
-      // points that are genuinely absent from the fresh response use the cache.
+      // Merge point-by-point with the previous cache. Preserve the strongest
+      // available evidence: Physical Flow > Renomination > Nomination.
       let merged = rows;
       if (cached) {
         const byDate = new Map<string, FlowRow>();
         for (const r of cached.rows) byDate.set(r.date, r);
-        for (const r of rows) {
-          const prev = byDate.get(r.date);
+
+        for (const fresh of rows) {
+          const prev = byDate.get(fresh.date);
           if (!prev) {
-            byDate.set(r.date, r);
+            byDate.set(fresh.date, fresh);
             continue;
           }
-          const freshPublished = new Set(r.published_points ?? POINT_KEYS);
-          const priorPublished = new Set(prev.published_points ?? POINT_KEYS);
+
           const combined: FlowRow = {
             ...prev,
-            ...r,
-            published_points: Array.from(new Set([...priorPublished, ...freshPublished])),
-            point_last_update: { ...prev.point_last_update, ...r.point_last_update },
+            ...fresh,
+            published_points: [],
+            provisional_points: [],
+            point_source: {},
+            point_last_update: {},
             fetched_at: fetchedAt,
           };
+
           for (const key of POINT_KEYS) {
-            if (!freshPublished.has(key) && priorPublished.has(key)) {
-              combined[key] = prev[key];
+            const freshSource = inferPointSource(fresh, key);
+            const prevSource = inferPointSource(prev, key);
+            const freshUpdated = fresh.point_last_update?.[key] ?? "";
+            const prevUpdated = prev.point_last_update?.[key] ?? "";
+
+            let useFresh = false;
+            if (freshSource && !prevSource) useFresh = true;
+            else if (freshSource && prevSource) {
+              const freshRank = sourceRank(freshSource);
+              const prevRank = sourceRank(prevSource);
+              useFresh =
+                freshRank > prevRank ||
+                (freshRank === prevRank && freshUpdated >= prevUpdated);
             }
+
+            const chosenRow = useFresh ? fresh : prev;
+            const chosenSource = useFresh ? freshSource : prevSource;
+            const chosenUpdate = useFresh ? freshUpdated : prevUpdated;
+            if (!chosenSource) continue;
+
+            combined[key] = chosenRow[key];
+            combined.point_source![key] = chosenSource;
+            combined.point_last_update![key] = chosenUpdate;
+            if (chosenSource === "physical_flow") combined.published_points!.push(key);
+            else combined.provisional_points!.push(key);
+            if (chosenUpdate > sourceUpdatedAt) sourceUpdatedAt = chosenUpdate;
           }
-          byDate.set(r.date, combined);
+
+          byDate.set(fresh.date, combined);
         }
+
         merged = Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
         if (cached.sourceUpdatedAt > sourceUpdatedAt) sourceUpdatedAt = cached.sourceUpdatedAt;
       }
