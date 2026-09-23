@@ -39,14 +39,14 @@ async function ensureAccess(userId: string, email: string) {
   const desiredRole = isOwner ? "admin" : "user";
 
   const { data: existing, error: lookupError } = await admin
-    .from("app_user_access")
+    .from("gas_user_access")
     .select("status,role,email")
     .eq("user_id", userId)
     .maybeSingle();
   if (lookupError) throw new Error(`user_access_lookup_failed: ${lookupError.message}`);
 
   if (!existing) {
-    const { error } = await admin.from("app_user_access").insert({
+    const { error } = await admin.from("gas_user_access").insert({
       user_id: userId,
       email: normalizedEmail,
       status: desiredStatus,
@@ -60,7 +60,7 @@ async function ensureAccess(userId: string, email: string) {
   // MET accounts remain automatically approved. The owner remains admin.
   if (isMet && (existing.status !== "approved" || existing.role !== desiredRole || existing.email !== normalizedEmail)) {
     const { error } = await admin
-      .from("app_user_access")
+      .from("gas_user_access")
       .update({
         email: normalizedEmail,
         status: "approved",
@@ -99,7 +99,7 @@ async function establishSession(userId: string, email: string) {
 
   const admin = await adminClient();
   await admin
-    .from("app_user_access")
+    .from("gas_user_access")
     .update({ last_login_at: now, updated_at: now })
     .eq("user_id", userId);
 
