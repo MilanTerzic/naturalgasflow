@@ -121,6 +121,57 @@ async function fetchPoint(
   return byDate;
 }
 
+interface PointBundle {
+  physical: Map<string, DailyPick>;
+  renomination: Map<string, DailyPick>;
+  nomination: Map<string, DailyPick>;
+}
+
+function belgradeDateIso() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Belgrade",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+function pickForDate(bundle: PointBundle, date: string, today: string): {
+  pick?: DailyPick;
+  source?: FlowPointOperationalSource;
+} {
+  const physical = bundle.physical.get(date);
+  if (physical) return { pick: physical, source: "physical_flow" };
+
+  // Nomination data is a provisional substitute only for the current day.
+  if (date !== today) return {};
+  const renomination = bundle.renomination.get(date);
+  if (renomination) return { pick: renomination, source: "renomination" };
+  const nomination = bundle.nomination.get(date);
+  if (nomination) return { pick: nomination, source: "nomination" };
+  return {};
+}
+
+function inferPointSource(
+  row: FlowRow | undefined,
+  key: FlowPoint,
+): FlowPointOperationalSource | undefined {
+  if (!row) return undefined;
+  const explicit = row.point_source?.[key];
+  if (explicit) return explicit;
+  if (row.published_points?.includes(key)) return "physical_flow";
+  return undefined;
+}
+
+function sourceRank(source: FlowPointOperationalSource | undefined) {
+  if (source === "physical_flow") return 3;
+  if (source === "renomination") return 2;
+  if (source === "nomination") return 1;
+  return 0;
+}
+
 interface CacheEntry {
   at: number;
   rows: FlowRow[];
