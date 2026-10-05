@@ -155,7 +155,7 @@ export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
   const resolvePoint = (index: number, key: FlowPointName): ResolvedPoint => {
     const date = dates[index];
 
-    // Physical Flow is an observation, not a future supply forecast.
+    // Allocation / Physical Flow observations are actuals, not future supply forecasts.
     if (date > todayIso) {
       return { value: 0, available: false, sourceType: "none" };
     }
@@ -164,12 +164,16 @@ export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
     const directSource = pointOperationalSource(direct, key);
     if (
       directSource === "physical_flow" ||
+      directSource === "allocation" ||
       (date === todayIso && (directSource === "renomination" || directSource === "nomination"))
     ) {
       return {
         value: clipLow(direct?.[key] ?? 0, 0),
         available: true,
-        sourceType: directSource === "physical_flow" ? "actual" : "provisional",
+        sourceType:
+          directSource === "physical_flow" || directSource === "allocation"
+            ? "actual"
+            : "provisional",
         provisionalSource:
           directSource === "renomination" || directSource === "nomination"
             ? directSource

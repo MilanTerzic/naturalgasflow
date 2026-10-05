@@ -61,7 +61,7 @@ function BalancePage() {
           <section className="grid gap-4">
             <ChartCard
               title="Serbian gas supply and demand"
-              description="Physical flow supply; current-day gaps use ENTSOG renomination/nomination before carry-forward. Future dates show demand forecast only - mcm/day"
+              description="ENTSOG Allocation supply; current-day gaps use ENTSOG renomination/nomination before carry-forward. Future dates show demand forecast only - mcm/day"
               height={380}
             >
               <CompositionChart data={balance} today={today} />
@@ -76,7 +76,7 @@ function BalancePage() {
               </ChartCard>
               <ChartCard
                 title="Daily gas balance"
-                description="Raw supply-demand balance through available flow data. Future balance is intentionally blank - mcm/day"
+                description="Raw supply-demand balance through available ENTSOG Allocation data. Future balance is intentionally blank - mcm/day"
                 height={260}
               >
                 <StorageChart data={balance} today={today} />
@@ -235,7 +235,7 @@ function getFreshnessLabel({
   selectedDate?: string;
 }) {
   if (mode === "dummy") return "Demo dataset";
-  if (todayFallback) return "Latest flows carried forward";
+  if (todayFallback) return "Latest allocations carried forward";
   if (refreshedAt) return `Data through ${fmtShortDateYear(refreshedAt)}`;
   if (selectedDate) return `Selected ${fmtShortDateYear(selectedDate)}`;
   return "Awaiting live data";

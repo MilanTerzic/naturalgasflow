@@ -199,6 +199,10 @@ function CompositionTooltip({
             </span>
           ) : row?.is_estimated ? (
             <span className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-800">Estimated</span>
+          ) : row?.source_type === "actual" ? (
+            <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-800">
+              ENTSOG Allocation
+            </span>
           ) : null}
         </div>
       </div>

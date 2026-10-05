@@ -3,7 +3,7 @@ import { useMemo } from "react";
 import { buildBalance, dateRangeIso, todayIso } from "@/lib/gas/demand";
 import { dummyFlows, dummyTemperatures, dummyCapacity } from "@/lib/gas/dummy";
 import { fetchBelgradeTemperatures } from "@/lib/data/openmeteo.functions";
-import { fetchEntsogFlows } from "@/lib/data/entsog.functions";
+import { fetchEntsogAllocations, fetchEntsogFlows } from "@/lib/data/entsog.functions";
 import type { BalanceRow, CapacityRow, FlowRow, TempRow } from "@/lib/gas/types";
 import { useDashboard } from "./dashboard-context";
 
@@ -16,7 +16,7 @@ export interface DashboardData {
   today: string;
   warnings: string[];
   isLoading: boolean;
-  todayFallback: boolean; // true when today's flows were carried over from yesterday
+  todayFallback: boolean; // true when today's allocation inputs were carried over
   refreshedAt: string;
 }
 
@@ -50,9 +50,17 @@ export function useDashboardData(): DashboardData {
     staleTime: 30 * 60 * 1000,
   });
 
+  const allocationQuery = useQuery({
+    queryKey: ["allocations", from, to],
+    queryFn: () => fetchEntsogAllocations({ data: { from, to } }),
+    enabled: s.mode === "live",
+    staleTime: 30 * 60 * 1000,
+  });
+
   const warnings: string[] = [];
   let temps: TempRow[];
   let flows: FlowRow[];
+  let balanceFlows: FlowRow[];
 
   if (s.mode === "live") {
     // Temperatures: live only. No silent dummy mix.
@@ -66,19 +74,28 @@ export function useDashboardData(): DashboardData {
       if (tempQuery.data?.warning) warnings.push(tempQuery.data.warning);
       temps = tempQuery.data?.data ?? [];
     }
-    // Flows: live only.
-    if (flowQuery.data?.error) {
-      warnings.push(`ENTSOG: ${flowQuery.data.error}. Flow data unavailable.`);
-      flows = flowQuery.data.data ?? [];
-    } else if (flowQuery.isError) {
-      warnings.push("ENTSOG unreachable. Flow data unavailable.");
-      flows = [];
+    // Physical flows remain available for Flow Details / the pipeline map.
+    if (flowQuery.data?.error || flowQuery.isError) {
+      flows = flowQuery.data?.data ?? [];
     } else {
       flows = flowQuery.data?.data ?? [];
+    }
+
+    // Serbian balance uses ENTSOG Allocation actuals. Current-day gaps may still
+    // use ENTSOG renomination/nomination as explicitly provisional substitutes.
+    if (allocationQuery.data?.error) {
+      warnings.push(`ENTSOG Allocation: ${allocationQuery.data.error}. Allocation data unavailable.`);
+      balanceFlows = allocationQuery.data.data ?? [];
+    } else if (allocationQuery.isError) {
+      warnings.push("ENTSOG Allocation unreachable. Allocation data unavailable.");
+      balanceFlows = [];
+    } else {
+      balanceFlows = allocationQuery.data?.data ?? [];
     }
   } else {
     temps = dummyTemperatures(dates);
     flows = dummyFlows(dates);
+    balanceFlows = flows;
   }
 
   // A published zero is real data. Current-day ENTSOG nominations/renominations
@@ -97,34 +114,34 @@ export function useDashboardData(): DashboardData {
       return !row.published_points || row.published_points.length === 4;
     };
 
-    const todayRow = flows.find((f) => f.date === today);
+    const todayRow = balanceFlows.find((f) => f.date === today);
     if (hasCompleteOperationalCoverage(todayRow)) return false;
 
     const yIdx = dates.indexOf(today) - 1;
     if (yIdx < 0) return false;
-    const yesterdayRow = flows.find((f) => f.date === dates[yIdx]);
+    const yesterdayRow = balanceFlows.find((f) => f.date === dates[yIdx]);
     return (
       !!yesterdayRow &&
       (!yesterdayRow.published_points || yesterdayRow.published_points.length === 4)
     );
-  }, [flows, today, dates]);
+  }, [balanceFlows, today, dates]);
 
   const dataThrough = useMemo(() => {
-    return [...flows]
+    return [...balanceFlows]
       .filter(
         (f) =>
           f.date <= today &&
           (!f.published_points || f.published_points.length === 4),
       )
       .sort((a, b) => b.date.localeCompare(a.date))[0]?.date ?? "";
-  }, [flows, today]);
+  }, [balanceFlows, today]);
 
   const balance = useMemo(
     () =>
       buildBalance({
         dates,
         todayIso: today,
-        flows,
+        flows: balanceFlows,
         temps,
         usePolynomial: s.usePolynomial,
         curveShift: s.curveShift,
@@ -135,7 +152,7 @@ export function useDashboardData(): DashboardData {
     [
       dates,
       today,
-      flows,
+      balanceFlows,
       temps,
       s.usePolynomial,
       s.curveShift,
@@ -169,7 +186,7 @@ export function useDashboardData(): DashboardData {
     dates,
     today,
     warnings,
-    isLoading: s.mode === "live" && (tempQuery.isLoading || flowQuery.isLoading),
+    isLoading: s.mode === "live" && (tempQuery.isLoading || allocationQuery.isLoading),
     todayFallback,
     refreshedAt: dataThrough,
   };

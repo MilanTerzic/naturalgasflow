@@ -25,6 +25,33 @@ test("published zero physical flows remain actual zero observations", () => {
   assert.equal(rows[0].serbian_available_supply_mcm, 0.5);
 });
 
+
+test("published ENTSOG allocations are treated as actual balance observations", () => {
+  const pointSource = Object.fromEntries(complete.map((key) => [key, "allocation"]));
+  const rows = buildBalance({
+    dates: ["2026-10-04"],
+    todayIso: "2026-10-04",
+    flows: [{
+      date: "2026-10-04",
+      kiskundorozsma_hu: 0,
+      kireevo: 12,
+      kiskundorozsma_2: 7,
+      kalotina: 1,
+      published_points: complete,
+      point_source: pointSource,
+    }],
+    temps: [{ date: "2026-10-04", temperature_c: 15 }],
+    domesticProduction: 0.5,
+    bihShare: 0,
+  });
+
+  assert.equal(rows[0].supply_available, true);
+  assert.equal(rows[0].is_estimated, false);
+  assert.equal(rows[0].source_type, "actual");
+  assert.equal(rows[0].imports_from_bulgaria_mcm, 5);
+  assert.equal(rows[0].serbian_available_supply_mcm, 6.5);
+});
+
 test("missing point uses an explicitly marked historical fallback", () => {
   const rows = buildBalance({
     dates: ["2026-09-22", "2026-09-23"],
