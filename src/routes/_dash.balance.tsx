@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AlertTriangle, CalendarDays, ChevronDown, Clock3, Database } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ChartCard } from "@/components/dashboard/ChartCard";
 import { CompositionChart } from "@/components/dashboard/CompositionChart";
 import { KpiRow } from "@/components/dashboard/KpiRow";
@@ -34,18 +34,36 @@ export const Route = createFileRoute("/_dash/balance")({
 function BalancePage() {
   const { balance, today, warnings, isLoading, todayFallback, refreshedAt } = useDashboardData();
   const { mode } = useDashboard();
-  const selected = getSelectedRow(balance, today);
+  const [selectedDate, setSelectedDate] = useState(today);
+
+  useEffect(() => {
+    if (balance.length === 0) return;
+    const hasSelectedDate = balance.some((row) => row.date === selectedDate);
+    if (hasSelectedDate) return;
+    const fallbackDate = balance.some((row) => row.date === today)
+      ? today
+      : balance[balance.length - 1].date;
+    setSelectedDate(fallbackDate);
+  }, [balance, selectedDate, today]);
+
+  const selected = getSelectedRow(balance, selectedDate, today);
+  const minDate = balance[0]?.date ?? today;
+  const maxDate = balance[balance.length - 1]?.date ?? today;
   const freshness = getFreshnessLabel({
     mode,
     todayFallback,
     refreshedAt,
     selectedDate: selected?.date,
+    today,
   });
 
   return (
     <div className="space-y-4">
       <BalancePageHeader
-        selectedDate={selected?.date ?? today}
+        selectedDate={selected?.date ?? selectedDate}
+        minDate={minDate}
+        maxDate={maxDate}
+        onSelectedDateChange={setSelectedDate}
         mode={mode}
         freshness={freshness}
         isLoading={isLoading}
@@ -57,7 +75,7 @@ function BalancePage() {
         <BalanceLoadingSkeleton />
       ) : (
         <>
-          <KpiRow balance={balance} today={today} />
+          <KpiRow balance={balance} selectedDate={selected?.date ?? selectedDate} />
           <section className="grid gap-4">
             <ChartCard
               title="Serbian gas supply and demand"
@@ -91,11 +109,17 @@ function BalancePage() {
 
 function BalancePageHeader({
   selectedDate,
+  minDate,
+  maxDate,
+  onSelectedDateChange,
   mode,
   freshness,
   isLoading,
 }: {
   selectedDate: string;
+  minDate: string;
+  maxDate: string;
+  onSelectedDateChange: (date: string) => void;
   mode: "dummy" | "live";
   freshness: string;
   isLoading: boolean;
@@ -112,9 +136,11 @@ function BalancePageHeader({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-          <InfoPill
-            icon={<CalendarDays className="h-3.5 w-3.5" />}
-            label={fmtShortDateYear(selectedDate)}
+          <DateSelector
+            value={selectedDate}
+            min={minDate}
+            max={maxDate}
+            onChange={onSelectedDateChange}
           />
           <Badge
             variant="outline"
@@ -136,6 +162,37 @@ function BalancePageHeader({
         </div>
       </div>
     </section>
+  );
+}
+
+function DateSelector({
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  value: string;
+  min: string;
+  max: string;
+  onChange: (date: string) => void;
+}) {
+  return (
+    <label
+      className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-md border bg-background px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+      aria-label="Select dashboard date"
+    >
+      <CalendarDays className="h-3.5 w-3.5 shrink-0" />
+      <input
+        type="date"
+        value={value}
+        min={min}
+        max={max}
+        onChange={(event) => {
+          if (event.target.value) onChange(event.target.value);
+        }}
+        className="w-[128px] cursor-pointer bg-transparent text-xs font-medium text-foreground outline-none [color-scheme:light] dark:[color-scheme:dark] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-60"
+      />
+    </label>
   );
 }
 
@@ -218,8 +275,10 @@ function BalanceLoadingSkeleton() {
   );
 }
 
-function getSelectedRow(balance: BalanceRow[], today: string) {
-  const todayRow = balance.find((r) => r.date === today);
+function getSelectedRow(balance: BalanceRow[], selectedDate: string, today: string) {
+  const selectedRow = balance.find((row) => row.date === selectedDate);
+  if (selectedRow) return selectedRow;
+  const todayRow = balance.find((row) => row.date === today);
   return todayRow ?? balance[balance.length - 1];
 }
 
@@ -228,14 +287,17 @@ function getFreshnessLabel({
   todayFallback,
   refreshedAt,
   selectedDate,
+  today,
 }: {
   mode: "dummy" | "live";
   todayFallback: boolean;
   refreshedAt: string;
   selectedDate?: string;
+  today: string;
 }) {
   if (mode === "dummy") return "Demo dataset";
-  if (todayFallback) return "Latest allocations carried forward";
+  if (selectedDate && selectedDate > today) return "Forecast date";
+  if (selectedDate === today && todayFallback) return "Latest allocations carried forward";
   if (refreshedAt) return `Data through ${fmtShortDateYear(refreshedAt)}`;
   if (selectedDate) return `Selected ${fmtShortDateYear(selectedDate)}`;
   return "Awaiting live data";
