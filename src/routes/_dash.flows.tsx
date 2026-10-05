@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import { ChartCard } from "@/components/dashboard/ChartCard";
 import { FlowsChart } from "@/components/dashboard/FlowsChart";
 import { KpiCard } from "@/components/dashboard/KpiCard";
+import { SerbiaPipelineFlowMap } from "@/components/dashboard/SerbiaPipelineFlowMap";
 import { fmtMcm } from "@/lib/gas/format";
 import { useDashboardData } from "@/state/use-dashboard-data";
 
@@ -10,7 +11,7 @@ export const Route = createFileRoute("/_dash/flows")({
   head: () => ({
     meta: [
       { title: "Flow Details — Serbia Gas Dashboard" },
-      { name: "description", content: "Per-point natural gas flows in mcm/day for the four Serbian border points." },
+      { name: "description", content: "Daily ENTSOG natural gas flows visualised across Serbian border points and pipeline corridors." },
     ],
   }),
   component: FlowsPage,
@@ -47,6 +48,8 @@ function FlowsPage() {
 
   return (
     <div className="space-y-4">
+      <SerbiaPipelineFlowMap flows={flows} today={today} />
+
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <KpiCard
           label="Latest difference"
