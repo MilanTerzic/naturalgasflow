@@ -9,7 +9,11 @@ export type FlowPointName =
   | "kiskundorozsma_2"
   | "kalotina";
 
-export type FlowPointOperationalSource = "physical_flow" | "renomination" | "nomination";
+export type FlowPointOperationalSource =
+  | "physical_flow"
+  | "allocation"
+  | "renomination"
+  | "nomination";
 
 export interface FlowRow {
   date: string;
@@ -18,8 +22,8 @@ export interface FlowRow {
   kiskundorozsma_2: number;
   kalotina: number;
   kiskundorozsma_hu_met?: number;
-  // Physical-flow points actually published by ENTSOG. A published zero is
-  // therefore distinguishable from a missing point.
+  // Primary actual points published by ENTSOG for the selected operational series
+  // (Physical Flow or Allocation). A published zero is distinguishable from missing.
   published_points?: FlowPointName[];
   // Current-day provisional points sourced from ENTSOG renomination/nomination.
   provisional_points?: FlowPointName[];
