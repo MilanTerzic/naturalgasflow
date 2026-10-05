@@ -302,7 +302,7 @@ export function SerbiaPipelineFlowMap({
               </filter>
             </defs>
 
-            <rect x="0" y="0" width="880" height="600" fill="hsl(var(--muted) / 0.18)" />
+            <rect x="0" y="0" width="880" height="600" fill="var(--muted)" opacity="0.18" />
 
             <text x="380" y="38" textAnchor="middle" className="fill-muted-foreground text-[17px] font-medium">
               HUNGARY
@@ -328,8 +328,8 @@ export function SerbiaPipelineFlowMap({
 
             <path
               d="M300 86 L452 90 L500 130 L540 177 L601 207 L637 259 L650 319 L627 365 L618 421 L587 484 L555 514 L511 522 L472 555 L421 568 L376 551 L340 522 L309 478 L270 451 L258 402 L276 356 L252 310 L269 263 L257 220 L275 174 L299 139 Z"
-              fill="hsl(var(--card))"
-              stroke="hsl(var(--border))"
+              fill="var(--card)"
+              stroke="var(--border)"
               strokeWidth="2.5"
               filter="url(#soft-shadow)"
             />
@@ -346,7 +346,7 @@ export function SerbiaPipelineFlowMap({
             <path
               d="M650 318 Q555 300 430 315 Q455 190 438 92"
               fill="none"
-              stroke="hsl(var(--border))"
+              stroke="var(--border)"
               strokeWidth="10"
               strokeLinecap="round"
               opacity="0.38"
@@ -363,7 +363,7 @@ export function SerbiaPipelineFlowMap({
             <path
               d="M315 96 Q330 205 430 315 Q525 420 584 500"
               fill="none"
-              stroke="hsl(var(--border))"
+              stroke="var(--border)"
               strokeWidth="8"
               strokeLinecap="round"
               opacity="0.32"
@@ -384,7 +384,7 @@ export function SerbiaPipelineFlowMap({
                   <path
                     d={branchPath(meta)}
                     fill="none"
-                    stroke={source ? meta.color : "hsl(var(--muted-foreground))"}
+                    stroke={source ? meta.color : "var(--muted-foreground)"}
                     strokeWidth={strokeWidth(value)}
                     strokeLinecap="round"
                     strokeDasharray={
@@ -397,7 +397,7 @@ export function SerbiaPipelineFlowMap({
                     cx={meta.x}
                     cy={meta.y}
                     r="10"
-                    fill="hsl(var(--card))"
+                    fill="var(--card)"
                     stroke={meta.color}
                     strokeWidth="4"
                   />
@@ -405,7 +405,7 @@ export function SerbiaPipelineFlowMap({
                     cx={meta.x}
                     cy={meta.y}
                     r="3.5"
-                    fill={source ? meta.color : "hsl(var(--muted-foreground))"}
+                    fill={source ? meta.color : "var(--muted-foreground)"}
                   />
 
                   <g transform={`translate(${meta.labelX} ${meta.labelY})`}>
@@ -415,8 +415,8 @@ export function SerbiaPipelineFlowMap({
                       width={meta.labelWidth}
                       height="60"
                       rx="9"
-                      fill="hsl(var(--card))"
-                      stroke="hsl(var(--border))"
+                      fill="var(--card)"
+                      stroke="var(--border)"
                     />
                     <text x="10" y="-8" className="fill-foreground text-[12px] font-semibold">
                       {meta.shortLabel}
@@ -440,11 +440,11 @@ export function SerbiaPipelineFlowMap({
             <g transform={`translate(${HUB.x} ${HUB.y})`}>
               <circle
                 r="17"
-                fill="hsl(var(--card))"
-                stroke="hsl(var(--foreground))"
+                fill="var(--card)"
+                stroke="var(--foreground)"
                 strokeWidth="2"
               />
-              <circle r="7" fill="hsl(var(--foreground))" opacity="0.75" />
+              <circle r="7" fill="var(--foreground)" opacity="0.75" />
               <text
                 x="0"
                 y="38"
@@ -495,10 +495,9 @@ export function SerbiaPipelineFlowMap({
                     </div>
                   </div>
                   <div
-                    className="shrink-0 rounded-md px-2 py-1 text-sm font-bold tabular-nums text-foreground"
+                    className="shrink-0 rounded-md bg-muted/35 px-2 py-1 text-sm font-bold tabular-nums text-foreground"
                     style={{
                       borderLeft: `4px solid ${meta.color}`,
-                      background: "hsl(var(--muted) / 0.35)",
                     }}
                   >
                     {value == null ? "—" : fmtMcm(value)}
