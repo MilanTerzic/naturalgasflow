@@ -31,7 +31,7 @@ export function KpiRow({ balance, today }: { balance: BalanceRow[]; today: strin
 
   const estimatedHint =
     cur.is_estimated && cur.estimated_from
-      ? `Estimated using published flow observations from ${cur.estimated_from}`
+      ? `Estimated using published allocation observations from ${cur.estimated_from}`
       : undefined;
   const supplyAvailable = cur.supply_available;
   const rawBalance = cur.storage_imbalance_raw_mcm;
@@ -49,13 +49,13 @@ export function KpiRow({ balance, today }: { balance: BalanceRow[]; today: strin
         : `Residual deficit ${fmtMcm(-cur.residual_gap_mcm)} mcm/day`;
   const balanceHint = supplyAvailable
     ? `${storageActionHint} · ${residualHint}`
-    : "Flow inputs are incomplete; no system balance is calculated.";
+    : "Allocation inputs are incomplete; no system balance is calculated.";
 
   return (
     <section aria-label="Today at a glance" className="space-y-3">
       {cur.is_estimated && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          <span className="font-medium">Estimated flow inputs.</span> One or more ENTSOG points
+          <span className="font-medium">Estimated allocation inputs.</span> One or more ENTSOG points
           for {cur.date} were unavailable, so published observations from {cur.estimated_from} are
           used and clearly marked.
         </div>
@@ -78,7 +78,7 @@ export function KpiRow({ balance, today }: { balance: BalanceRow[]; today: strin
           hint={
             supplyAvailable
               ? estimatedHint ?? "Total supply available to Serbia"
-              : "Incomplete flow inputs — supply not calculated"
+              : "Incomplete allocation inputs — supply not calculated"
           }
           delta={supplyAvailable ? delta("serbian_available_supply_mcm") : null}
           variant="primary"
