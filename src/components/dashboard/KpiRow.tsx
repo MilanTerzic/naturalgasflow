@@ -11,9 +11,9 @@ import { KpiCard } from "./KpiCard";
 import { fmtMcm, fmtTemp } from "@/lib/gas/format";
 import type { BalanceRow } from "@/lib/gas/types";
 
-export function KpiRow({ balance, today }: { balance: BalanceRow[]; today: string }) {
+export function KpiRow({ balance, selectedDate }: { balance: BalanceRow[]; selectedDate: string }) {
   const idx = (() => {
-    let i = balance.findIndex((r) => r.date === today);
+    let i = balance.findIndex((row) => row.date === selectedDate);
     if (i === -1) i = balance.length - 1;
     return i;
   })();
@@ -52,7 +52,7 @@ export function KpiRow({ balance, today }: { balance: BalanceRow[]; today: strin
     : "Allocation inputs are incomplete; no system balance is calculated.";
 
   return (
-    <section aria-label="Today at a glance" className="space-y-3">
+    <section aria-label={`${cur.date} at a glance`} className="space-y-3">
       {cur.is_estimated && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
           <span className="font-medium">Estimated allocation inputs.</span> One or more ENTSOG points
