@@ -302,6 +302,17 @@ export function SerbiaPipelineFlowMap({
                   <path d="M0,0 L0,6 L9,3 z" fill={meta.color} />
                 </marker>
               ))}
+              <marker
+                id="flow-arrow-bosnia"
+                markerWidth="10"
+                markerHeight="10"
+                refX="8"
+                refY="3"
+                orient="auto"
+                markerUnits="strokeWidth"
+              >
+                <path d="M0,0 L0,6 L9,3 z" fill={PALETTE.demand} />
+              </marker>
               <filter id="soft-shadow" x="-20%" y="-20%" width="140%" height="140%">
                 <feDropShadow
                   dx="0"
@@ -371,7 +382,7 @@ export function SerbiaPipelineFlowMap({
               strokeLinecap="round"
               strokeDasharray="8 6"
               opacity={bosniaFlow != null ? 0.78 : 0.25}
-              markerEnd="url(#flow-arrow-kiskundorozsma_hu)"
+              markerEnd="url(#flow-arrow-bosnia)"
             />
             <g transform="translate(38 382)">
               <rect x="0" y="0" width="178" height="58" rx="9" fill="var(--card)" stroke="var(--border)" />
