@@ -92,7 +92,12 @@ function FlowsPage() {
 
   return (
     <div className="space-y-4">
-      <SerbiaPipelineFlowMap flows={flows} today={today} />
+      <SerbiaPipelineFlowMap
+        flows={flows}
+        today={today}
+        balance={balance}
+        storage={latestStorage}
+      />
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <KpiCard

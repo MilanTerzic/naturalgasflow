@@ -3,10 +3,12 @@ import { ChevronLeft, ChevronRight, Radio } from "lucide-react";
 import { PALETTE, POINTS } from "@/lib/gas/config";
 import { fmtMcm, fmtShortDateYear } from "@/lib/gas/format";
 import type {
+  BalanceRow,
   FlowPointName,
   FlowPointOperationalSource,
   FlowRow,
 } from "@/lib/gas/types";
+import type { AgsiRow } from "@/lib/data/agsi.functions";
 
 const HUB = { x: 430, y: 315 };
 
@@ -148,9 +150,13 @@ function strokeWidth(value: number | null) {
 export function SerbiaPipelineFlowMap({
   flows,
   today,
+  balance,
+  storage,
 }: {
   flows: FlowRow[];
   today: string;
+  balance?: BalanceRow[];
+  storage?: AgsiRow | null;
 }) {
   const flowByDate = useMemo(
     () => new Map(flows.map((row) => [row.date, row])),
@@ -180,6 +186,7 @@ export function SerbiaPipelineFlowMap({
   }, [availableDates, flowByDate, latestDate, selectedDate, today]);
 
   const row = flowByDate.get(selectedDate);
+  const selectedBalance = balance?.find((item) => item.date === selectedDate);
   const selectedIndex = availableDates.indexOf(selectedDate);
 
   const pointData = POINT_KEYS.map((key) => {
@@ -194,6 +201,10 @@ export function SerbiaPipelineFlowMap({
   const provisionalCount = pointData.filter(
     (point) => point.source === "renomination" || point.source === "nomination",
   ).length;
+  const totalFlowToSerbia = row
+    ? row.kiskundorozsma_hu + row.kireevo + row.kalotina
+    : null;
+  const bosniaFlow = selectedBalance?.bosnia_consumption_mcm ?? null;
 
   const goPrevious = () => {
     if (selectedIndex > 0) setSelectedDate(availableDates[selectedIndex - 1]);
@@ -291,6 +302,17 @@ export function SerbiaPipelineFlowMap({
                   <path d="M0,0 L0,6 L9,3 z" fill={meta.color} />
                 </marker>
               ))}
+              <marker
+                id="flow-arrow-bosnia"
+                markerWidth="10"
+                markerHeight="10"
+                refX="8"
+                refY="3"
+                orient="auto"
+                markerUnits="strokeWidth"
+              >
+                <path d="M0,0 L0,6 L9,3 z" fill={PALETTE.demand} />
+              </marker>
               <filter id="soft-shadow" x="-20%" y="-20%" width="140%" height="140%">
                 <feDropShadow
                   dx="0"
@@ -342,6 +364,48 @@ export function SerbiaPipelineFlowMap({
             >
               SERBIA
             </text>
+
+            <g transform="translate(330 338)">
+              <rect x="0" y="0" width="200" height="64" rx="10" fill="var(--card)" stroke="var(--border)" />
+              <text x="12" y="19" className="fill-muted-foreground text-[10px] font-medium">TOTAL FLOW TO SERBIA</text>
+              <text x="12" y="44" className="fill-foreground text-[19px] font-bold">
+                {totalFlowToSerbia == null ? "—" : `${fmtMcm(totalFlowToSerbia)} mcm/d`}
+              </text>
+              <text x="188" y="44" textAnchor="end" className="fill-muted-foreground text-[9px]">HU + BG</text>
+            </g>
+
+            <path
+              d="M 405 350 Q 300 365 220 350"
+              fill="none"
+              stroke={PALETTE.demand}
+              strokeWidth={strokeWidth(bosniaFlow)}
+              strokeLinecap="round"
+              strokeDasharray="8 6"
+              opacity={bosniaFlow != null ? 0.78 : 0.25}
+              markerEnd="url(#flow-arrow-bosnia)"
+            />
+            <g transform="translate(38 382)">
+              <rect x="0" y="0" width="178" height="58" rx="9" fill="var(--card)" stroke="var(--border)" />
+              <text x="10" y="19" className="fill-muted-foreground text-[10px] font-medium">BOSNIA FLOW</text>
+              <text x="10" y="41" className="fill-foreground text-[17px] font-bold">
+                {bosniaFlow == null ? "—" : `${fmtMcm(bosniaFlow)} mcm/d`}
+              </text>
+              <text x="168" y="41" textAnchor="end" className="fill-muted-foreground text-[9px]">MODEL</text>
+            </g>
+
+            <g transform="translate(550 238)">
+              <rect x="0" y="0" width="180" height="68" rx="10" fill="var(--card)" stroke="var(--border)" />
+              <text x="12" y="19" className="fill-muted-foreground text-[10px] font-medium">SERBIA STORAGE</text>
+              <text x="12" y="44" className="fill-foreground text-[19px] font-bold">
+                {storage?.full == null ? "—" : `${storage.full.toFixed(1)}%`}
+              </text>
+              <text x="168" y="43" textAnchor="end" className="fill-muted-foreground text-[10px]">
+                {storage?.gasInStorage == null ? "AGSI+" : `${fmtMcm(storage.gasInStorage * 1000 / 10.55)} mcm`}
+              </text>
+              <text x="12" y="59" className="fill-muted-foreground text-[9px]">
+                {storage?.gasDayStart ? `AGSI+ · ${storage.gasDayStart}` : "AGSI+ data unavailable"}
+              </text>
+            </g>
 
             <path
               d="M650 318 Q555 300 430 315 Q455 190 438 92"
@@ -521,7 +585,7 @@ export function SerbiaPipelineFlowMap({
           </div>
 
           <div className="rounded-lg border border-dashed bg-muted/20 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
-            Arrow direction is the gas-flow direction relative to Serbia. Line thickness
+            Bosnia flow is the dashboard balance-model allocation and is shown separately from ENTSOG border-point flows. Arrow direction is the gas-flow direction relative to Serbia. Line thickness
             scales with the selected day's published value. Dashed colored lines are
             current-day ENTSOG nomination/renomination values; grey dashed lines mean the
             point is missing for that gas day.
