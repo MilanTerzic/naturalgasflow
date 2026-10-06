@@ -1,10 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ChartCard } from "@/components/dashboard/ChartCard";
 import { FlowsChart } from "@/components/dashboard/FlowsChart";
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { SerbiaPipelineFlowMap } from "@/components/dashboard/SerbiaPipelineFlowMap";
 import { fmtMcm } from "@/lib/gas/format";
+import { fetchAgsiStorage } from "@/lib/data/agsi.functions";
+import { CONVERSION_MCM_TO_GWH } from "@/lib/gas/config";
 import { useDashboardData } from "@/state/use-dashboard-data";
 
 export const Route = createFileRoute("/_dash/flows")({
@@ -18,7 +21,48 @@ export const Route = createFileRoute("/_dash/flows")({
 });
 
 function FlowsPage() {
-  const { flows, dates, today } = useDashboardData();
+  const { flows, balance, dates, today } = useDashboardData();
+
+  const latestFlow = useMemo(() => {
+    return [...flows]
+      .filter((row) => row.date <= today)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .at(-1);
+  }, [flows, today]);
+
+  const latestBalance = useMemo(() => {
+    if (!latestFlow) return undefined;
+    return balance.find((row) => row.date === latestFlow.date);
+  }, [balance, latestFlow]);
+
+  const storageQuery = useQuery({
+    queryKey: ["agsi-serbia-latest", today],
+    queryFn: () =>
+      fetchAgsiStorage({
+        data: {
+          country: "rs",
+          from: new Date(Date.parse(`${today}T00:00:00Z`) - 7 * 86_400_000)
+            .toISOString()
+            .slice(0, 10),
+          to: today,
+        },
+      }),
+    staleTime: 6 * 60 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  const latestStorage = storageQuery.data?.data?.at(-1);
+
+  const grossFlowToSerbia = latestFlow
+    ? latestFlow.kiskundorozsma_hu + latestFlow.kireevo + latestFlow.kalotina
+    : null;
+
+  const flowToBosnia = latestBalance?.bosnia_consumption_mcm ?? null;
+
+  const storageMcm =
+    latestStorage?.gasInStorage == null
+      ? null
+      : (latestStorage.gasInStorage * 1000) / CONVERSION_MCM_TO_GWH;
 
   const diffStats = useMemo(() => {
     const flowByDate = new Map(flows.map((f) => [f.date, f]));
@@ -49,6 +93,38 @@ function FlowsPage() {
   return (
     <div className="space-y-4">
       <SerbiaPipelineFlowMap flows={flows} today={today} />
+
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <KpiCard
+          label="Total flow to Serbia"
+          value={grossFlowToSerbia == null ? "n/a" : `${fmtMcm(grossFlowToSerbia)} mcm/d`}
+          hint="Gross physical inflow: Hungary + Bulgaria"
+          tone="positive"
+        />
+        <KpiCard
+          label="Flow to Bosnia"
+          value={flowToBosnia == null ? "n/a" : `${fmtMcm(flowToBosnia)} mcm/d`}
+          hint="Existing dashboard BiH allocation model"
+        />
+        <KpiCard
+          label="Serbia storage"
+          value={latestStorage?.full == null ? "n/a" : `${latestStorage.full.toFixed(1)}%`}
+          hint={
+            latestStorage && storageMcm != null
+              ? `${fmtMcm(storageMcm)} mcm in storage · ${latestStorage.gasDayStart}`
+              : storageQuery.data?.missingKey
+                ? "AGSI_API_KEY not configured"
+                : "AGSI+ latest available data"
+          }
+          tone={
+            latestStorage?.full == null
+              ? "default"
+              : latestStorage.full >= 50
+                ? "positive"
+                : "warning"
+          }
+        />
+      </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <KpiCard
