@@ -9,54 +9,34 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as LoginRouteImport } from './routes/login'
-import { Route as DashRouteImport } from './routes/_dash'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ApiChatRouteImport } from './routes/api/chat'
-import { Route as DashStorageRouteImport } from './routes/_dash.storage'
-import { Route as DashSrbijagasRouteImport } from './routes/_dash.srbijagas'
-import { Route as DashModelRouteImport } from './routes/_dash.model'
-import { Route as DashFlowsRouteImport } from './routes/_dash.flows'
-import { Route as DashCapacityRouteImport } from './routes/_dash.capacity'
+import { Route as DashRouteImport } from './routes/_dash'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as DashBalanceRouteImport } from './routes/_dash.balance'
+import { Route as DashCapacityRouteImport } from './routes/_dash.capacity'
+import { Route as DashFlowsRouteImport } from './routes/_dash.flows'
+import { Route as DashModelRouteImport } from './routes/_dash.model'
+import { Route as DashSrbijagasRouteImport } from './routes/_dash.srbijagas'
+import { Route as DashStorageRouteImport } from './routes/_dash.storage'
+import { Route as ApiChatRouteImport } from './routes/api/chat'
 
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashRoute = DashRouteImport.update({
   id: '/_dash',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiChatRoute = ApiChatRouteImport.update({
-  id: '/api/chat',
-  path: '/api/chat',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DashStorageRoute = DashStorageRouteImport.update({
-  id: '/storage',
-  path: '/storage',
-  getParentRoute: () => DashRoute,
-} as any)
-const DashSrbijagasRoute = DashSrbijagasRouteImport.update({
-  id: '/srbijagas',
-  path: '/srbijagas',
-  getParentRoute: () => DashRoute,
-} as any)
-const DashModelRoute = DashModelRouteImport.update({
-  id: '/model',
-  path: '/model',
-  getParentRoute: () => DashRoute,
-} as any)
-const DashFlowsRoute = DashFlowsRouteImport.update({
-  id: '/flows',
-  path: '/flows',
+const DashBalanceRoute = DashBalanceRouteImport.update({
+  id: '/balance',
+  path: '/balance',
   getParentRoute: () => DashRoute,
 } as any)
 const DashCapacityRoute = DashCapacityRouteImport.update({
@@ -64,10 +44,30 @@ const DashCapacityRoute = DashCapacityRouteImport.update({
   path: '/capacity',
   getParentRoute: () => DashRoute,
 } as any)
-const DashBalanceRoute = DashBalanceRouteImport.update({
-  id: '/balance',
-  path: '/balance',
+const DashFlowsRoute = DashFlowsRouteImport.update({
+  id: '/flows',
+  path: '/flows',
   getParentRoute: () => DashRoute,
+} as any)
+const DashModelRoute = DashModelRouteImport.update({
+  id: '/model',
+  path: '/model',
+  getParentRoute: () => DashRoute,
+} as any)
+const DashSrbijagasRoute = DashSrbijagasRouteImport.update({
+  id: '/srbijagas',
+  path: '/srbijagas',
+  getParentRoute: () => DashRoute,
+} as any)
+const DashStorageRoute = DashStorageRouteImport.update({
+  id: '/storage',
+  path: '/storage',
+  getParentRoute: () => DashRoute,
+} as any)
+const ApiChatRoute = ApiChatRouteImport.update({
+  id: '/api/chat',
+  path: '/api/chat',
+  getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
@@ -151,11 +151,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_dash': {
@@ -165,46 +165,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/chat': {
-      id: '/api/chat'
-      path: '/api/chat'
-      fullPath: '/api/chat'
-      preLoaderRoute: typeof ApiChatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/_dash/storage': {
-      id: '/_dash/storage'
-      path: '/storage'
-      fullPath: '/storage'
-      preLoaderRoute: typeof DashStorageRouteImport
-      parentRoute: typeof DashRoute
-    }
-    '/_dash/srbijagas': {
-      id: '/_dash/srbijagas'
-      path: '/srbijagas'
-      fullPath: '/srbijagas'
-      preLoaderRoute: typeof DashSrbijagasRouteImport
-      parentRoute: typeof DashRoute
-    }
-    '/_dash/model': {
-      id: '/_dash/model'
-      path: '/model'
-      fullPath: '/model'
-      preLoaderRoute: typeof DashModelRouteImport
-      parentRoute: typeof DashRoute
-    }
-    '/_dash/flows': {
-      id: '/_dash/flows'
-      path: '/flows'
-      fullPath: '/flows'
-      preLoaderRoute: typeof DashFlowsRouteImport
+    '/_dash/balance': {
+      id: '/_dash/balance'
+      path: '/balance'
+      fullPath: '/balance'
+      preLoaderRoute: typeof DashBalanceRouteImport
       parentRoute: typeof DashRoute
     }
     '/_dash/capacity': {
@@ -214,12 +186,40 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashCapacityRouteImport
       parentRoute: typeof DashRoute
     }
-    '/_dash/balance': {
-      id: '/_dash/balance'
-      path: '/balance'
-      fullPath: '/balance'
-      preLoaderRoute: typeof DashBalanceRouteImport
+    '/_dash/flows': {
+      id: '/_dash/flows'
+      path: '/flows'
+      fullPath: '/flows'
+      preLoaderRoute: typeof DashFlowsRouteImport
       parentRoute: typeof DashRoute
+    }
+    '/_dash/model': {
+      id: '/_dash/model'
+      path: '/model'
+      fullPath: '/model'
+      preLoaderRoute: typeof DashModelRouteImport
+      parentRoute: typeof DashRoute
+    }
+    '/_dash/srbijagas': {
+      id: '/_dash/srbijagas'
+      path: '/srbijagas'
+      fullPath: '/srbijagas'
+      preLoaderRoute: typeof DashSrbijagasRouteImport
+      parentRoute: typeof DashRoute
+    }
+    '/_dash/storage': {
+      id: '/_dash/storage'
+      path: '/storage'
+      fullPath: '/storage'
+      preLoaderRoute: typeof DashStorageRouteImport
+      parentRoute: typeof DashRoute
+    }
+    '/api/chat': {
+      id: '/api/chat'
+      path: '/api/chat'
+      fullPath: '/api/chat'
+      preLoaderRoute: typeof ApiChatRouteImport
+      parentRoute: typeof rootRouteImport
     }
   }
 }
