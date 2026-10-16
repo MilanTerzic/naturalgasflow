@@ -56,6 +56,14 @@ export interface BalanceRow {
   required_forecast_mcm: number | null;
   kalotina_entry_mcm: number;
   kiskundorozsma_entry_mcm: number;
+  // Raw cross-TSO allocation difference, not actual Serbian domestic offtake.
+  gastrans_raw_residual_mcm: number;
+  // Gastrans technical exit capacity into the domestic Serbian network.
+  gastrans_exit_capacity_mcm: number;
+  // Portion of the raw cross-TSO difference exceeding the technical limit.
+  gastrans_capacity_excess_mcm: number;
+  is_capacity_limited: boolean;
+  // Domestic Gastrans-delivery proxy, LIMITED by the technical exit capacity.
   imports_from_bulgaria_mcm: number;
   imports_from_bulgaria_available_mcm: number;
   bosnia_consumption_mcm: number;
