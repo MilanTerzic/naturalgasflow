@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Radio } from "lucide-react";
 import { PALETTE, POINTS } from "@/lib/gas/config";
 import { fmtMcm, fmtShortDateYear } from "@/lib/gas/format";
+import { gastransAfterHungaryMcm, grossPipelineEntryMcm, isGastransResidualOutlier } from "@/lib/gas/flow-metrics";
 import type {
   BalanceRow,
   FlowPointName,
@@ -91,6 +92,7 @@ const POINT_KEYS = Object.keys(POINTS) as FlowPointName[];
 function sourceFor(
   row: FlowRow | undefined,
   key: FlowPointName,
+  primarySource: "allocation" | "physical_flow",
 ): FlowPointOperationalSource | undefined {
   if (!row) return undefined;
   const explicit = row.point_source?.[key];
@@ -99,20 +101,21 @@ function sourceFor(
   // Dummy / legacy rows predate point-level provenance. In those rows, an
   // undefined published_points field means the value is intentionally present.
   if (!row.published_points || row.published_points.includes(key)) {
-    return "physical_flow";
+    return primarySource;
   }
   return undefined;
 }
 
 function sourceLabel(source: FlowPointOperationalSource | undefined) {
   if (source === "physical_flow") return "Physical flow";
+  if (source === "allocation") return "Allocation";
   if (source === "renomination") return "Renomination";
   if (source === "nomination") return "Nomination";
   return "No publication";
 }
 
 function sourceBadgeClass(source: FlowPointOperationalSource | undefined) {
-  if (source === "physical_flow") {
+  if (source === "physical_flow" || source === "allocation") {
     return "border-emerald-200 bg-emerald-50 text-emerald-700";
   }
   if (source === "renomination" || source === "nomination") {
@@ -149,26 +152,30 @@ function strokeWidth(value: number | null) {
 
 export function SerbiaPipelineFlowMap({
   flows,
+  allocationFlows,
   today,
   balance,
   storage,
 }: {
   flows: FlowRow[];
+  allocationFlows: FlowRow[];
   today: string;
   balance?: BalanceRow[];
   storage?: AgsiRow | null;
 }) {
+  const [series, setSeries] = useState<"allocation" | "physical_flow">("allocation");
+  const selectedFlows = series === "allocation" ? allocationFlows : flows;
   const flowByDate = useMemo(
-    () => new Map(flows.map((row) => [row.date, row])),
-    [flows],
+    () => new Map(selectedFlows.map((row) => [row.date, row])),
+    [selectedFlows],
   );
 
   const availableDates = useMemo(
     () =>
-      Array.from(new Set(flows.map((row) => row.date)))
+      Array.from(new Set(selectedFlows.map((row) => row.date)))
         .filter((date) => date <= today)
         .sort(),
-    [flows, today],
+    [selectedFlows, today],
   );
 
   const latestDate =
@@ -191,19 +198,20 @@ export function SerbiaPipelineFlowMap({
 
   const pointData = POINT_KEYS.map((key) => {
     const meta = POINT_GEOGRAPHY[key];
-    const source = sourceFor(row, key);
+    const source = sourceFor(row, key, series);
     const value = source ? row?.[key] ?? null : null;
     const update = row?.point_last_update?.[key];
     return { key, meta, source, value, update };
   });
 
-  const publishedCount = pointData.filter((point) => point.source).length;
+  const availableCount = pointData.filter((point) => point.source).length;
+  const actualCount = pointData.filter((point) => point.source === series).length;
   const provisionalCount = pointData.filter(
     (point) => point.source === "renomination" || point.source === "nomination",
   ).length;
-  const totalFlowToSerbia = row
-    ? row.kiskundorozsma_hu + row.kireevo + row.kalotina
-    : null;
+  const totalFlowToSerbia = grossPipelineEntryMcm(row);
+  const gastransResidual = gastransAfterHungaryMcm(row);
+  const suspiciousResidual = isGastransResidualOutlier(row);
   const bosniaFlow = selectedBalance?.bosnia_consumption_mcm ?? null;
 
   const goPrevious = () => {
@@ -227,12 +235,21 @@ export function SerbiaPipelineFlowMap({
             </h2>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            Daily ENTSOG operational data. Border points are geographically placed;
-            pipeline paths inside Serbia are schematic.
+            ENTSOG operational data. Gross entry includes transit to Hungary; point paths inside Serbia are schematic.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <label className="sr-only" htmlFor="pipeline-flow-series">Operational series</label>
+          <select
+            id="pipeline-flow-series"
+            value={series}
+            onChange={(event) => setSeries(event.target.value as "allocation" | "physical_flow")}
+            className="h-9 rounded-md border bg-background px-2 text-xs font-medium text-foreground"
+          >
+            <option value="allocation">Allocation (balance)</option>
+            <option value="physical_flow">Physical flow</option>
+          </select>
           <button
             type="button"
             className="inline-flex h-9 w-9 items-center justify-center rounded-md border bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
@@ -367,7 +384,7 @@ export function SerbiaPipelineFlowMap({
 
             <g transform="translate(330 338)">
               <rect x="0" y="0" width="200" height="64" rx="10" fill="var(--card)" stroke="var(--border)" />
-              <text x="12" y="19" className="fill-muted-foreground text-[10px] font-medium">TOTAL FLOW TO SERBIA</text>
+              <text x="12" y="19" className="fill-muted-foreground text-[10px] font-medium">GROSS ENTRY (INCL. TRANSIT)</text>
               <text x="12" y="44" className="fill-foreground text-[19px] font-bold">
                 {totalFlowToSerbia == null ? "—" : `${fmtMcm(totalFlowToSerbia)} mcm/d`}
               </text>
@@ -452,7 +469,7 @@ export function SerbiaPipelineFlowMap({
                     strokeWidth={strokeWidth(value)}
                     strokeLinecap="round"
                     strokeDasharray={
-                      !source ? "5 7" : source === "physical_flow" ? undefined : "9 6"
+                      !source ? "5 7" : (source === "physical_flow" || source === "allocation") ? undefined : "9 6"
                     }
                     opacity={source ? (active ? 0.92 : 0.48) : 0.28}
                     markerEnd={source ? `url(#flow-arrow-${key})` : undefined}
@@ -536,7 +553,8 @@ export function SerbiaPipelineFlowMap({
                 Points available
               </div>
               <div className="mt-1 text-sm font-semibold text-foreground">
-                {publishedCount}/{POINT_KEYS.length}
+                {availableCount}/{POINT_KEYS.length}
+                <span className="ml-1 text-xs font-normal text-muted-foreground">({actualCount} actual)</span>
                 {provisionalCount > 0 && (
                   <span className="ml-1 text-xs font-normal text-amber-700">
                     ({provisionalCount} provisional)
@@ -584,11 +602,32 @@ export function SerbiaPipelineFlowMap({
             ))}
           </div>
 
+          <div className="rounded-lg border bg-background px-3 py-2 text-xs">
+            <div className="text-[11px] font-semibold uppercase text-muted-foreground">
+              Kireevo − Horgoš (indicative residual)
+            </div>
+            <div className="mt-1 text-lg font-bold">
+              {gastransResidual == null ? "—" : `${fmtMcm(gastransResidual)} mcm/day`}
+            </div>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Cross-TSO difference, not measured Serbian imports. Depends on matched indicator,
+              gas day, linepack and publication timing.
+            </p>
+          </div>
+          {suspiciousResidual && (
+            <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+              <strong>Check ENTSOG / TSO reconciliation:</strong> the Kireevo − Horgoš
+              residual exceeds the indicative ~11.5 mcm/day Gastrans exit-to-Serbian-network
+              reference. Do not treat this difference as domestic supply without verification.
+            </div>
+          )}
           <div className="rounded-lg border border-dashed bg-muted/20 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
-            Bosnia flow is the dashboard balance-model allocation and is shown separately from ENTSOG border-point flows. Arrow direction is the gas-flow direction relative to Serbia. Line thickness
-            scales with the selected day's published value. Dashed colored lines are
-            current-day ENTSOG nomination/renomination values; grey dashed lines mean the
-            point is missing for that gas day.
+            The selected ENTSOG series is <strong>{series === "allocation" ? "Allocation" : "Physical Flow"}</strong>.
+            Gross entry includes Hungary transit and is shown only when all three entry points
+            report. Bosnia flow is a separate allocation-based dashboard model, not a metered
+            border flow. Solid colored lines are actual reported values; dashed colored lines
+            are current-day ENTSOG nomination/renomination substitutes. Grey dashed lines mean
+            the point is missing for that gas day.
           </div>
         </div>
       </div>
