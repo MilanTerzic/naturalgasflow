@@ -53,8 +53,8 @@ function FlowsPage() {
 
   const latestStorage = storageQuery.data?.data?.at(-1);
 
-  const grossFlowToSerbia = latestFlow
-    ? latestFlow.kiskundorozsma_hu + latestFlow.kireevo + latestFlow.kalotina
+  const exitToSerbia = latestFlow
+    ? Math.max(latestFlow.kireevo - latestFlow.kiskundorozsma_2, 0)
     : null;
 
   const flowToBosnia = latestBalance?.bosnia_consumption_mcm ?? null;
@@ -101,15 +101,15 @@ function FlowsPage() {
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <KpiCard
-          label="Total flow to Serbia"
-          value={grossFlowToSerbia == null ? "n/a" : `${fmtMcm(grossFlowToSerbia)} mcm/d`}
-          hint="Gross physical inflow: Hungary + Bulgaria"
+          label="Exit to Serbia"
+          value={exitToSerbia == null ? "n/a" : `${fmtMcm(exitToSerbia)} mcm/d`}
+          hint="Derived Gastrans corridor exit: Kireevo − Horgoš"
           tone="positive"
         />
         <KpiCard
-          label="Flow to Bosnia"
+          label="Exit to BiH"
           value={flowToBosnia == null ? "n/a" : `${fmtMcm(flowToBosnia)} mcm/d`}
-          hint="Existing dashboard BiH allocation model"
+          hint="Dashboard BiH model estimate; not a measured public flow"
         />
         <KpiCard
           label="Serbia storage"

@@ -201,8 +201,8 @@ export function SerbiaPipelineFlowMap({
   const provisionalCount = pointData.filter(
     (point) => point.source === "renomination" || point.source === "nomination",
   ).length;
-  const totalFlowToSerbia = row
-    ? row.kiskundorozsma_hu + row.kireevo + row.kalotina
+  const exitToSerbia = row
+    ? Math.max(row.kireevo - row.kiskundorozsma_2, 0)
     : null;
   const bosniaFlow = selectedBalance?.bosnia_consumption_mcm ?? null;
 
@@ -303,6 +303,17 @@ export function SerbiaPipelineFlowMap({
                 </marker>
               ))}
               <marker
+                id="flow-arrow-serbia-exit"
+                markerWidth="10"
+                markerHeight="10"
+                refX="8"
+                refY="3"
+                orient="auto"
+                markerUnits="strokeWidth"
+              >
+                <path d="M0,0 L0,6 L9,3 z" fill={PALETTE.production} />
+              </marker>
+              <marker
                 id="flow-arrow-bosnia"
                 markerWidth="10"
                 markerHeight="10"
@@ -365,13 +376,22 @@ export function SerbiaPipelineFlowMap({
               SERBIA
             </text>
 
-            <g transform="translate(330 338)">
-              <rect x="0" y="0" width="200" height="64" rx="10" fill="var(--card)" stroke="var(--border)" />
-              <text x="12" y="19" className="fill-muted-foreground text-[10px] font-medium">TOTAL FLOW TO SERBIA</text>
-              <text x="12" y="44" className="fill-foreground text-[19px] font-bold">
-                {totalFlowToSerbia == null ? "—" : `${fmtMcm(totalFlowToSerbia)} mcm/d`}
+            <path
+              d="M 535 306 Q 515 344 474 366"
+              fill="none"
+              stroke={PALETTE.production}
+              strokeWidth={strokeWidth(exitToSerbia)}
+              strokeLinecap="round"
+              opacity={exitToSerbia != null ? 0.9 : 0.25}
+              markerEnd="url(#flow-arrow-serbia-exit)"
+            />
+            <g transform="translate(472 382)">
+              <rect x="0" y="0" width="190" height="58" rx="9" fill="var(--card)" stroke="var(--border)" />
+              <text x="10" y="19" className="fill-muted-foreground text-[10px] font-medium">EXIT TO SERBIA</text>
+              <text x="10" y="41" className="fill-foreground text-[17px] font-bold">
+                {exitToSerbia == null ? "—" : `${fmtMcm(exitToSerbia)} mcm/d`}
               </text>
-              <text x="188" y="44" textAnchor="end" className="fill-muted-foreground text-[9px]">HU + BG</text>
+              <text x="180" y="41" textAnchor="end" className="fill-muted-foreground text-[9px]">KIREEVO − HORGOŠ</text>
             </g>
 
             <path
@@ -386,11 +406,11 @@ export function SerbiaPipelineFlowMap({
             />
             <g transform="translate(38 382)">
               <rect x="0" y="0" width="178" height="58" rx="9" fill="var(--card)" stroke="var(--border)" />
-              <text x="10" y="19" className="fill-muted-foreground text-[10px] font-medium">BOSNIA FLOW</text>
+              <text x="10" y="19" className="fill-muted-foreground text-[10px] font-medium">EXIT TO BIH</text>
               <text x="10" y="41" className="fill-foreground text-[17px] font-bold">
                 {bosniaFlow == null ? "—" : `${fmtMcm(bosniaFlow)} mcm/d`}
               </text>
-              <text x="168" y="41" textAnchor="end" className="fill-muted-foreground text-[9px]">MODEL</text>
+              <text x="168" y="41" textAnchor="end" className="fill-muted-foreground text-[9px]">MODEL EST.</text>
             </g>
 
             <g transform="translate(550 238)">
@@ -585,8 +605,10 @@ export function SerbiaPipelineFlowMap({
           </div>
 
           <div className="rounded-lg border border-dashed bg-muted/20 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
-            Bosnia flow is the dashboard balance-model allocation and is shown separately from ENTSOG border-point flows. Arrow direction is the gas-flow direction relative to Serbia. Line thickness
-            scales with the selected day's published value. Dashed colored lines are
+            Exit to Serbia is derived from the Gastrans corridor as Kireevo inflow minus
+            Horgoš transit. Exit to BiH is the current dashboard model estimate, not a
+            directly measured public flow series. Arrow direction is relative to Serbia.
+            Line thickness scales with the selected day's value. Dashed colored lines are
             current-day ENTSOG nomination/renomination values; grey dashed lines mean the
             point is missing for that gas day.
           </div>
