@@ -6,6 +6,7 @@ import { FlowsChart } from "@/components/dashboard/FlowsChart";
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { SerbiaPipelineFlowMap } from "@/components/dashboard/SerbiaPipelineFlowMap";
 import { fmtMcm } from "@/lib/gas/format";
+import { gastransAfterHungaryMcm, grossPipelineEntryMcm, hasOperationalObservation, isGastransResidualOutlier } from "@/lib/gas/flow-metrics";
 import { fetchAgsiStorage } from "@/lib/data/agsi.functions";
 import { CONVERSION_MCM_TO_GWH } from "@/lib/gas/config";
 import { useDashboardData } from "@/state/use-dashboard-data";
@@ -21,19 +22,19 @@ export const Route = createFileRoute("/_dash/flows")({
 });
 
 function FlowsPage() {
-  const { flows, balance, dates, today } = useDashboardData();
+  const { flows, allocations, balance, dates, today } = useDashboardData();
 
-  const latestFlow = useMemo(() => {
-    return [...flows]
+  const latestAllocation = useMemo(() => {
+    return [...allocations]
       .filter((row) => row.date <= today)
       .sort((a, b) => a.date.localeCompare(b.date))
       .at(-1);
-  }, [flows, today]);
+  }, [allocations, today]);
 
   const latestBalance = useMemo(() => {
-    if (!latestFlow) return undefined;
-    return balance.find((row) => row.date === latestFlow.date);
-  }, [balance, latestFlow]);
+    if (!latestAllocation) return undefined;
+    return balance.find((row) => row.date === latestAllocation.date);
+  }, [balance, latestAllocation]);
 
   const storageQuery = useQuery({
     queryKey: ["agsi-serbia-latest", today],
@@ -53,9 +54,8 @@ function FlowsPage() {
 
   const latestStorage = storageQuery.data?.data?.at(-1);
 
-  const grossFlowToSerbia = latestFlow
-    ? latestFlow.kiskundorozsma_hu + latestFlow.kireevo + latestFlow.kalotina
-    : null;
+  const grossPipelineEntry = grossPipelineEntryMcm(latestAllocation);
+  const gastransResidual = gastransAfterHungaryMcm(latestAllocation);
 
   const flowToBosnia = latestBalance?.bosnia_consumption_mcm ?? null;
 
@@ -65,13 +65,13 @@ function FlowsPage() {
       : (latestStorage.gasInStorage * 1000) / CONVERSION_MCM_TO_GWH;
 
   const diffStats = useMemo(() => {
-    const flowByDate = new Map(flows.map((f) => [f.date, f]));
+    const flowByDate = new Map(allocations.map((f) => [f.date, f]));
     const diffs: { date: string; value: number }[] = [];
     for (const date of dates) {
       const row = flowByDate.get(date);
       if (!row) continue;
-      const hasKireevo = !row.published_points || row.published_points.includes("kireevo");
-      const hasKkd2 = !row.published_points || row.published_points.includes("kiskundorozsma_2");
+      const hasKireevo = hasOperationalObservation(row, "kireevo");
+      const hasKkd2 = hasOperationalObservation(row, "kiskundorozsma_2");
       if (!hasKireevo || !hasKkd2) continue;
       diffs.push({ date, value: row.kireevo - row.kiskundorozsma_2 });
     }
@@ -85,7 +85,7 @@ function FlowsPage() {
     const max = Math.max(...values);
     const min = Math.min(...values);
     return { latest, avg, max, min };
-  }, [flows, dates, today]);
+  }, [allocations, dates, today]);
 
   const fmt = (v: number | null) =>
     v == null ? "n/a" : `${fmtMcm(v)} mcm/d`;
@@ -94,22 +94,37 @@ function FlowsPage() {
     <div className="space-y-4">
       <SerbiaPipelineFlowMap
         flows={flows}
+        allocationFlows={allocations}
         today={today}
         balance={balance}
         storage={latestStorage}
       />
 
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+      {isGastransResidualOutlier(latestAllocation) && (
+        <div role="alert" className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <strong>Allocation reconciliation warning:</strong> Kireevo − Horgoš exceeds the indicative
+          Gastrans Serbian-network exit reference (~11.5 mcm/day). The displayed residual is not
+          verified Serbian imports. Compare the same gas day and allocation indicator at both TSOs.
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
         <KpiCard
-          label="Total flow to Serbia"
-          value={grossFlowToSerbia == null ? "n/a" : `${fmtMcm(grossFlowToSerbia)} mcm/d`}
-          hint="Gross physical inflow: Hungary + Bulgaria"
+          label="Gross pipeline entry"
+          value={grossPipelineEntry == null ? "n/a" : `${fmtMcm(grossPipelineEntry)} mcm/d`}
+          hint="ENTSOG Allocation; includes gas transiting to Hungary"
           tone="positive"
         />
         <KpiCard
           label="Flow to Bosnia"
           value={flowToBosnia == null ? "n/a" : `${fmtMcm(flowToBosnia)} mcm/d`}
-          hint="Existing dashboard BiH allocation model"
+          hint="Modeled BiH share, not measured border flow"
+        />
+        <KpiCard
+          label="Kireevo − Horgoš"
+          value={gastransResidual == null ? "n/a" : `${fmtMcm(gastransResidual)} mcm/d`}
+          hint="Allocation-based residual, not verified domestic imports"
+          tone={isGastransResidualOutlier(latestAllocation) ? "warning" : "default"}
         />
         <KpiCard
           label="Serbia storage"
@@ -135,7 +150,7 @@ function FlowsPage() {
         <KpiCard
           label="Latest difference"
           value={fmt(diffStats.latest)}
-          hint="Kireevo − Kiskundorozsma 2"
+          hint="Allocation: Kireevo − Kiskundorozsma 2"
           tone={
             diffStats.latest == null
               ? "default"
@@ -149,19 +164,19 @@ function FlowsPage() {
         <KpiCard label="Minimum" value={fmt(diffStats.min)} tone="negative" />
       </div>
 
-      <ChartCard title="Per-point flows (mcm/day)" subtitle="published ENTSOG Physical Flow; missing points remain blank" height={460}>
+      <ChartCard title="Per-point physical flows (mcm/day)" subtitle="Separate ENTSOG Physical Flow series; may differ from the Allocation values used for the gas balance and KPI cards. Missing observations remain blank." height={460}>
         <FlowsChart flows={flows} dates={dates} today={today} />
       </ChartCard>
 
       <div className="rounded-md border bg-card px-4 py-3 text-sm text-muted-foreground">
         <div className="mb-1 font-medium text-foreground">
-          Kireevo Entry minus Kiskundorozsma 2 Exit — interpretation
+          Kireevo Entry minus Kiskundorozsma 2 Exit — allocation interpretation
         </div>
         <p>
-          <span className="font-medium text-emerald-700">Positive</span> value means more gas is
-          entering Serbia via Kireevo than exiting / transiting via Kiskundorozsma 2.{" "}
-          <span className="font-medium text-red-700">Negative</span> value means Kiskundorozsma 2
-          exit / transit is higher than Kireevo entry.
+          <span className="font-medium text-emerald-700">Positive</span> means the allocated entry
+          at Kireevo exceeds the allocated exit at Horgoš; <span className="font-medium text-red-700">negative</span>
+          means the reverse. This is a cross-TSO residual, not a direct measure of Serbia\'s
+          domestic imports. Differences may reflect linepack, measurement or reporting timing.
         </p>
       </div>
     </div>
