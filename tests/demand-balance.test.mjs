@@ -218,3 +218,50 @@ test("future nomination-style data is not treated as future physical supply", ()
   assert.equal(rows[1].serbian_available_supply_mcm > 0, true);
   assert.equal(rows[1].storage_imbalance_raw_mcm, 0);
 });
+
+
+test("Gastrans domestic proxy is capped at 11.5 mcm/day and excess is not counted as Serbian supply", () => {
+  const [row] = buildBalance({
+    dates: ["2026-10-14"],
+    todayIso: "2026-10-14",
+    flows: [{
+      date: "2026-10-14",
+      kiskundorozsma_hu: 0,
+      kireevo: 27.05,
+      kiskundorozsma_2: 6.53,
+      kalotina: 0.11,
+      published_points: complete,
+      point_source: Object.fromEntries(complete.map((key) => [key, "allocation"])),
+    }],
+    temps: [{ date: "2026-10-14", temperature_c: 15 }],
+    domesticProduction: 0.5,
+    bihShare: 0,
+  });
+  assert.equal(row.supply_available, true);
+  assert.equal(row.is_capacity_limited, true);
+  assert.equal(row.gastrans_exit_capacity_mcm, 11.5);
+  assert.ok(Math.abs(row.gastrans_raw_residual_mcm - 20.52) < 1e-8);
+  assert.ok(Math.abs(row.gastrans_capacity_excess_mcm - 9.02) < 1e-8);
+  assert.equal(row.imports_from_bulgaria_mcm, 11.5);
+  assert.equal(row.serbian_available_supply_mcm, 12.11);
+});
+
+test("Gastrans nominal allocations below exit limit remain unmodified", () => {
+  const [row] = buildBalance({
+    dates: ["2026-10-14"],
+    todayIso: "2026-10-14",
+    flows: [{
+      date: "2026-10-14",
+      kiskundorozsma_hu: 0,
+      kireevo: 27.05,
+      kiskundorozsma_2: 23.07,
+      kalotina: 0.11,
+      published_points: complete,
+    }],
+    temps: [{ date: "2026-10-14", temperature_c: 15 }],
+    bihShare: 0,
+  });
+  assert.ok(Math.abs(row.imports_from_bulgaria_mcm - 3.98) < 1e-8);
+  assert.equal(row.gastrans_capacity_excess_mcm, 0);
+  assert.equal(row.is_capacity_limited, false);
+});
