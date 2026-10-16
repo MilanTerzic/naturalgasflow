@@ -175,7 +175,7 @@ function FlowsPage() {
         <p>
           <span className="font-medium text-emerald-700">Positive</span> means the allocated entry
           at Kireevo exceeds the allocated exit at Horgoš; <span className="font-medium text-red-700">negative</span>
-          means the reverse. This is a cross-TSO residual, not a direct measure of Serbia\'s
+          means the reverse. This is a cross-TSO residual, not a direct measure of Serbia's
           domestic imports. Differences may reflect linepack, measurement or reporting timing.
         </p>
       </div>
