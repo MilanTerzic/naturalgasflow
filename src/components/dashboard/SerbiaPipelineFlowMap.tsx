@@ -213,6 +213,12 @@ export function SerbiaPipelineFlowMap({
   const gastransResidual = gastransAfterHungaryMcm(row);
   const suspiciousResidual = isGastransResidualOutlier(row);
   const bosniaFlow = selectedBalance?.bosnia_consumption_mcm ?? null;
+  const modelledDomesticGastrans = selectedBalance?.supply_available
+    ? selectedBalance.imports_from_bulgaria_mcm
+    : null;
+  const unreconciledExcess = selectedBalance?.supply_available
+    ? selectedBalance.gastrans_capacity_excess_mcm
+    : null;
 
   const goPrevious = () => {
     if (selectedIndex > 0) setSelectedDate(availableDates[selectedIndex - 1]);
@@ -532,7 +538,7 @@ export function SerbiaPipelineFlowMap({
                 textAnchor="middle"
                 className="fill-foreground text-[11px] font-semibold"
               >
-                Serbian network
+                Serbia gas corridors
               </text>
             </g>
           </svg>
@@ -604,7 +610,24 @@ export function SerbiaPipelineFlowMap({
 
           <div className="rounded-lg border bg-background px-3 py-2 text-xs">
             <div className="text-[11px] font-semibold uppercase text-muted-foreground">
-              Kireevo − Horgoš (indicative residual)
+              Gastrans → Serbian domestic network (capped proxy)
+            </div>
+            <div className="mt-1 text-lg font-bold">
+              {modelledDomesticGastrans == null ? "—" : `${fmtMcm(modelledDomesticGastrans)} mcm/day`}
+            </div>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Maximum technical exit: 11.5 mcm/day. This is an upper-bound model
+              proxy, not a measured domestic withdrawal.
+            </p>
+            {unreconciledExcess != null && unreconciledExcess > 0.005 && (
+              <p className="mt-1 text-[11px] font-semibold text-amber-800">
+                Unreconciled allocation excess: {fmtMcm(unreconciledExcess)} mcm/day
+              </p>
+            )}
+          </div>
+          <div className="rounded-lg border bg-background px-3 py-2 text-xs">
+            <div className="text-[11px] font-semibold uppercase text-muted-foreground">
+              Kireevo − Horgoš (raw residual)
             </div>
             <div className="mt-1 text-lg font-bold">
               {gastransResidual == null ? "—" : `${fmtMcm(gastransResidual)} mcm/day`}
@@ -617,8 +640,9 @@ export function SerbiaPipelineFlowMap({
           {suspiciousResidual && (
             <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
               <strong>Check ENTSOG / TSO reconciliation:</strong> the Kireevo − Horgoš
-              residual exceeds the indicative ~11.5 mcm/day Gastrans exit-to-Serbian-network
-              reference. Do not treat this difference as domestic supply without verification.
+              residual exceeds the 11.5 mcm/day Gastrans domestic-network technical
+              exit capacity. The balance caps its domestic delivery proxy and
+              flags the excess rather than treating it as additional supply.
             </div>
           )}
           <div className="rounded-lg border border-dashed bg-muted/20 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
