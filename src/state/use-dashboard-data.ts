@@ -109,9 +109,10 @@ export function useDashboardData(): DashboardData {
     const residual = gastransAfterHungaryMcm(row);
     warnings.push(
       `ENTSOG Allocation reconciliation warning on ${row.date}: Kireevo minus Horgoš is ` +
-        `${residual?.toFixed(2)} mcm/day, above the ~11.5 mcm/day indicative Gastrans ` +
-        `exit-to-Serbian-network reference. Check matched gas-day TSO data, ` +
-        `publication timing and linepack before treating this as Serbian supply.`,
+        `${residual?.toFixed(2)} mcm/day, above the 11.5 mcm/day Gastrans ` +
+        `domestic-network technical exit cap. The model limits this delivery ` +
+        `proxy to 11.5 mcm/day and excludes the excess from Serbian supply. ` +
+        `Verify gas-day allocations, publication timing and linepack.`,
     );
   }
 

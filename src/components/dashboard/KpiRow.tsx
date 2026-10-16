@@ -53,6 +53,17 @@ export function KpiRow({ balance, selectedDate }: { balance: BalanceRow[]; selec
 
   return (
     <section aria-label={`${cur.date} at a glance`} className="space-y-3">
+      {cur.is_capacity_limited && cur.supply_available && (
+        <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+          <strong>Gastrans technical limit applied.</strong> The Kireevo − Horgoš
+          allocation difference is {fmtMcm(cur.gastrans_raw_residual_mcm)} mcm/day,
+          exceeding the {fmtMcm(cur.gastrans_exit_capacity_mcm)} mcm/day exit capacity
+          to Serbia. The balance uses at most {fmtMcm(cur.imports_from_bulgaria_mcm)}
+          mcm/day as a <strong>modeled domestic-delivery proxy</strong>. The remaining
+          {fmtMcm(cur.gastrans_capacity_excess_mcm)} mcm/day is unreconciled, not supply.
+          Check matched Gastrans/ENTSOG operational data.
+        </div>
+      )}
       {cur.is_estimated && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
           <span className="font-medium">Estimated allocation inputs.</span> One or more ENTSOG points
@@ -77,7 +88,9 @@ export function KpiRow({ balance, selectedDate }: { balance: BalanceRow[]; selec
           unit="mcm/day"
           hint={
             supplyAvailable
-              ? estimatedHint ?? "Total supply available to Serbia"
+              ? cur.is_capacity_limited
+                ? "Upper-bound proxy: Gastrans domestic exit limited to 11.5 mcm/day; raw allocations require reconciliation"
+                : estimatedHint ?? "Total modeled supply available to Serbia"
               : "Incomplete allocation inputs — supply not calculated"
           }
           delta={supplyAvailable ? delta("serbian_available_supply_mcm") : null}
@@ -120,10 +133,12 @@ export function KpiRow({ balance, selectedDate }: { balance: BalanceRow[]; selec
           estimated={cur.is_estimated}
         />
         <KpiCard
-          label="Net import from Bulgaria"
+          label="Gastrans to Serbia (proxy)"
           value={supplyAvailable ? fmtMcm(cur.imports_from_bulgaria_mcm) : "-"}
           unit="mcm/day"
-          hint={estimatedHint ?? "Kireevo less KKD-2 transit"}
+          hint={cur.is_capacity_limited
+            ? `Capped at ${fmtMcm(cur.gastrans_exit_capacity_mcm)} mcm/day; raw residual ${fmtMcm(cur.gastrans_raw_residual_mcm)}`
+            : estimatedHint ?? "Kireevo − Horgoš proxy; not measured domestic offtake"}
           delta={supplyAvailable ? delta("imports_from_bulgaria_mcm") : null}
           icon={<ArrowDownToLine />}
           estimated={cur.is_estimated}

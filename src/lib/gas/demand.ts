@@ -10,6 +10,7 @@ import {
   MAX_STORAGE_WITHDRAWAL,
   POLY_COEFFS,
 } from "./config";
+import { GASTRANS_SERBIAN_EXIT_TECHNICAL_CAP_MCM, limitedGastransDomesticProxy } from "./flow-metrics";
 import type {
   BalanceRow,
   FlowPointName,
@@ -252,7 +253,14 @@ export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
     const kkd2 = resolved.kiskundorozsma_2.value;
     const kal = resolved.kalotina.value;
 
-    const imports_from_bulgaria_mcm = clipLow(kire - kkd2, 0);
+    // The Kireevo–Horgoš residual is not direct measurement of domestic
+    // offtake. Limit the modeled Gastrans delivery to the technical exit
+    // capacity into Serbia; retain the raw excess as an unresolved mismatch.
+    const gastrans_raw_residual_mcm = kire - kkd2;
+    const constrainedGastrans = limitedGastransDomesticProxy(gastrans_raw_residual_mcm);
+    const imports_from_bulgaria_mcm = constrainedGastrans.delivery_mcm;
+    const gastrans_capacity_excess_mcm = constrainedGastrans.unreconciled_excess_mcm;
+    const is_capacity_limited = gastrans_capacity_excess_mcm > 0.005;
     const bosnia_consumption_mcm = clipLow(imports_from_bulgaria_mcm * bihShare, 0);
     const imports_from_bulgaria_available_mcm = clipLow(
       imports_from_bulgaria_mcm - bosnia_consumption_mcm,
@@ -283,6 +291,10 @@ export function buildBalance(args: BuildBalanceArgs): BalanceRow[] {
       ts,
       is_forecast,
       is_estimated: supplyAvailable && sourceType !== "actual",
+      is_capacity_limited,
+      gastrans_raw_residual_mcm,
+      gastrans_capacity_excess_mcm,
+      gastrans_exit_capacity_mcm: GASTRANS_SERBIAN_EXIT_TECHNICAL_CAP_MCM,
       estimated_from: estimatedDates.length ? estimatedDates.join(", ") : undefined,
       source_type: is_forecast ? "none" : sourceType,
       provisional_sources: provisionalSources.length ? provisionalSources : undefined,
