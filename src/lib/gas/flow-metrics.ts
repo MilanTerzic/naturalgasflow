@@ -1,9 +1,21 @@
 import type { FlowPointName, FlowRow } from "./types";
 
-// Indicative Gastrans exit capacity into the Serbian network, in mcm/day.
-// This is a reference for identifying suspect reconciliations, not a hard
-// physical limit or a substitute for dated TSO capacity publications.
-export const GASTRANS_SERBIAN_EXIT_REFERENCE_MCM = 11.51;
+// Assumed technical upper bound for Gastrans delivery to Serbia's domestic
+// transmission system, mcm/day. This is NOT Kireevo's total pipeline entry
+// capacity. Update when dated TSO technical capacity becomes available.
+export const GASTRANS_SERBIAN_EXIT_TECHNICAL_CAP_MCM = 11.5;
+
+// This is a modelling constraint, not a measurement of actual Serbian offtake.
+export function limitedGastransDomesticProxy(rawKireevoMinusHungaryMcm: number) {
+  const nonNegativeResidual = Math.max(rawKireevoMinusHungaryMcm, 0);
+  return {
+    delivery_mcm: Math.min(nonNegativeResidual, GASTRANS_SERBIAN_EXIT_TECHNICAL_CAP_MCM),
+    unreconciled_excess_mcm: Math.max(
+      nonNegativeResidual - GASTRANS_SERBIAN_EXIT_TECHNICAL_CAP_MCM,
+      0,
+    ),
+  };
+}
 
 const ENTRY_POINTS: FlowPointName[] = [
   "kiskundorozsma_hu",
@@ -47,6 +59,6 @@ export function gastransAfterHungaryMcm(row: FlowRow | undefined): number | null
 
 export function isGastransResidualOutlier(row: FlowRow | undefined): boolean {
   const remaining = gastransAfterHungaryMcm(row);
-  // A small margin avoids warnings for rounding and minor operational timing.
-  return remaining !== null && remaining > GASTRANS_SERBIAN_EXIT_REFERENCE_MCM + 0.5;
+  // Small tolerance for rounding; any material excess is a reconciliation issue.
+  return remaining !== null && remaining > GASTRANS_SERBIAN_EXIT_TECHNICAL_CAP_MCM + 0.005;
 }
