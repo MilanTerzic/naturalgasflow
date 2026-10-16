@@ -103,17 +103,26 @@ function FlowsPage() {
       {isGastransResidualOutlier(latestAllocation) && (
         <div role="alert" className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
           <strong>Allocation reconciliation warning:</strong> Kireevo − Horgoš exceeds the indicative
-          Gastrans Serbian-network exit reference (~11.5 mcm/day). The displayed residual is not
-          verified Serbian imports. Compare the same gas day and allocation indicator at both TSOs.
+          Gastrans Serbian-network technical exit capacity (11.5 mcm/day). The balance
+          limits its modeled Gastrans delivery to that capacity and excludes the excess
+          from supply. The raw residual is not measured imports; reconcile matched TSO data.
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
         <KpiCard
           label="Gross pipeline entry"
           value={grossPipelineEntry == null ? "n/a" : `${fmtMcm(grossPipelineEntry)} mcm/d`}
           hint="ENTSOG Allocation; includes gas transiting to Hungary"
           tone="positive"
+        />
+        <KpiCard
+          label="Gastrans to Serbia (max proxy)"
+          value={latestBalance?.supply_available
+            ? `${fmtMcm(latestBalance.imports_from_bulgaria_mcm)} mcm/d`
+            : "n/a"}
+          hint="Modeled delivery, never above 11.5 mcm/day technical exit capacity"
+          tone={latestBalance?.is_capacity_limited ? "warning" : "default"}
         />
         <KpiCard
           label="Flow to Bosnia"
@@ -123,7 +132,7 @@ function FlowsPage() {
         <KpiCard
           label="Kireevo − Horgoš"
           value={gastransResidual == null ? "n/a" : `${fmtMcm(gastransResidual)} mcm/d`}
-          hint="Allocation-based residual, not verified domestic imports"
+          hint="Raw cross-TSO allocation difference, not domestic gas delivery"
           tone={isGastransResidualOutlier(latestAllocation) ? "warning" : "default"}
         />
         <KpiCard
