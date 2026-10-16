@@ -16,9 +16,11 @@ export function hasOperationalObservation(
   point: FlowPointName,
 ): boolean {
   if (!row) return false;
-  if (row.point_source) return Boolean(row.point_source[point]);
-  // Legacy/demo rows have no publication metadata and represent full coverage.
-  return !row.published_points || row.published_points.includes(point);
+  if (row.point_source?.[point]) return true;
+  if (row.published_points) return row.published_points.includes(point);
+  // A row with point-level provenance but no publication list has no evidence
+  // for missing points. Legacy/demo rows with neither field are complete.
+  return !row.point_source;
 }
 
 // Total border entry into the transmission system, including gas that
