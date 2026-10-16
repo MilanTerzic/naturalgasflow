@@ -5,11 +5,13 @@ import { dummyFlows, dummyTemperatures, dummyCapacity } from "@/lib/gas/dummy";
 import { fetchBelgradeTemperatures } from "@/lib/data/openmeteo.functions";
 import { fetchEntsogAllocations, fetchEntsogFlows } from "@/lib/data/entsog.functions";
 import type { BalanceRow, CapacityRow, FlowRow, TempRow } from "@/lib/gas/types";
+import { gastransAfterHungaryMcm, isGastransResidualOutlier } from "@/lib/gas/flow-metrics";
 import { useDashboard } from "./dashboard-context";
 
 export interface DashboardData {
   balance: BalanceRow[];
   flows: FlowRow[];
+  allocations: FlowRow[];
   temps: TempRow[];
   capacity: CapacityRow[];
   dates: string[];
@@ -98,6 +100,21 @@ export function useDashboardData(): DashboardData {
     balanceFlows = flows;
   }
 
+  // Flag implausible cross-TSO residuals; do not silently cap source values.
+  const suspicious = balanceFlows
+    .filter((row) => row.date <= today && isGastransResidualOutlier(row))
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, 3);
+  for (const row of suspicious) {
+    const residual = gastransAfterHungaryMcm(row);
+    warnings.push(
+      `ENTSOG Allocation reconciliation warning on ${row.date}: Kireevo minus Horgoš is ` +
+        `${residual?.toFixed(2)} mcm/day, above the ~11.5 mcm/day indicative Gastrans ` +
+        `exit-to-Serbian-network reference. Check matched gas-day TSO data, ` +
+        `publication timing and linepack before treating this as Serbian supply.`,
+    );
+  }
+
   // A published zero is real data. Current-day ENTSOG nominations/renominations
   // also count as operational coverage, but remain explicitly provisional.
   const todayFallback = useMemo(() => {
@@ -181,6 +198,7 @@ export function useDashboardData(): DashboardData {
   return {
     balance,
     flows,
+    allocations: balanceFlows,
     temps,
     capacity,
     dates,
