@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Radio } from "lucide-react";
 import { PALETTE, POINTS } from "@/lib/gas/config";
 import { fmtMcm, fmtShortDateYear } from "@/lib/gas/format";
-import { gastransAfterHungaryMcm, grossPipelineEntryMcm, isGastransResidualOutlier } from "@/lib/gas/flow-metrics";
+import { gastransAfterHungaryMcm, isGastransResidualOutlier, netRemainingInSerbiaMcm } from "@/lib/gas/flow-metrics";
 import type {
   BalanceRow,
   FlowPointName,
@@ -209,10 +209,10 @@ export function SerbiaPipelineFlowMap({
   const provisionalCount = pointData.filter(
     (point) => point.source === "renomination" || point.source === "nomination",
   ).length;
-  const totalFlowToSerbia = grossPipelineEntryMcm(row);
   const gastransResidual = gastransAfterHungaryMcm(row);
   const suspiciousResidual = isGastransResidualOutlier(row);
   const bosniaFlow = selectedBalance?.bosnia_consumption_mcm ?? null;
+  const netInSerbia = netRemainingInSerbiaMcm(row, bosniaFlow);
 
   const goPrevious = () => {
     if (selectedIndex > 0) setSelectedDate(availableDates[selectedIndex - 1]);
@@ -235,7 +235,7 @@ export function SerbiaPipelineFlowMap({
             </h2>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            ENTSOG operational data. Gross entry includes transit to Hungary; point paths inside Serbia are schematic.
+            ENTSOG operational data. Net in Serbia excludes transit to Hungary and Bosnia flow; point paths inside Serbia are schematic.
           </p>
         </div>
 
@@ -382,13 +382,13 @@ export function SerbiaPipelineFlowMap({
               SERBIA
             </text>
 
-            <g transform="translate(330 338)">
-              <rect x="0" y="0" width="200" height="64" rx="10" fill="var(--card)" stroke="var(--border)" />
-              <text x="12" y="19" className="fill-muted-foreground text-[10px] font-medium">GROSS ENTRY (INCL. TRANSIT)</text>
-              <text x="12" y="44" className="fill-foreground text-[19px] font-bold">
-                {totalFlowToSerbia == null ? "—" : `${fmtMcm(totalFlowToSerbia)} mcm/d`}
+            <g transform="translate(324 424)">
+              <rect x="0" y="0" width="178" height="70" rx="10" fill="var(--card)" stroke="var(--primary)" strokeWidth="2" filter="url(#soft-shadow)" />
+              <text x="12" y="19" className="fill-primary text-[10px] font-semibold tracking-wide">NET IN SERBIA</text>
+              <text x="12" y="49" className="fill-foreground text-[24px] font-bold">
+                {netInSerbia == null ? "—" : `${fmtMcm(netInSerbia)} mcm/d`}
               </text>
-              <text x="188" y="44" textAnchor="end" className="fill-muted-foreground text-[9px]">HU + BG</text>
+              <text x="12" y="63" className="fill-muted-foreground text-[8px]">BG + HU entry − HU exit − BiH</text>
             </g>
 
             <path
@@ -623,8 +623,8 @@ export function SerbiaPipelineFlowMap({
           )}
           <div className="rounded-lg border border-dashed bg-muted/20 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
             The selected ENTSOG series is <strong>{series === "allocation" ? "Allocation" : "Physical Flow"}</strong>.
-            Gross entry includes Hungary transit and is shown only when all three entry points
-            report. Bosnia flow is a separate allocation-based dashboard model, not a metered
+            Net in Serbia is Kalotina + Kireevo + Kiskundorozsma − Kiskundorozsma 2 − Bosnia flow,
+            shown only when all four points report. Bosnia flow is a separate allocation-based dashboard model, not a metered
             border flow. Solid colored lines are actual reported values; dashed colored lines
             are current-day ENTSOG nomination/renomination substitutes. Grey dashed lines mean
             the point is missing for that gas day.

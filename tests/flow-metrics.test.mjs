@@ -5,6 +5,7 @@ import {
   grossPipelineEntryMcm,
   hasOperationalObservation,
   isGastransResidualOutlier,
+  netRemainingInSerbiaMcm,
 } from "../src/lib/gas/flow-metrics.ts";
 
 function makeRow(kireevo, horgos, publishedPoints = [
@@ -49,4 +50,11 @@ test("published zero is valid, even with partial explicit provenance", () => {
   assert.equal(hasOperationalObservation(row, "kiskundorozsma_hu"), true);
   assert.equal(grossPipelineEntryMcm(row), 0.11);
   assert.equal(gastransAfterHungaryMcm(row), 0);
+});
+
+test("net in Serbia subtracts Hungary exit and Bosnia flow from all entries", () => {
+  const row = makeRow(30.11, 22.45);
+  assert.ok(Math.abs(netRemainingInSerbiaMcm(row, 0.54) - 7.23) < 0.0001);
+  assert.equal(netRemainingInSerbiaMcm(row, null), null);
+  assert.equal(netRemainingInSerbiaMcm(makeRow(30.11, 0, ["kiskundorozsma_hu", "kireevo", "kalotina"]), 0.54), null);
 });

@@ -32,6 +32,23 @@ export function grossPipelineEntryMcm(row: FlowRow | undefined): number | null {
   return row.kiskundorozsma_hu + row.kireevo + row.kalotina;
 }
 
+// Gas left in Serbia after Hungary transit and the modelled Bosnia flow:
+// Kalotina + Kireevo + Kiskundorozsma (HU→RS) − Kiskundorozsma 2 (RS→HU) − Bosnia.
+export function netRemainingInSerbiaMcm(
+  row: FlowRow | undefined,
+  bosniaMcm: number | null | undefined,
+): number | null {
+  const gross = grossPipelineEntryMcm(row);
+  if (
+    gross === null ||
+    bosniaMcm == null ||
+    !hasOperationalObservation(row, "kiskundorozsma_2")
+  ) {
+    return null;
+  }
+  return gross - row!.kiskundorozsma_2 - bosniaMcm;
+}
+
 // Cross-TSO proxy, not a measured domestic import. Can differ from offtake
 // because of linepack, TSO publication timing, or other reconciliation items.
 export function gastransAfterHungaryMcm(row: FlowRow | undefined): number | null {
