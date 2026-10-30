@@ -13,13 +13,15 @@ import {
 import { PALETTE } from "@/lib/gas/config";
 import { fmtMcm, fmtShortDate } from "@/lib/gas/format";
 import type { BalanceRow } from "@/lib/gas/types";
+import { splitHungaryEntry, type MetHuNomination, type HungarySplit } from "@/lib/gas/met-nominations";
+import { CONVERSION_MCM_TO_MWH } from "@/lib/gas/config";
 
 interface TooltipPayload {
   name?: string;
   value?: unknown;
   color?: string;
   dataKey?: string;
-  payload?: BalanceRow;
+  payload?: BalanceRow & { chart_hungary_status?: HungarySplit["status"]; chart_met_nominated_mwh?: number | null };
 }
 
 interface LegendPayload {
@@ -29,15 +31,33 @@ interface LegendPayload {
 
 const tooltipNum = (v: unknown) => (typeof v === "number" ? `${fmtMcm(v)} mcm/day` : "-");
 
-export function CompositionChart({ data, today }: { data: BalanceRow[]; today: string }) {
+export function CompositionChart({
+  data, today, nominations,
+}: {
+  data: BalanceRow[];
+  today: string;
+  nominations: MetHuNomination[];
+}) {
   const todayTs = Date.parse(`${today}T00:00:00Z`);
-  const chartData = data.map((row) => ({
-    ...row,
-    chart_bg_available: row.supply_available ? row.imports_from_bulgaria_available_mcm : null,
-    chart_kalotina: row.supply_available ? row.kalotina_entry_mcm : null,
-    chart_hungary: row.supply_available ? row.kiskundorozsma_entry_mcm : null,
-    chart_production: row.supply_available ? row.domestic_production_mcm : null,
-  }));
+  const nominationByDay = new Map(nominations.map((row) => [row.gas_day, row.nominated_mwh]));
+  const chartData = data.map((row) => {
+    const nominationMwh = nominationByDay.get(row.date) ?? null;
+    const hungarySplit = splitHungaryEntry(
+      row.supply_available ? row.kiskundorozsma_entry_mcm : null,
+      nominationMwh,
+    );
+    return {
+      ...row,
+      chart_bg_available: row.supply_available ? row.imports_from_bulgaria_available_mcm : null,
+      chart_kalotina: row.supply_available ? row.kalotina_entry_mcm : null,
+      chart_hungary_met: hungarySplit.metMcm,
+      chart_hungary_others: hungarySplit.othersMcm,
+      chart_hungary_unattributed: hungarySplit.unattributedMcm,
+      chart_hungary_status: hungarySplit.status,
+      chart_met_nominated_mwh: nominationMwh,
+      chart_production: row.supply_available ? row.domestic_production_mcm : null,
+    };
+  });
 
   return (
     <ResponsiveContainer width="100%" height="100%">
@@ -103,12 +123,32 @@ export function CompositionChart({ data, today }: { data: BalanceRow[]; today: s
         />
         <Area
           type="monotone"
-          dataKey="chart_hungary"
+          dataKey="chart_hungary_others"
           stackId="supply"
-          name="Hungary entry"
+          name="Hungary entry Others (residual)"
           stroke={PALETTE.huOthers}
           fill={PALETTE.huOthers}
           fillOpacity={0.72}
+          isAnimationActive={false}
+        />
+        <Area
+          type="monotone"
+          dataKey="chart_hungary_met"
+          stackId="supply"
+          name="Hungary entry MET (nominated)"
+          stroke={PALETTE.huMet}
+          fill={PALETTE.huMet}
+          fillOpacity={0.82}
+          isAnimationActive={false}
+        />
+        <Area
+          type="monotone"
+          dataKey="chart_hungary_unattributed"
+          stackId="supply"
+          name="Hungary entry (not attributed)"
+          stroke="#64748b"
+          fill="#64748b"
+          fillOpacity={0.65}
           isAnimationActive={false}
         />
         <Area
@@ -206,6 +246,23 @@ function CompositionTooltip({
           ) : null}
         </div>
       </div>
+      {row?.chart_hungary_status === "over_nomination" && (
+        <p className="mt-2 rounded bg-amber-50 px-2 py-1 text-amber-900">
+          MET nomination exceeds observed Hungary entry. The full entry stays
+          unattributed until the figures reconcile.
+        </p>
+      )}
+      {row?.chart_hungary_status === "missing_nomination" && (
+        <p className="mt-2 text-muted-foreground">
+          No MET nomination saved. Hungary entry is not yet attributed.
+        </p>
+      )}
+      {row?.chart_met_nominated_mwh != null && (
+        <p className="mt-2 text-muted-foreground">
+          Saved MET nomination: {row.chart_met_nominated_mwh.toLocaleString("en-GB", { maximumFractionDigits: 3 })} MWh/day
+          ({fmtMcm(row.chart_met_nominated_mwh / CONVERSION_MCM_TO_MWH)} mcm/day)
+        </p>
+      )}
       <div className="mt-2 space-y-1.5">
         {visibleRows.map((item) => (
           <div key={item.dataKey} className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
