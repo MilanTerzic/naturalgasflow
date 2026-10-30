@@ -1,8 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AlertTriangle, CalendarDays, ChevronDown, Clock3, Database } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ChartCard } from "@/components/dashboard/ChartCard";
 import { CompositionChart } from "@/components/dashboard/CompositionChart";
+import { MetHuNominationsTable } from "@/components/dashboard/MetHuNominationsTable";
+import { listMetHuNominations } from "@/lib/met-hu-nominations.functions";
 import { KpiRow } from "@/components/dashboard/KpiRow";
 import { MobileControlsSheet } from "@/components/dashboard/Sidebar";
 import { StorageChart } from "@/components/dashboard/StorageChart";
@@ -49,6 +52,18 @@ function BalancePage() {
   const selected = getSelectedRow(balance, selectedDate, today);
   const minDate = balance[0]?.date ?? today;
   const maxDate = balance[balance.length - 1]?.date ?? today;
+  const nominationQuery = useQuery({
+    queryKey: ["met-hu-nominations", minDate, maxDate],
+    queryFn: () => listMetHuNominations({ data: { from: minDate, to: maxDate } }),
+    enabled: mode === "live" && balance.length > 0,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
+  });
+  const nominationError = nominationQuery.isError
+    ? nominationQuery.error instanceof Error
+      ? nominationQuery.error.message
+      : "Could not load shared MET nominations"
+    : null;
   const freshness = getFreshnessLabel({
     mode,
     todayFallback,
@@ -79,11 +94,23 @@ function BalancePage() {
           <section className="grid gap-4">
             <ChartCard
               title="Serbian gas supply and demand"
-              description="ENTSOG Allocation supply; current-day gaps use ENTSOG renomination/nomination before carry-forward. Future dates show demand forecast only - mcm/day"
+              description="ENTSOG Allocation supply with manual MET Hungary nominations and calculated Other HU entry. Missing nominations remain unattributed. Future dates show demand forecast only - mcm/day"
               height={380}
             >
-              <CompositionChart data={balance} today={today} />
+              <CompositionChart
+                data={balance}
+                today={today}
+                nominations={mode === "live" ? nominationQuery.data ?? [] : []}
+              />
             </ChartCard>
+            <MetHuNominationsTable
+              balance={balance}
+              today={today}
+              nominations={mode === "live" ? nominationQuery.data ?? [] : []}
+              loading={mode === "live" && nominationQuery.isFetching && !nominationQuery.data}
+              loadError={nominationError}
+              disabled={mode !== "live"}
+            />
             <div className="grid gap-4 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
               <ChartCard
                 title="Belgrade temperature and demand driver"
