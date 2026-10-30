@@ -4,7 +4,7 @@ CREATE TABLE public.met_hu_nominations (
   gas_day date PRIMARY KEY,
   nominated_mwh numeric(18,3) NOT NULL
     CHECK (nominated_mwh >= 0 AND nominated_mwh <= 1000000),
-  updated_by uuid NOT NULL REFERENCES auth.users(id),
+  updated_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
   updated_by_email text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
