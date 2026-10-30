@@ -47,6 +47,33 @@ export type Database = {
         }
         Relationships: []
       }
+      met_hu_nominations: {
+        Row: {
+          gas_day: string
+          nominated_mwh: number
+          updated_by: string | null
+          updated_by_email: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          gas_day: string
+          nominated_mwh: number
+          updated_by?: string | null
+          updated_by_email: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          gas_day?: string
+          nominated_mwh?: number
+          updated_by?: string | null
+          updated_by_email?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       dashboard_settings: {
         Row: {
           bih_share: number
