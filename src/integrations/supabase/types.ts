@@ -83,6 +83,33 @@ export type Database = {
         }
         Relationships: []
       }
+      met_hu_nominations: {
+        Row: {
+          created_at: string
+          gas_day: string
+          nominated_mwh: number
+          updated_at: string
+          updated_by: string | null
+          updated_by_email: string
+        }
+        Insert: {
+          created_at?: string
+          gas_day: string
+          nominated_mwh: number
+          updated_at?: string
+          updated_by?: string | null
+          updated_by_email: string
+        }
+        Update: {
+          created_at?: string
+          gas_day?: string
+          nominated_mwh?: number
+          updated_at?: string
+          updated_by?: string | null
+          updated_by_email?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
