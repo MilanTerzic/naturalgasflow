@@ -47,33 +47,6 @@ export type Database = {
         }
         Relationships: []
       }
-      met_hu_nominations: {
-        Row: {
-          gas_day: string
-          nominated_mwh: number
-          updated_by: string | null
-          updated_by_email: string
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          gas_day: string
-          nominated_mwh: number
-          updated_by?: string | null
-          updated_by_email: string
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          gas_day?: string
-          nominated_mwh?: number
-          updated_by?: string | null
-          updated_by_email?: string
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
       dashboard_settings: {
         Row: {
           bih_share: number
@@ -107,6 +80,33 @@ export type Database = {
           range_past_days?: number
           updated_at?: string
           use_polynomial?: boolean
+        }
+        Relationships: []
+      }
+      met_hu_nominations: {
+        Row: {
+          created_at: string
+          gas_day: string
+          nominated_mwh: number
+          updated_at: string
+          updated_by: string | null
+          updated_by_email: string
+        }
+        Insert: {
+          created_at?: string
+          gas_day: string
+          nominated_mwh: number
+          updated_at?: string
+          updated_by?: string | null
+          updated_by_email: string
+        }
+        Update: {
+          created_at?: string
+          gas_day?: string
+          nominated_mwh?: number
+          updated_at?: string
+          updated_by?: string | null
+          updated_by_email?: string
         }
         Relationships: []
       }
