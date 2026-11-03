@@ -12,12 +12,14 @@ export type HungarySplit = {
   othersMcm: number | null;
   unattributedMcm: number | null;
   mismatchMcm: number | null;
-  status: "split" | "missing_nomination" | "missing_allocation" | "over_nomination";
+  status: "split" | "default_zero" | "missing_nomination" | "missing_allocation" | "over_nomination";
 };
 
 // The ENTSOG HU→RS allocation is authoritative for the total. MET is a manual
 // nomination and the residual is not a metered measurement of third-party gas.
-// Missing nominations must not be silently interpreted as an explicit MET zero.
+// By agreement, a day with no saved nomination defaults MET to 0 and the whole
+// observed Hungary entry is attributed to "Others". Only when a saved
+// nomination exceeds the observed total does the split stay unreconciled.
 export function splitHungaryEntry(
   totalHungaryMcm: number | null,
   metNominationMwh: number | null,
@@ -30,8 +32,8 @@ export function splitHungaryEntry(
   }
   if (metNominationMwh === null || !Number.isFinite(metNominationMwh) || metNominationMwh < 0) {
     return {
-      metMcm: null, othersMcm: null, unattributedMcm: totalHungaryMcm,
-      mismatchMcm: null, status: "missing_nomination",
+      metMcm: 0, othersMcm: totalHungaryMcm, unattributedMcm: null,
+      mismatchMcm: null, status: "default_zero",
     };
   }
   const metMcm = metNominationMwh / CONVERSION_MCM_TO_MWH;
