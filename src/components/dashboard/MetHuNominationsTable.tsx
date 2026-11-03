@@ -204,6 +204,8 @@ export function MetHuNominationsTable({
                   <td className="px-3 py-2">
                     {split.status === "split" ? (
                       <span className="text-emerald-700">Split saved</span>
+                    ) : split.status === "default_zero" ? (
+                      <span className="text-muted-foreground">Default: MET 0, Others</span>
                     ) : split.status === "over_nomination" ? (
                       <span className="font-medium text-amber-700">MET exceeds HU entry</span>
                     ) : split.status === "missing_allocation" ? (
@@ -239,10 +241,11 @@ export function MetHuNominationsTable({
       </div>
       <div className="border-t px-4 py-3 text-[11px] leading-relaxed text-muted-foreground">
         Shared nominations are saved by gas day in Supabase and displayed using the selected unit.
-        If no nomination is saved, HU entry remains <strong>unattributed</strong>, not automatically
-        "Others". If MET exceeds HU Allocation, the chart preserves the ENTSOG total and marks
-        the split as unreconciled. Future-day nominations can be stored before allocations arrive.
-        The input only changes chart attribution, not total Serbian supply or demand.
+        If no nomination is saved, MET defaults to <strong>0</strong> and the full HU entry counts
+        as <strong>Others</strong>. If MET exceeds HU Allocation, the chart preserves the ENTSOG
+        total and marks the split as unreconciled. Future-day nominations can be stored before
+        allocations arrive. The input only changes chart attribution, not total Serbian supply
+        or demand.
       </div>
     </section>
   );

@@ -17,12 +17,12 @@ test("an explicitly saved zero means all observed HU entry is Others", () => {
   assert.equal(split.othersMcm, 1.2);
 });
 
-test("a missing MET nomination must not pretend MET has zero", () => {
+test("a day with no saved nomination defaults MET to 0 and the rest to Others", () => {
   const split = splitHungaryEntry(1.2, null);
-  assert.equal(split.status, "missing_nomination");
-  assert.equal(split.metMcm, null);
-  assert.equal(split.othersMcm, null);
-  assert.equal(split.unattributedMcm, 1.2);
+  assert.equal(split.status, "default_zero");
+  assert.equal(split.metMcm, 0);
+  assert.equal(split.othersMcm, 1.2);
+  assert.equal(split.unattributedMcm, null);
 });
 
 test("nomination exceeding HU allocation flags mismatch and preserves total", () => {
