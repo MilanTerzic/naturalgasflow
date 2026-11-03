@@ -252,9 +252,9 @@ function CompositionTooltip({
           unattributed until the figures reconcile.
         </p>
       )}
-      {row?.chart_hungary_status === "missing_nomination" && (
+      {row?.chart_hungary_status === "default_zero" && (
         <p className="mt-2 text-muted-foreground">
-          No MET nomination saved. Hungary entry is not yet attributed.
+          No MET nomination entered. Default applies: MET 0, whole Hungary entry as Others.
         </p>
       )}
       {row?.chart_met_nominated_mwh != null && (

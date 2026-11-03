@@ -94,7 +94,7 @@ function BalancePage() {
           <section className="grid gap-4">
             <ChartCard
               title="Serbian gas supply and demand"
-              description="ENTSOG Allocation supply with manual MET Hungary nominations and calculated Other HU entry. Missing nominations remain unattributed. Future dates show demand forecast only - mcm/day"
+              description="ENTSOG Allocation supply with manual MET Hungary nominations and calculated Other HU entry. Without a nomination, MET defaults to 0 and the entry counts as Others. Future dates show demand forecast only - mcm/day"
               height={380}
             >
               <CompositionChart
