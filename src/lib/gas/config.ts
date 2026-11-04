@@ -46,7 +46,7 @@ export const PALETTE = {
   kalotina: "#17803D",
   bgImport: "#76A9D6",
   production: "#3E5F7C",
-  huOthers: "#2563A8",
+  huOthers: "#7C3AED",
   huMet: "#ED7D31",
   demand: "#A51F2E",
   temp: "#2563EB",

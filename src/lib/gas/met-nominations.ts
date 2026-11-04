@@ -10,9 +10,8 @@ export interface MetHuNomination {
 export type HungarySplit = {
   metMcm: number | null;
   othersMcm: number | null;
-  unattributedMcm: number | null;
   mismatchMcm: number | null;
-  status: "split" | "default_zero" | "missing_nomination" | "missing_allocation" | "over_nomination";
+  status: "split" | "default_zero" | "missing_allocation" | "over_nomination";
 };
 
 // The ENTSOG HU→RS allocation is authoritative for the total. MET is a manual
@@ -26,31 +25,30 @@ export function splitHungaryEntry(
 ): HungarySplit {
   if (totalHungaryMcm === null || !Number.isFinite(totalHungaryMcm) || totalHungaryMcm < 0) {
     return {
-      metMcm: null, othersMcm: null, unattributedMcm: null,
+      metMcm: null, othersMcm: null,
       mismatchMcm: null, status: "missing_allocation",
     };
   }
   if (metNominationMwh === null || !Number.isFinite(metNominationMwh) || metNominationMwh < 0) {
     return {
-      metMcm: 0, othersMcm: totalHungaryMcm, unattributedMcm: null,
+      metMcm: 0, othersMcm: totalHungaryMcm,
       mismatchMcm: null, status: "default_zero",
     };
   }
   const metMcm = metNominationMwh / CONVERSION_MCM_TO_MWH;
   const excess = metMcm - totalHungaryMcm;
   // If the nominated amount is greater than observed ENTSOG Allocation,
-  // it is not possible to construct a non-negative "Others" segment. Keep
-  // the source total visible and call attention to the mismatch instead.
+  // keep the source total visible by attributing it to Others and flag
+  // the mismatch in the tooltip/table instead of leaving a gap.
   if (excess > 1e-6) {
     return {
-      metMcm: null, othersMcm: null, unattributedMcm: totalHungaryMcm,
+      metMcm: null, othersMcm: totalHungaryMcm,
       mismatchMcm: excess, status: "over_nomination",
     };
   }
   return {
     metMcm: Math.min(metMcm, totalHungaryMcm),
     othersMcm: Math.max(0, totalHungaryMcm - metMcm),
-    unattributedMcm: null,
     mismatchMcm: null,
     status: "split",
   };

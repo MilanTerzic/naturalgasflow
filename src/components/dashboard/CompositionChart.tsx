@@ -52,7 +52,6 @@ export function CompositionChart({
       chart_kalotina: row.supply_available ? row.kalotina_entry_mcm : null,
       chart_hungary_met: hungarySplit.metMcm,
       chart_hungary_others: hungarySplit.othersMcm,
-      chart_hungary_unattributed: hungarySplit.unattributedMcm,
       chart_hungary_status: hungarySplit.status,
       chart_met_nominated_mwh: nominationMwh,
       chart_production: row.supply_available ? row.domestic_production_mcm : null,
@@ -125,7 +124,7 @@ export function CompositionChart({
           type="monotone"
           dataKey="chart_hungary_others"
           stackId="supply"
-          name="Hungary entry Others (residual)"
+          name="Hungary Entry Others"
           stroke={PALETTE.huOthers}
           fill={PALETTE.huOthers}
           fillOpacity={0.72}
@@ -139,16 +138,6 @@ export function CompositionChart({
           stroke={PALETTE.huMet}
           fill={PALETTE.huMet}
           fillOpacity={0.82}
-          isAnimationActive={false}
-        />
-        <Area
-          type="monotone"
-          dataKey="chart_hungary_unattributed"
-          stackId="supply"
-          name="Hungary entry (not attributed)"
-          stroke="#64748b"
-          fill="#64748b"
-          fillOpacity={0.65}
           isAnimationActive={false}
         />
         <Area
@@ -248,8 +237,8 @@ function CompositionTooltip({
       </div>
       {row?.chart_hungary_status === "over_nomination" && (
         <p className="mt-2 rounded bg-amber-50 px-2 py-1 text-amber-900">
-          MET nomination exceeds observed Hungary entry. The full entry stays
-          unattributed until the figures reconcile.
+          MET nomination exceeds observed Hungary entry. The full entry is
+          shown under Others until the figures reconcile.
         </p>
       )}
       {row?.chart_hungary_status === "default_zero" && (
