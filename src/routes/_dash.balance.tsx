@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fmtShortDateYear } from "@/lib/gas/format";
+import { nextNominationDay } from "@/lib/gas/met-nominations";
 import type { BalanceRow } from "@/lib/gas/types";
 import { cn } from "@/lib/utils";
 import { useDashboard } from "@/state/dashboard-context";
@@ -52,9 +53,10 @@ function BalancePage() {
   const selected = getSelectedRow(balance, selectedDate, today);
   const minDate = balance[0]?.date ?? today;
   const maxDate = balance[balance.length - 1]?.date ?? today;
+  const maxNominationDate = maxDate > nextNominationDay(today) ? maxDate : nextNominationDay(today);
   const nominationQuery = useQuery({
-    queryKey: ["met-hu-nominations", minDate, maxDate],
-    queryFn: () => listMetHuNominations({ data: { from: minDate, to: maxDate } }),
+    queryKey: ["met-hu-nominations", minDate, maxNominationDate],
+    queryFn: () => listMetHuNominations({ data: { from: minDate, to: maxNominationDate } }),
     enabled: mode === "live" && balance.length > 0,
     staleTime: 30 * 1000,
     refetchOnWindowFocus: false,

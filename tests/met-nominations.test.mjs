@@ -1,6 +1,21 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { splitHungaryEntry } from "../src/lib/gas/met-nominations.ts";
+import { nextNominationDay, nominationDays, splitHungaryEntry } from "../src/lib/gas/met-nominations.ts";
+
+test("D+1 is available first even when no future balance dates exist", () => {
+  assert.deepEqual(nominationDays(["2026-11-04", "2026-11-05"], "2026-11-05"),
+    ["2026-11-06", "2026-11-05", "2026-11-04"]);
+});
+
+test("D+1 is not duplicated when tomorrow is already in the forecast", () => {
+  assert.deepEqual(nominationDays(["2026-11-05", "2026-11-06", "2026-11-07"], "2026-11-05"),
+    ["2026-11-06", "2026-11-05", "2026-11-07"]);
+});
+
+test("D+1 advances correctly at month and year boundaries", () => {
+  assert.equal(nextNominationDay("2026-11-30"), "2026-12-01");
+  assert.equal(nextNominationDay("2026-12-31"), "2027-01-01");
+});
 
 test("MET and Others add to the existing HU entry allocation", () => {
   const split = splitHungaryEntry(1.8, 6_330);

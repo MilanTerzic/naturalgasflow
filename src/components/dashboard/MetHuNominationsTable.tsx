@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { CONVERSION_MCM_TO_MWH } from "@/lib/gas/config";
 import { fmtMcm } from "@/lib/gas/format";
-import { splitHungaryEntry, type MetHuNomination } from "@/lib/gas/met-nominations";
+import { nextNominationDay, nominationDays, splitHungaryEntry, type MetHuNomination } from "@/lib/gas/met-nominations";
+import { Button } from "@/components/ui/button";
 import type { BalanceRow } from "@/lib/gas/types";
 import { removeMetHuNomination, saveMetHuNomination } from "@/lib/met-hu-nominations.functions";
 
@@ -32,14 +33,12 @@ export function MetHuNominationsTable({
   const [actionError, setActionError] = useState<string | null>(null);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const nominationByDate = new Map(nominations.map((row) => [row.gas_day, row]));
-  const rows = [...balance].sort((a, b) => {
-    if (a.date === today) return -1;
-    if (b.date === today) return 1;
-    const pastA = a.date <= today;
-    const pastB = b.date <= today;
-    if (pastA !== pastB) return pastA ? -1 : 1;
-    return pastA ? b.date.localeCompare(a.date) : a.date.localeCompare(b.date);
-  });
+  const tomorrow = nextNominationDay(today);
+  const balanceByDate = new Map(balance.map((row) => [row.date, row]));
+  const rows = nominationDays(balance.map((row) => row.date), today).map((date) => ({
+    date,
+    allocation: balanceByDate.get(date),
+  }));
 
   const setDisplayUnit = (next: Unit) => {
     if (next === unit) return;
@@ -167,16 +166,17 @@ export function MetHuNominationsTable({
           <tbody>
             {rows.map((row) => {
               const saved = nominationByDate.get(row.date);
-              const observed = row.supply_available ? row.kiskundorozsma_entry_mcm : null;
+               const observed = row.allocation?.supply_available ? row.allocation.kiskundorozsma_entry_mcm : null;
               const split = splitHungaryEntry(observed, saved?.nominated_mwh ?? null);
               const draft = drafts[row.date] ?? inputValue(saved?.nominated_mwh, unit);
               const edited = drafts[row.date] !== undefined;
               const isSaving = busyDate === row.date;
               const blocked = disabled || loading || !!loadError || !!busyDate;
               return (
-                <tr key={row.date} className={row.date === today ? "border-b bg-primary/5" : "border-b last:border-0"}>
+                 <tr key={row.date} className={row.date === today || row.date === tomorrow ? "border-b bg-primary/5" : "border-b last:border-0"}>
                   <td className="whitespace-nowrap px-3 py-2 font-medium">
-                    {row.date}{row.date === today && <span className="ml-1 text-primary">(Today)</span>}
+                     {row.date}{row.date === today && <span className="ml-1 text-primary">(Today)</span>}
+                     {row.date === tomorrow && <span className="ml-1 text-primary">(D+1 · Tomorrow)</span>}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">
                     {observed == null ? "—" : fmtMcm(observed)}
@@ -209,7 +209,7 @@ export function MetHuNominationsTable({
                     ) : split.status === "over_nomination" ? (
                       <span className="font-medium text-amber-700">MET exceeds HU entry</span>
                     ) : split.status === "missing_allocation" ? (
-                      <span className="text-muted-foreground">No HU allocation</span>
+                       <span className="text-muted-foreground">{saved ? "Nomination saved · awaiting HU allocation" : "No HU allocation"}</span>
                     ) : (
                       <span className="text-muted-foreground">Awaiting nomination</span>
                     )}
@@ -220,18 +220,18 @@ export function MetHuNominationsTable({
                     )}
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 text-right">
-                    <button
+                     <Button variant="outline" size="sm"
                       type="button" disabled={blocked || (!edited && !saved)}
                       onClick={() => void save(row.date)}
                       className="rounded-md border bg-background px-2 py-1.5 font-medium text-primary disabled:opacity-40"
                     >
                       {isSaving ? "Saving…" : "Save"}
-                    </button>
-                    <button
+                     </Button>
+                     <Button variant="outline" size="sm"
                       type="button" disabled={blocked || !saved}
                       onClick={() => void remove(row.date)}
                       className="ml-1 rounded-md border px-2 py-1.5 text-muted-foreground disabled:opacity-40"
-                    >Remove</button>
+                     >Remove</Button>
                   </td>
                 </tr>
               );

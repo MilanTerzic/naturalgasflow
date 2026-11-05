@@ -7,6 +7,27 @@ export interface MetHuNomination {
   updated_by_email: string;
 }
 
+export function nextNominationDay(today: string): string {
+  const day = new Date(`${today}T00:00:00Z`);
+  day.setUTCDate(day.getUTCDate() + 1);
+  return day.toISOString().slice(0, 10);
+}
+
+export function nominationDays(dates: string[], today: string): string[] {
+  const tomorrow = nextNominationDay(today);
+  return [...new Set([today, tomorrow, ...dates])].sort((a, b) => {
+    if (a === b) return 0;
+    if (a === tomorrow) return -1;
+    if (b === tomorrow) return 1;
+    if (a === today) return -1;
+    if (b === today) return 1;
+    const pastA = a <= today;
+    const pastB = b <= today;
+    if (pastA !== pastB) return pastA ? -1 : 1;
+    return pastA ? b.localeCompare(a) : a.localeCompare(b);
+  });
+}
+
 export type HungarySplit = {
   metMcm: number | null;
   othersMcm: number | null;
