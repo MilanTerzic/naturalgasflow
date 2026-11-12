@@ -8,6 +8,13 @@
       "when": 1793627581039,
       "tag": "0000_met_hungary_nominations",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794491005884,
+      "tag": "0001_lock_dashboard_settings",
+      "breakpoints": true
     }
   ]
 }
