@@ -544,24 +544,31 @@ export function BalkanFlowMap({
                         : "")}
                   </text>
                 )}
-                {layers.labels && layers.capacity && has && v!.status !== "model" && (
-                  <text
-                    x={x + 9 * scale}
-                    y={y + 4 * scale}
-                    fontSize={8.5 * Math.max(scale, 0.6)}
-                    fontWeight={500}
-                    fill="var(--muted-foreground)"
-                    stroke="var(--map-sea)"
-                    strokeWidth={3 * scale}
-                    paintOrder="stroke"
-                    className="num"
-                  >
-                    {v!.technical
-                      ? `B ${v!.booked != null ? formatValue(v!.booked) : "–"} / T ${formatValue(v!.technical)}` +
-                        (v!.capacityDate ? ` (${v!.capacityDate.slice(5)})` : "")
-                      : "cap n/a"}
-                  </text>
-                )}
+                {layers.labels &&
+                  layers.capacity &&
+                  has &&
+                  (v!.status !== "model" || v!.technical) && (
+                    <text
+                      x={x + 9 * scale}
+                      y={y + 4 * scale}
+                      fontSize={8.5 * Math.max(scale, 0.6)}
+                      fontWeight={500}
+                      fill="var(--muted-foreground)"
+                      stroke="var(--map-sea)"
+                      strokeWidth={3 * scale}
+                      paintOrder="stroke"
+                      className="num"
+                    >
+                      {v!.technical
+                        ? `B ${v!.booked != null ? formatValue(v!.booked) : "–"} / T ${formatValue(v!.technical)}` +
+                          (v!.capacityRef
+                            ? " (GY ref)"
+                            : v!.capacityDate
+                              ? ` (${v!.capacityDate.slice(5)})`
+                              : "")
+                        : "cap n/a"}
+                    </text>
+                  )}
               </g>
             );
           })}

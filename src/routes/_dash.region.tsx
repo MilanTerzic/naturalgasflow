@@ -311,6 +311,11 @@ function RegionPage() {
             fmt={fmt}
           />
         )}
+        {v?.technical != null && v.capacityRef && (
+          <div className="text-[10px] text-muted-foreground">
+            Capacity: {v.capacityRef} (gas-year reference table, not daily ENTSOG data)
+          </div>
+        )}
         {v?.technical != null && v.capacityDate && (
           <div className="text-[10px] text-muted-foreground">
             Capacity as of gas day {v.capacityDate} (latest ENTSOG publication)

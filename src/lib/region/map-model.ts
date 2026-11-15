@@ -2,7 +2,7 @@
 // Pure functions, relative imports only (unit-tested in tests/region-map-model.test.mjs).
 
 import type { BalanceRow, FlowPointOperationalSource, FlowRow } from "../gas/types";
-import { CORRIDORS, type Corridor } from "./registry";
+import { CORRIDORS, REFERENCE_CAPACITY, REFERENCE_CAPACITY_LABEL, type Corridor } from "./registry";
 import type { CorridorCapacity, RegionalCorridorSeries } from "./regional-feed";
 
 export type LinkStatus =
@@ -28,6 +28,8 @@ export interface LinkValue {
   booked?: number | null;
   /** Gas day the capacity figures belong to, when it differs from the flow day. */
   capacityDate?: string | null;
+  /** Set when the capacity is a published gas-year reference, not ENTSOG daily data. */
+  capacityRef?: string | null;
 }
 
 export type MapMode = "day" | "average";
@@ -176,6 +178,18 @@ export function buildLinkValues({
         v.booked = avgOf("booked");
       }
     }
+  }
+  // Gas-year reference capacity for points ENTSOG does not cover (e.g. Zvornik) or did not
+  // publish; forward direction only, never mixed with daily values.
+  for (const [id, ref] of Object.entries(REFERENCE_CAPACITY)) {
+    const v = out[id];
+    if (!v || v.value === null || v.value < 0 || v.technical != null) continue;
+    v.technical = ref.technical;
+    v.booked = ref.booked;
+    v.capacityDate = null;
+    v.capacityRef = ref.note
+      ? `${REFERENCE_CAPACITY_LABEL} · ${ref.note}`
+      : REFERENCE_CAPACITY_LABEL;
   }
   return out;
 }

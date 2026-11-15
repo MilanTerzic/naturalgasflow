@@ -29,7 +29,9 @@ test("day mode reads Serbian points with provenance and leaves missing points em
     primary: "allocation",
     regional: null,
   });
-  assert.deepEqual(v.bg_rs_kz, {
+  const { technical, booked, capacityDate, capacityRef, ...flow } = v.bg_rs_kz;
+  assert.equal(capacityRef, "GY 25/26 ref"); // no ENTSOG capacity passed → labelled reference
+  assert.deepEqual(flow, {
     value: 30,
     status: "actual",
     label: "2026-11-02",
@@ -136,4 +138,18 @@ test("a gas day without published capacity uses the latest earlier day and says 
   assert.equal(v.bg_rs_kz.capacityDate, "2026-11-01");
   const same = buildLinkValues({ mode: "day", date: "2026-11-01", rows, balance: [], primary: "allocation", regional: {}, capacity });
   assert.equal(same.bg_rs_kz.capacityDate, undefined);
+});
+
+test("gas-year reference capacity fills points without ENTSOG capacity, labelled", async () => {
+  const rows = [row("2026-11-01")];
+  const v = buildLinkValues({ mode: "day", date: "2026-11-01", rows, balance: [bal("2026-11-01", 1.3)], primary: "allocation", regional: {}, capacity: null });
+  assert.equal(v.bg_rs_kal.technical, 2.49);
+  assert.equal(v.bg_rs_kal.booked, 2.2);
+  assert.match(v.bg_rs_kal.capacityRef, /GY 25\/26/);
+  assert.equal(v.rs_ba_zv.technical, 2);
+  const daily = buildLinkValues({ mode: "day", date: "2026-11-01", rows, balance: [], primary: "allocation", regional: {}, capacity: {
+    bg_rs_kz: { id: "bg_rs_kz", days: [{ date: "2026-11-01", forwardTechnical: 40, forwardBooked: 30, reverseTechnical: null, reverseBooked: null }] },
+  } });
+  assert.equal(daily.bg_rs_kz.technical, 40); // daily ENTSOG wins over the reference
+  assert.equal(daily.bg_rs_kz.capacityRef, undefined);
 });

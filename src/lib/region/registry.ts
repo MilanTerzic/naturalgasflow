@@ -336,3 +336,23 @@ export function matchCorridors(label: string): Corridor[] {
     ),
   );
 }
+
+/**
+ * Gas-year 2025/26 reference capacities (mcm/d) in the corridor's forward direction, from the
+ * Serbian border-point capacity table supplied by the user. Used only when ENTSOG publishes no
+ * daily firm technical capacity for a point, and always labelled as a reference, not a daily value.
+ */
+export interface ReferenceCapacity {
+  technical: number;
+  booked: number;
+  note?: string;
+}
+export const REFERENCE_CAPACITY_LABEL = "GY 25/26 ref";
+export const REFERENCE_CAPACITY: Record<string, ReferenceCapacity> = {
+  bg_rs_kz: { technical: 38.67, booked: 36.35 },
+  rs_hu_2: { technical: 23.3, booked: 22.6 },
+  hu_rs_1: { technical: 13.51, booked: 12.2 },
+  bg_rs_kal: { technical: 2.49, booked: 2.2, note: "technical 5, offered 2.49" },
+  rs_ba_zv: { technical: 2.0, booked: 1.4 },
+  bg_mk_zid: { technical: 2.9, booked: 2.84 },
+};
