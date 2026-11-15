@@ -122,3 +122,20 @@ test("corridors with no published series are omitted, not zero-filled", () => {
   const sel = selectCorridorPoints([ref("Rogatec", "SI", "exit", "si-exit", "HR")]);
   assert.equal(combineCorridor("si_hr_rog", sel.si_hr_rog, new Map()), null);
 });
+
+test("capacity uses the exit side when it publishes technical capacity, else the entry side", async () => {
+  const { combineCapacity } = await import("../src/lib/region/regional-feed.ts");
+  const sel = {
+    forwardExit: [ref("Strandzha 2", "TR", "exit", "tr-exit", "BG")],
+    forwardEntry: [ref("Strandzha 2", "BG", "entry", "bg-entry", "TR")],
+    reverseExit: [],
+    reverseEntry: [],
+  };
+  const technical = new Map([["bg-entry", new Map([["2026-11-01", 50]])]]);
+  const booked = new Map([["bg-entry", new Map([["2026-11-01", 45]])], ["tr-exit", new Map([["2026-11-01", 99]])]]);
+  const cap = combineCapacity("tr_bg_str", sel, technical, booked);
+  assert.deepEqual(cap.days, [
+    { date: "2026-11-01", forwardTechnical: 50, forwardBooked: 45, reverseTechnical: null, reverseBooked: null },
+  ]);
+  assert.equal(combineCapacity("tr_bg_str", sel, new Map(), booked), null);
+});

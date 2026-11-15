@@ -262,3 +262,67 @@ export function combineCorridor(
   ];
   return { id, days, points };
 }
+
+export interface CapacityDay {
+  date: string;
+  /** Firm technical / firm booked capacity in the corridor's nominal direction, mcm/day. */
+  forwardTechnical: number | null;
+  forwardBooked: number | null;
+  /** Same for the reverse direction (bidirectional points). */
+  reverseTechnical: number | null;
+  reverseBooked: number | null;
+}
+
+export interface CorridorCapacity {
+  id: string;
+  days: CapacityDay[];
+}
+
+/**
+ * Pick the points that publish technical capacity for one direction (exit side
+ * preferred, entry side as fallback) and sum technical and booked over them.
+ * Booked comes from the same points so the two are comparable.
+ */
+function capacitySide(
+  exits: RegionalPointRef[],
+  entries: RegionalPointRef[],
+  technical: Map<string, Map<string, number>>,
+  booked: Map<string, Map<string, number>>,
+) {
+  const has = (refs: RegionalPointRef[]) =>
+    refs.filter((ref) => (technical.get(ref.pointDirection)?.size ?? 0) > 0);
+  const exitRefs = has(exits);
+  const refs = exitRefs.length ? exitRefs : has(entries);
+  if (!refs.length) return null;
+  const tech = new Map<string, number>();
+  const book = new Map<string, number>();
+  for (const ref of refs) {
+    for (const [date, v] of technical.get(ref.pointDirection) ?? [])
+      tech.set(date, (tech.get(date) ?? 0) + v);
+    for (const [date, v] of booked.get(ref.pointDirection) ?? [])
+      book.set(date, (book.get(date) ?? 0) + v);
+  }
+  return { tech, book };
+}
+
+export function combineCapacity(
+  id: string,
+  sel: CorridorSelection,
+  technical: Map<string, Map<string, number>>,
+  booked: Map<string, Map<string, number>>,
+): CorridorCapacity | null {
+  const fwd = capacitySide(sel.forwardExit, sel.forwardEntry, technical, booked);
+  const rev = capacitySide(sel.reverseExit, sel.reverseEntry, technical, booked);
+  if (!fwd && !rev) return null;
+  const dates = new Set<string>([...(fwd?.tech.keys() ?? []), ...(rev?.tech.keys() ?? [])]);
+  return {
+    id,
+    days: [...dates].sort().map((date) => ({
+      date,
+      forwardTechnical: fwd?.tech.get(date) ?? null,
+      forwardBooked: fwd ? (fwd.book.get(date) ?? null) : null,
+      reverseTechnical: rev?.tech.get(date) ?? null,
+      reverseBooked: rev ? (rev.book.get(date) ?? null) : null,
+    })),
+  };
+}

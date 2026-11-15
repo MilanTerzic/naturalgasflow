@@ -5,12 +5,16 @@
 // Nothing is synthesised: corridors without publications are returned absent and the
 // map draws them as "no data".
 import { createServerFn } from "@tanstack/react-start";
+import { ENTSOG_POINT_DIRECTIONS } from "@/lib/gas/config";
 import {
+  combineCapacity,
   combineCorridor,
   parseOperatorPointDirection,
   REGION_COUNTRIES,
   selectCorridorPoints,
   toMcmPerDay,
+  type CorridorCapacity,
+  type CorridorSelection,
   type RegionalCorridorSeries,
   type RegionalPointRef,
 } from "@/lib/region/regional-feed";
@@ -35,11 +39,16 @@ export interface RegionalFlowsResponse {
   fetchedAt: string;
   /** Keyed by corridor id from src/lib/region/registry.ts. Values in mcm/day. */
   corridors: Record<string, RegionalCorridorSeries>;
+  /** Firm technical / firm booked capacity per corridor (Serbian and regional), mcm/day. */
+  capacity: Record<string, CorridorCapacity>;
   diagnostics: {
     referentialRecords: number;
     candidatePoints: number;
     requests: number;
     failedRequests: number;
+    /** Capacity requests are reported separately: their failure never blanks the flows. */
+    capacityRequests: number;
+    failedCapacityRequests: number;
     droppedUnits: Record<string, number>;
   };
 }
@@ -88,6 +97,90 @@ function clampRange(from: string, to: string): { from: string; to: string } {
   return { from: new Date(start).toISOString().slice(0, 10), to };
 }
 
+function serbianSide(slot: keyof CorridorSelection, pd: string): CorridorSelection {
+  const sel: CorridorSelection = {
+    forwardExit: [],
+    forwardEntry: [],
+    reverseExit: [],
+    reverseEntry: [],
+  };
+  sel[slot].push({
+    pointDirection: pd.toLowerCase(),
+    label: pd,
+    country: pd.slice(0, 2).toUpperCase(),
+    adjacent: null,
+    direction: slot.endsWith("Exit") ? "exit" : "entry",
+    operator: "",
+  });
+  return sel;
+}
+
+/** One ENTSOG operational indicator for many point directions, batched. Values in mcm/day. */
+async function fetchIndicator(
+  pds: string[],
+  indicator: string,
+  from: string,
+  to: string,
+  diagnostics: RegionalFlowsResponse["diagnostics"],
+  isFlow: boolean,
+): Promise<Map<string, Map<string, number>>> {
+  const unique = [...new Set(pds)];
+  const latest = new Map<string, Map<string, { value: number; updated: string }>>();
+  const batches: string[][] = [];
+  for (let i = 0; i < unique.length; i += BATCH) batches.push(unique.slice(i, i + BATCH));
+
+  await Promise.all(
+    batches.map(async (batch) => {
+      if (isFlow) diagnostics.requests += 1;
+      else diagnostics.capacityRequests += 1;
+      const url =
+        `${BASE}/operationaldata.json?pointDirection=${batch.map(encodeURIComponent).join(",")}` +
+        `&from=${from}&to=${to}&indicator=${encodeURIComponent(indicator)}&periodType=day&limit=-1`;
+      try {
+        const rows = records(await getJson(url), [
+          "operationaldata",
+          "operationalData",
+          "operationaldatas",
+        ]);
+        for (const row of rows) {
+          const pd = String(
+            row.pointDirection ??
+              `${row.operatorKey ?? ""}${row.pointKey ?? ""}${row.directionKey ?? ""}`,
+          )
+            .toLowerCase()
+            .replace(/\s+/g, "");
+          const date = typeof row.periodFrom === "string" ? row.periodFrom.slice(0, 10) : null;
+          const raw =
+            typeof row.value === "number" ? row.value : row.value == null ? NaN : Number(row.value);
+          if (!date || !Number.isFinite(raw)) continue;
+          const mcm = toMcmPerDay(raw, row.unit as string | undefined);
+          if (mcm === null) {
+            const unit = `${String(row.unit ?? "(blank)")} (${indicator})`;
+            diagnostics.droppedUnits[unit] = (diagnostics.droppedUnits[unit] ?? 0) + 1;
+            continue;
+          }
+          // Keep the latest revision for each gas day.
+          const updated = String(row.lastUpdateDateTime ?? "");
+          const byDate = latest.get(pd) ?? new Map();
+          const prev = byDate.get(date);
+          if (!prev || updated >= prev.updated) byDate.set(date, { value: mcm, updated });
+          latest.set(pd, byDate);
+        }
+      } catch (err) {
+        if (isFlow) diagnostics.failedRequests += 1;
+        else diagnostics.failedCapacityRequests += 1;
+        console.warn(`[ENTSOG regional] ${indicator} batch failed`, err);
+      }
+    }),
+  );
+
+  const out = new Map<string, Map<string, number>>();
+  for (const [pd, byDate] of latest) {
+    out.set(pd, new Map([...byDate].map(([date, pick]) => [date, +pick.value.toFixed(4)])));
+  }
+  return out;
+}
+
 async function fetchRegional(
   fromIn: string,
   toIn: string,
@@ -103,6 +196,8 @@ async function fetchRegional(
     candidatePoints: 0,
     requests: 0,
     failedRequests: 0,
+    capacityRequests: 0,
+    failedCapacityRequests: 0,
     droppedUnits: {},
   };
 
@@ -121,66 +216,30 @@ async function fetchRegional(
     ];
     diagnostics.candidatePoints = pds.length;
 
-    const seriesByPd = new Map<string, Map<string, { value: number; updated: string }>>();
-    const batches: string[][] = [];
-    for (let i = 0; i < pds.length; i += BATCH) batches.push(pds.slice(i, i + BATCH));
+    // Serbian border points: capacity only (their flows come from the main dashboard series).
+    const serbianSelection: Record<string, CorridorSelection> = {
+      hu_rs_1: serbianSide("forwardExit", ENTSOG_POINT_DIRECTIONS.kiskundorozsma_hu),
+      rs_hu_2: serbianSide("forwardEntry", ENTSOG_POINT_DIRECTIONS.kiskundorozsma_2),
+      bg_rs_kz: serbianSide("forwardExit", ENTSOG_POINT_DIRECTIONS.kireevo),
+      bg_rs_kal: serbianSide("forwardExit", ENTSOG_POINT_DIRECTIONS.kalotina),
+    };
+    const serbianPds = Object.values(ENTSOG_POINT_DIRECTIONS).map((pd) => pd.toLowerCase());
 
-    await Promise.all(
-      batches.map(async (batch) => {
-        diagnostics.requests += 1;
-        const url =
-          `${BASE}/operationaldata.json?pointDirection=${batch.map(encodeURIComponent).join(",")}` +
-          `&from=${from}&to=${to}&indicator=${encodeURIComponent(indicator)}&periodType=day&limit=-1`;
-        try {
-          const rows = records(await getJson(url), [
-            "operationaldata",
-            "operationalData",
-            "operationaldatas",
-          ]);
-          for (const row of rows) {
-            const pd = String(
-              row.pointDirection ??
-                `${row.operatorKey ?? ""}${row.pointKey ?? ""}${row.directionKey ?? ""}`,
-            )
-              .toLowerCase()
-              .replace(/\s+/g, "");
-            const date = typeof row.periodFrom === "string" ? row.periodFrom.slice(0, 10) : null;
-            const raw =
-              typeof row.value === "number"
-                ? row.value
-                : row.value == null
-                  ? NaN
-                  : Number(row.value);
-            if (!date || !Number.isFinite(raw)) continue;
-            const mcm = toMcmPerDay(raw, row.unit as string | undefined);
-            if (mcm === null) {
-              const unit = String(row.unit ?? "(blank)");
-              diagnostics.droppedUnits[unit] = (diagnostics.droppedUnits[unit] ?? 0) + 1;
-              continue;
-            }
-            // Keep the latest revision for each gas day.
-            const updated = String(row.lastUpdateDateTime ?? "");
-            const byDate = seriesByPd.get(pd) ?? new Map();
-            const prev = byDate.get(date);
-            if (!prev || updated >= prev.updated) byDate.set(date, { value: mcm, updated });
-            seriesByPd.set(pd, byDate);
-          }
-        } catch (err) {
-          diagnostics.failedRequests += 1;
-          console.warn("[ENTSOG regional] batch failed", err);
-        }
-      }),
-    );
-
-    const flat = new Map<string, Map<string, number>>();
-    for (const [pd, byDate] of seriesByPd) {
-      flat.set(pd, new Map([...byDate].map(([date, pick]) => [date, +pick.value.toFixed(4)])));
-    }
+    const [flat, technical, booked] = await Promise.all([
+      fetchIndicator(pds, indicator, from, to, diagnostics, true),
+      fetchIndicator([...pds, ...serbianPds], "Firm Technical", from, to, diagnostics, false),
+      fetchIndicator([...pds, ...serbianPds], "Firm Booked", from, to, diagnostics, false),
+    ]);
 
     const corridors: Record<string, RegionalCorridorSeries> = {};
     for (const [id, sel] of Object.entries(selection)) {
       const series = combineCorridor(id, sel, flat);
       if (series) corridors[id] = series;
+    }
+    const capacity: Record<string, CorridorCapacity> = {};
+    for (const [id, sel] of Object.entries({ ...selection, ...serbianSelection })) {
+      const cap = combineCapacity(id, sel, technical, booked);
+      if (cap) capacity[id] = cap;
     }
 
     const allFailed =
@@ -204,6 +263,7 @@ async function fetchRegional(
       to,
       fetchedAt: new Date().toISOString(),
       corridors,
+      capacity,
       diagnostics,
     };
     if (res.status === "live") dataCache.set(key, { at: Date.now(), res });
@@ -223,6 +283,7 @@ async function fetchRegional(
       to,
       fetchedAt: new Date().toISOString(),
       corridors: {},
+      capacity: {},
       diagnostics,
     };
   }

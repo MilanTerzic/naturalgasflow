@@ -3,7 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Area,
-  AreaChart,
+  ComposedChart,
+  Line,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -25,7 +26,13 @@ import {
   netRemainingInSerbiaMcm,
 } from "@/lib/gas/flow-metrics";
 import type { FlowPointName, FlowRow } from "@/lib/gas/types";
-import { buildLinkValues, pointSource, type LinkValue, type MapMode } from "@/lib/region/map-model";
+import {
+  buildLinkValues,
+  pointSource,
+  sharePct,
+  type LinkValue,
+  type MapMode,
+} from "@/lib/region/map-model";
 import { CORRIDOR_BY_ID, CORRIDORS, type Corridor } from "@/lib/region/registry";
 import { cn } from "@/lib/utils";
 import { useDashboard } from "@/state/dashboard-context";
@@ -73,6 +80,7 @@ const DEFAULT_LAYERS: MapLayers = {
   labels: true,
   cities: true,
   animate: true,
+  capacity: true,
 };
 
 function readLocal<T>(key: string, fallback: T): T {
@@ -198,6 +206,7 @@ function RegionPage() {
     refetchOnWindowFocus: false,
   });
   const regional = s.mode === "live" ? (regionalQuery.data?.corridors ?? null) : null;
+  const capacity = s.mode === "live" ? (regionalQuery.data?.capacity ?? null) : null;
   const regionalState: RegionalStatus | "demo" | "loading" =
     s.mode !== "live"
       ? "demo"
@@ -208,8 +217,8 @@ function RegionPage() {
           : (regionalQuery.data?.status ?? "loading");
 
   const values = useMemo(
-    () => buildLinkValues({ mode, date, rows, balance, primary: series, regional }),
-    [mode, date, rows, balance, series, regional],
+    () => buildLinkValues({ mode, date, rows, balance, primary: series, regional, capacity }),
+    [mode, date, rows, balance, series, regional, capacity],
   );
 
   const toUnit = (mcm: number) => (unit === "gwh" ? mcm * CONVERSION_MCM_TO_GWH : mcm);
@@ -277,6 +286,14 @@ function RegionPage() {
             {mode === "average" ? `Average ${v.label}` : `Gas day ${v.label}`}
           </div>
         )}
+        {v?.technical != null && (
+          <CapacityBars
+            value={v.value}
+            technical={v.technical}
+            booked={v.booked ?? null}
+            fmt={fmt}
+          />
+        )}
         {c.note && <div className="text-[11px] leading-snug text-muted-foreground">{c.note}</div>}
         <div className="text-[10px] text-muted-foreground">Click to inspect</div>
       </div>
@@ -286,11 +303,22 @@ function RegionPage() {
   const sel = selected ? CORRIDOR_BY_ID[selected] : null;
   const history = useMemo(() => {
     if (!sel) return [];
+    const capDays = new Map((capacity?.[sel.id]?.days ?? []).map((d) => [d.date, d]));
+    const withCap = (list: Array<{ date: string; v: number | null }>) =>
+      list.map((p) => {
+        const d = capDays.get(p.date);
+        const reverse = (p.v ?? 0) < 0;
+        const t = d ? (reverse ? d.reverseTechnical : d.forwardTechnical) : null;
+        const b = d ? (reverse ? d.reverseBooked : d.forwardBooked) : null;
+        return { ...p, t: t == null ? null : toUnit(t), b: b == null ? null : toUnit(b) };
+      });
     if (sel.group === "serbia" && sel.point) {
-      return rows.map((r) => ({
-        date: r.date,
-        v: pointSource(r, sel.point!, series) ? toUnit(r[sel.point!]) : null,
-      }));
+      return withCap(
+        rows.map((r) => ({
+          date: r.date,
+          v: pointSource(r, sel.point!, series) ? toUnit(r[sel.point!]) : null,
+        })),
+      );
     }
     if (sel.group === "model") {
       return balance
@@ -298,14 +326,19 @@ function RegionPage() {
         .map((b) => ({ date: b.date, v: toUnit(b.bosnia_consumption_mcm) }));
     }
     if (sel.group === "regional" && regional?.[sel.id]) {
-      return regional[sel.id].days.map((d) => ({
-        date: d.date,
-        v: d.net === null ? null : toUnit(d.net),
-      }));
+      return withCap(
+        regional[sel.id].days.map((d) => ({
+          date: d.date,
+          v: d.net === null ? null : toUnit(d.net),
+        })),
+      );
+    }
+    if (sel.group === "regional" && capDays.size) {
+      return withCap([...capDays.keys()].sort().map((date) => ({ date, v: null })));
     }
     return [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sel, rows, series, balance, regional, unit]);
+  }, [sel, rows, series, balance, regional, capacity, unit]);
 
   const regionalRows = useMemo(
     () =>
@@ -459,7 +492,7 @@ function RegionPage() {
         </div>
       </section>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start">
         {/* Map */}
         <section className="overflow-hidden rounded-xl border bg-card shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <BalkanFlowMap
@@ -548,6 +581,43 @@ function RegionPage() {
                     }
                   >
                     Planned project
+                  </LegendRow>
+                  <LegendRow
+                    swatch={
+                      <>
+                        <line
+                          x1="3"
+                          y1="5"
+                          x2="29"
+                          y2="5"
+                          stroke="var(--flow)"
+                          strokeWidth="9"
+                          strokeLinecap="round"
+                          opacity="0.13"
+                        />
+                        <line
+                          x1="3"
+                          y1="5"
+                          x2="29"
+                          y2="5"
+                          stroke="var(--flow)"
+                          strokeWidth="6"
+                          strokeLinecap="round"
+                          opacity="0.3"
+                        />
+                        <line
+                          x1="3"
+                          y1="5"
+                          x2="29"
+                          y2="5"
+                          stroke="var(--flow)"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                        />
+                      </>
+                    }
+                  >
+                    Technical ▸ booked ▸ flow
                   </LegendRow>
                   <LegendRow swatch={<circle cx="16" cy="5" r="4" fill="var(--status-warning)" />}>
                     LNG terminal
@@ -692,10 +762,13 @@ function RegionPage() {
                   Close
                 </button>
               </div>
-              {history.some((h) => h.v !== null) ? (
+              {history.some((h) => h.v !== null || ("t" in h && h.t != null)) ? (
                 <div className="mt-3 h-36">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={history} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
+                    <ComposedChart
+                      data={history}
+                      margin={{ top: 4, right: 4, left: -18, bottom: 0 }}
+                    >
                       <defs>
                         <linearGradient id="sel-fill" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="0%" stopColor={colorFor(sel)} stopOpacity={0.35} />
@@ -716,9 +789,9 @@ function RegionPage() {
                           borderRadius: 8,
                           fontSize: 11,
                         }}
-                        formatter={(v) => [
+                        formatter={(v, name) => [
                           `${typeof v === "number" ? v.toFixed(2) : "—"} ${unitLabel}`,
-                          sel.name,
+                          name === "t" ? "Firm technical" : name === "b" ? "Firm booked" : "Flow",
                         ]}
                       />
                       {date && (
@@ -736,7 +809,26 @@ function RegionPage() {
                         fill="url(#sel-fill)"
                         connectNulls={false}
                       />
-                    </AreaChart>
+                      <Line
+                        type="stepAfter"
+                        dataKey="t"
+                        stroke="var(--muted-foreground)"
+                        strokeDasharray="5 4"
+                        strokeWidth={1.4}
+                        dot={false}
+                        connectNulls={false}
+                      />
+                      <Line
+                        type="stepAfter"
+                        dataKey="b"
+                        stroke={colorFor(sel)}
+                        strokeOpacity={0.6}
+                        strokeDasharray="2 3"
+                        strokeWidth={1.4}
+                        dot={false}
+                        connectNulls={false}
+                      />
+                    </ComposedChart>
                   </ResponsiveContainer>
                 </div>
               ) : (
@@ -745,6 +837,23 @@ function RegionPage() {
                     ? "Planned project — shown for context only."
                     : "No published values for this corridor in the selected window."}
                 </p>
+              )}
+              {values[sel.id]?.technical != null && (
+                <div className="mt-3 rounded-lg border bg-background p-3">
+                  <div className="eyebrow mb-2">
+                    Capacity · {mode === "day" ? `gas day ${date}` : "period avg"}
+                  </div>
+                  <CapacityBars
+                    value={values[sel.id].value}
+                    technical={values[sel.id].technical!}
+                    booked={values[sel.id].booked ?? null}
+                    fmt={fmt}
+                    unitLabel={unitLabel}
+                  />
+                  <p className="mt-2 text-[10px] text-muted-foreground">
+                    Chart: dashed grey = firm technical, dotted = firm booked.
+                  </p>
+                </div>
               )}
               {sel.note && (
                 <p className="mt-2 text-[11px] leading-snug text-muted-foreground">{sel.note}</p>
@@ -791,6 +900,7 @@ function RegionPage() {
                   ["labels", "Value labels"],
                   ["cities", "Cities & storage"],
                   ["animate", "Flow animation"],
+                  ["capacity", "Capacity casings"],
                 ] as Array<[keyof MapLayers, string]>
               ).map(([k, label]) => (
                 <label
@@ -814,10 +924,12 @@ function RegionPage() {
       <section className="overflow-hidden rounded-xl border bg-card shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
           <div>
-            <h3 className="text-sm font-semibold text-foreground">Corridor statistics</h3>
+            <h3 className="text-sm font-semibold text-foreground">
+              Corridor statistics & capacity
+            </h3>
             <p className="text-xs text-muted-foreground">
               Signed values: negative = reverse of the listed direction. Statistics use reported
-              days only.
+              days only. Capacity: ENTSOG firm technical / firm booked in the direction of the flow.
             </p>
           </div>
           {regionalQuery.data && (
@@ -866,13 +978,17 @@ function RegionPage() {
                   "Min",
                   "Max",
                   "Days",
+                  "Technical",
+                  "Booked",
+                  "Booked %",
+                  "Flow % tech",
                   "Status",
                 ].map((h, i) => (
                   <th
                     key={h}
                     className={cn(
                       "eyebrow px-3 py-2 whitespace-nowrap",
-                      i >= 2 && i <= 6 && "text-right",
+                      i >= 2 && i <= 10 && "text-right",
                     )}
                   >
                     {h}
@@ -907,6 +1023,16 @@ function RegionPage() {
                   <td className="num px-3 py-2 text-right">{fmt(min)}</td>
                   <td className="num px-3 py-2 text-right">{fmt(max)}</td>
                   <td className="num px-3 py-2 text-right text-muted-foreground">{n}</td>
+                  <td className="num px-3 py-2 text-right">{fmt(v?.technical)}</td>
+                  <td className="num px-3 py-2 text-right">{fmt(v?.booked)}</td>
+                  <td className="num px-3 py-2 text-right">
+                    <PctCell pct={sharePct(v?.booked, v?.technical)} />
+                  </td>
+                  <td className="num px-3 py-2 text-right">
+                    <PctCell
+                      pct={sharePct(v?.value == null ? null : Math.abs(v.value), v?.technical)}
+                    />
+                  </td>
                   <td className="px-3 py-2">
                     <StatusPill state={v?.status ?? "missing"}>
                       {STATUS_TEXT[v?.status ?? "missing"]}
@@ -1057,6 +1183,73 @@ function CorridorList({
                 </button>
               );
             })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function utilTone(pct: number | null) {
+  if (pct === null) return "text-muted-foreground";
+  if (pct >= 95) return "text-[var(--status-critical)]";
+  if (pct >= 80) return "text-[var(--status-warning)]";
+  return "text-foreground";
+}
+
+function PctCell({ pct }: { pct: number | null }) {
+  return <span className={utilTone(pct)}>{pct === null ? "—" : `${pct.toFixed(0)}%`}</span>;
+}
+
+/** Technical capacity as the full bar, booked and flow as shares of it. */
+function CapacityBars({
+  value,
+  technical,
+  booked,
+  fmt,
+  unitLabel,
+}: {
+  value: number | null;
+  technical: number;
+  booked: number | null;
+  fmt: (mcm: number | null | undefined, digits?: number) => string;
+  unitLabel?: string;
+}) {
+  const flow = value === null ? null : Math.abs(value);
+  const rows: Array<[string, number | null, string]> = [
+    ["Technical", technical, "var(--muted-foreground)"],
+    ["Booked", booked, "var(--flow)"],
+    ["Flow", flow, "var(--foreground)"],
+  ];
+  return (
+    <div className="space-y-1.5">
+      {rows.map(([label, v, color]) => {
+        const pct = label === "Technical" ? 100 : sharePct(v, technical);
+        return (
+          <div
+            key={label}
+            className="grid grid-cols-[62px_1fr_auto] items-center gap-2 text-[11px]"
+          >
+            <span className="text-muted-foreground">{label}</span>
+            <span className="h-2 overflow-hidden rounded-full bg-[var(--surface-2)]">
+              <span
+                className="block h-full rounded-full"
+                style={{
+                  width: `${Math.min(100, pct ?? 0)}%`,
+                  background: color,
+                  opacity: label === "Technical" ? 0.35 : 0.9,
+                }}
+              />
+            </span>
+            <span className="num text-right text-foreground">
+              {fmt(v)}
+              {unitLabel ? ` ${unitLabel}` : ""}
+              {label !== "Technical" && (
+                <span className={cn("ml-1", utilTone(pct))}>
+                  {pct === null ? "" : `${pct.toFixed(0)}%`}
+                </span>
+              )}
+            </span>
           </div>
         );
       })}

@@ -102,3 +102,24 @@ test("regional values carry the selected indicator as their source", () => {
   const avg = buildLinkValues({ mode: "average", date: null, rows: [], balance: [], primary: "physical_flow", regional });
   assert.equal(avg.tr_bg_str.source, "physical_flow");
 });
+
+test("capacity follows the flow direction for the selected day and averages over the period", async () => {
+  const { sharePct } = await import("../src/lib/region/map-model.ts");
+  const regional = { gr_bg_kul: { id: "gr_bg_kul", points: [], days: [{ date: "2026-11-01", forward: 1, reverse: 3, net: -2 }] } };
+  const capacity = {
+    gr_bg_kul: { id: "gr_bg_kul", days: [{ date: "2026-11-01", forwardTechnical: 10, forwardBooked: 4, reverseTechnical: 8, reverseBooked: 6 }] },
+    bg_rs_kz: { id: "bg_rs_kz", days: [
+      { date: "2026-11-01", forwardTechnical: 40, forwardBooked: 30, reverseTechnical: null, reverseBooked: null },
+      { date: "2026-11-02", forwardTechnical: 40, forwardBooked: 20, reverseTechnical: null, reverseBooked: null },
+    ] },
+  };
+  const rows = [row("2026-11-01"), row("2026-11-02")];
+  const day = buildLinkValues({ mode: "day", date: "2026-11-01", rows, balance: [], primary: "allocation", regional, capacity });
+  assert.equal(day.gr_bg_kul.technical, 8); // reverse flow → reverse capacity
+  assert.equal(day.gr_bg_kul.booked, 6);
+  assert.equal(day.bg_rs_kz.technical, 40);
+  const avg = buildLinkValues({ mode: "average", date: null, rows, balance: [], primary: "allocation", regional, capacity });
+  assert.equal(avg.bg_rs_kz.booked, 25);
+  assert.equal(sharePct(30, 40), 75);
+  assert.equal(sharePct(1, 0), null);
+});

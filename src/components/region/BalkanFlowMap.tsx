@@ -27,6 +27,8 @@ export interface MapLayers {
   labels: boolean;
   cities: boolean;
   animate: boolean;
+  /** Firm technical / booked capacity drawn as casings around the flow line. */
+  capacity: boolean;
 }
 
 /** Catmull-Rom → cubic Bézier through the corridor vertices. */
@@ -100,15 +102,19 @@ export function BalkanFlowMap({
   const [fullscreen, setFullscreen] = useState(false);
   const drag = useRef<{ px: number; py: number; view: View; moved: boolean } | null>(null);
 
+  // One scale for flows and capacity so a line's fill against its casing reads as utilisation.
   const maxAbs = useMemo(
     () =>
       Math.max(
         1,
         ...Object.values(values)
-          .map((v) => (v.value === null ? 0 : Math.abs(v.value)))
+          .flatMap((v) => [
+            v.value === null ? 0 : Math.abs(v.value),
+            layers.capacity ? (v.technical ?? 0) : 0,
+          ])
           .filter(Number.isFinite),
       ),
-    [values],
+    [values, layers.capacity],
   );
 
   const toMap = useCallback(
@@ -332,16 +338,40 @@ export function BalkanFlowMap({
               {...linkProps(c.id, c.name)}
               className="cursor-pointer outline-none [&:focus-visible>path:nth-child(2)]:stroke-[var(--ring)]"
             >
-              {has ? (
+              {layers.capacity && v?.technical != null && v.technical > 0 && (
                 <>
                   <path
                     d={d}
                     fill="none"
                     stroke={color}
-                    strokeWidth={w * 2.4}
-                    opacity={dim ? 0.05 : 0.18}
-                    filter="url(#balkan-glow)"
+                    strokeWidth={linkWidth(v.technical, maxAbs) * scale + 4 * scale}
+                    strokeLinecap="round"
+                    opacity={dim ? 0.04 : 0.16}
                   />
+                  {v.booked != null && v.booked > 0 && (
+                    <path
+                      d={d}
+                      fill="none"
+                      stroke={color}
+                      strokeWidth={linkWidth(v.booked, maxAbs) * scale + 2 * scale}
+                      strokeLinecap="round"
+                      opacity={dim ? 0.06 : 0.34}
+                    />
+                  )}
+                </>
+              )}
+              {has ? (
+                <>
+                  {!layers.capacity && (
+                    <path
+                      d={d}
+                      fill="none"
+                      stroke={color}
+                      strokeWidth={w * 2.4}
+                      opacity={dim ? 0.05 : 0.18}
+                      filter="url(#balkan-glow)"
+                    />
+                  )}
                   <path
                     d={d}
                     fill="none"
@@ -450,7 +480,10 @@ export function BalkanFlowMap({
                   >
                     {(v!.value! < 0 ? "⇄ " : "") +
                       formatValue(Math.abs(v!.value!)) +
-                      (v!.status === "model" ? " (model)" : "")}
+                      (v!.status === "model" ? " (model)" : "") +
+                      (layers.capacity && v!.technical
+                        ? ` · ${Math.round((Math.abs(v!.value!) / v!.technical) * 100)}%`
+                        : "")}
                   </text>
                 )}
               </g>
