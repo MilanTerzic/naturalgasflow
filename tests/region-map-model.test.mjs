@@ -123,3 +123,17 @@ test("capacity follows the flow direction for the selected day and averages over
   assert.equal(sharePct(30, 40), 75);
   assert.equal(sharePct(1, 0), null);
 });
+
+test("a gas day without published capacity uses the latest earlier day and says so", async () => {
+  const capacity = {
+    bg_rs_kz: { id: "bg_rs_kz", days: [
+      { date: "2026-11-01", forwardTechnical: 40, forwardBooked: 30, reverseTechnical: null, reverseBooked: null },
+    ] },
+  };
+  const rows = [row("2026-11-01"), row("2026-11-02")];
+  const v = buildLinkValues({ mode: "day", date: "2026-11-02", rows, balance: [], primary: "allocation", regional: {}, capacity });
+  assert.equal(v.bg_rs_kz.technical, 40);
+  assert.equal(v.bg_rs_kz.capacityDate, "2026-11-01");
+  const same = buildLinkValues({ mode: "day", date: "2026-11-01", rows, balance: [], primary: "allocation", regional: {}, capacity });
+  assert.equal(same.bg_rs_kz.capacityDate, undefined);
+});

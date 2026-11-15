@@ -56,12 +56,37 @@ export interface RegionalFlowsResponse {
 let referentialCache: { at: number; refs: RegionalPointRef[]; total: number } | null = null;
 const dataCache = new Map<string, { at: number; res: RegionalFlowsResponse }>();
 
-async function getJson(url: string): Promise<unknown> {
-  const res = await fetch(url, { headers: { accept: "application/json" } });
-  // ENTSOG answers 404 when a query is valid but has no rows.
-  if (res.status === 404) return {};
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+async function getJson(url: string, attempts = 2): Promise<unknown> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const res = await fetch(url, {
+        headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(45_000),
+      });
+      // ENTSOG answers 404 when a query is valid but has no rows.
+      if (res.status === 404) return {};
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      // ENTSOG throttles bursts (429/503) and is sometimes slow: one paced retry.
+      if (attempt >= attempts) throw err;
+      await new Promise((r) => setTimeout(r, 1500 * attempt));
+    }
+  }
+}
+
+/** Runs tasks with at most `limit` in flight, so ENTSOG is not hit with a burst. */
+async function pooled<T>(tasks: Array<() => Promise<T>>, limit: number): Promise<T[]> {
+  const out: T[] = new Array(tasks.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < tasks.length) {
+      const i = next++;
+      out[i] = await tasks[i]();
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
+  return out;
 }
 
 function records(payload: unknown, keys: string[]): Array<Record<string, unknown>> {
@@ -129,8 +154,8 @@ async function fetchIndicator(
   const batches: string[][] = [];
   for (let i = 0; i < unique.length; i += BATCH) batches.push(unique.slice(i, i + BATCH));
 
-  await Promise.all(
-    batches.map(async (batch) => {
+  await pooled(
+    batches.map((batch) => async () => {
       if (isFlow) diagnostics.requests += 1;
       else diagnostics.capacityRequests += 1;
       const url =
@@ -172,6 +197,7 @@ async function fetchIndicator(
         console.warn(`[ENTSOG regional] ${indicator} batch failed`, err);
       }
     }),
+    3,
   );
 
   const out = new Map<string, Map<string, number>>();
@@ -225,11 +251,11 @@ async function fetchRegional(
     };
     const serbianPds = Object.values(ENTSOG_POINT_DIRECTIONS).map((pd) => pd.toLowerCase());
 
-    const [flat, technical, booked] = await Promise.all([
-      fetchIndicator(pds, indicator, from, to, diagnostics, true),
-      fetchIndicator([...pds, ...serbianPds], "Firm Technical", from, to, diagnostics, false),
-      fetchIndicator([...pds, ...serbianPds], "Firm Booked", from, to, diagnostics, false),
-    ]);
+    // Flows first, then capacity: a burst of parallel requests gets throttled by ENTSOG.
+    const flat = await fetchIndicator(pds, indicator, from, to, diagnostics, true);
+    const capPds = [...serbianPds, ...pds];
+    const technical = await fetchIndicator(capPds, "Firm Technical", from, to, diagnostics, false);
+    const booked = await fetchIndicator(capPds, "Firm Booked", from, to, diagnostics, false);
 
     const corridors: Record<string, RegionalCorridorSeries> = {};
     for (const [id, sel] of Object.entries(selection)) {
@@ -240,6 +266,13 @@ async function fetchRegional(
     for (const [id, sel] of Object.entries({ ...selection, ...serbianSelection })) {
       const cap = combineCapacity(id, sel, technical, booked);
       if (cap) capacity[id] = cap;
+    }
+
+    // Capacity is slow-moving: if this round failed, keep the last good capacity.
+    const capacityFailed = diagnostics.failedCapacityRequests > 0;
+    if (capacityFailed && cached) {
+      for (const [id, cap] of Object.entries(cached.res.capacity))
+        if (!capacity[id]) capacity[id] = cap;
     }
 
     const allFailed =
@@ -266,7 +299,8 @@ async function fetchRegional(
       capacity,
       diagnostics,
     };
-    if (res.status === "live") dataCache.set(key, { at: Date.now(), res });
+    // A round with failed capacity batches is not cached, so the next refresh retries it.
+    if (res.status === "live" && !capacityFailed) dataCache.set(key, { at: Date.now(), res });
     return res;
   } catch (err) {
     if (cached)

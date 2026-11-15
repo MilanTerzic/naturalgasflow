@@ -311,6 +311,16 @@ function RegionPage() {
             fmt={fmt}
           />
         )}
+        {v?.technical != null && v.capacityDate && (
+          <div className="text-[10px] text-muted-foreground">
+            Capacity as of gas day {v.capacityDate} (latest ENTSOG publication)
+          </div>
+        )}
+        {v?.value != null && v.status !== "model" && v.technical == null && (
+          <div className="text-[10px] text-muted-foreground">
+            No firm technical / booked capacity published by ENTSOG for this day
+          </div>
+        )}
         {c.note && <div className="text-[11px] leading-snug text-muted-foreground">{c.note}</div>}
         <div className="text-[10px] text-muted-foreground">Click to inspect</div>
       </div>
@@ -972,6 +982,11 @@ function RegionPage() {
                 <div>
                   {regionalQuery.data.diagnostics.requests} requests ·{" "}
                   {regionalQuery.data.diagnostics.failedRequests} failed
+                </div>
+                <div>
+                  capacity: {regionalQuery.data.diagnostics.capacityRequests} requests ·{" "}
+                  {regionalQuery.data.diagnostics.failedCapacityRequests} failed ·{" "}
+                  {Object.keys(regionalQuery.data.capacity ?? {}).length} corridors with data
                 </div>
                 {Object.keys(regionalQuery.data.diagnostics.droppedUnits).length > 0 && (
                   <div>

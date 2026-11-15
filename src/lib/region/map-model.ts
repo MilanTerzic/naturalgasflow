@@ -26,6 +26,8 @@ export interface LinkValue {
   technical?: number | null;
   /** Firm booked capacity in the direction of the flow, mcm/day. */
   booked?: number | null;
+  /** Gas day the capacity figures belong to, when it differs from the flow day. */
+  capacityDate?: string | null;
 }
 
 export type MapMode = "day" | "average";
@@ -157,8 +159,15 @@ export function buildLinkValues({
         booked: reverse ? d.reverseBooked : d.forwardBooked,
       });
       if (mode === "day") {
-        const day = date ? cap.days.find((d) => d.date === date) : undefined;
-        if (day) Object.assign(v, pick(day));
+        // Exact gas day first; otherwise the latest published day before it (labelled as such).
+        const day = date
+          ? (cap.days.find((d) => d.date === date) ??
+            [...cap.days].reverse().find((d) => d.date < date && pick(d).technical !== null))
+          : undefined;
+        if (day) {
+          Object.assign(v, pick(day));
+          if (day.date !== date) v.capacityDate = day.date;
+        }
       } else {
         const picks = cap.days.filter((d) => inPeriod(d.date)).map(pick);
         const avgOf = (k: "technical" | "booked") =>
