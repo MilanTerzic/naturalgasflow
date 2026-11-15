@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Area,
   ComposedChart,
@@ -17,7 +17,12 @@ import {
   type CountryBadge,
   type MapLayers,
 } from "@/components/region/BalkanFlowMap";
-import { fetchGasPrices, type HubPrices } from "@/lib/data/gas-prices.functions";
+import {
+  fetchGasPrices,
+  type GasPricesResponse,
+  type HubPrices,
+} from "@/lib/data/gas-prices.functions";
+import { ExchangeDetail } from "@/components/region/ExchangeDetail";
 import { COUNTRY_PRICING, HUBS, type HubId } from "@/lib/prices/hubs";
 import type { PricePoint } from "@/lib/prices/parsers";
 import { Switch } from "@/components/ui/switch";
@@ -217,11 +222,22 @@ function RegionPage() {
   const capacity = s.mode === "live" ? (regionalQuery.data?.capacity ?? null) : null;
   const pricesQuery = useQuery({
     queryKey: ["gas-prices"],
-    queryFn: () => fetchGasPrices(),
+    queryFn: () => fetchGasPrices({ data: {} }),
     enabled: s.mode === "live",
     staleTime: 30 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
+  const queryClient = useQueryClient();
+  const [pricesRefreshing, setPricesRefreshing] = useState(false);
+  const refreshPrices = async () => {
+    setPricesRefreshing(true);
+    try {
+      const fresh = await fetchGasPrices({ data: { force: true } });
+      queryClient.setQueryData<GasPricesResponse>(["gas-prices"], fresh);
+    } finally {
+      setPricesRefreshing(false);
+    }
+  };
   const hubPrices = s.mode === "live" ? (pricesQuery.data?.hubs ?? null) : null;
   const countryBadges = useMemo(() => buildCountryBadges(hubPrices), [hubPrices]);
   const regionalState: RegionalStatus | "demo" | "loading" =
@@ -780,6 +796,9 @@ function RegionPage() {
             hubs={hubPrices}
             loading={pricesQuery.isLoading}
             demo={s.mode !== "live"}
+            storage={pricesQuery.data?.storage}
+            refreshing={pricesRefreshing}
+            onRefresh={refreshPrices}
           />
 
           {sel && (
@@ -1346,10 +1365,16 @@ function HubPricesPanel({
   hubs,
   loading,
   demo,
+  storage,
+  refreshing,
+  onRefresh,
 }: {
   hubs: Record<HubId, HubPrices> | null;
   loading: boolean;
   demo: boolean;
+  storage?: GasPricesResponse["storage"];
+  refreshing: boolean;
+  onRefresh: () => void;
 }) {
   const order: HubId[] = ["TTF", "CEGH", "BGH", "CEEGEX", "HENEX", "BRM", "EPIAS"];
   const ttf = latestPoint(hubs?.TTF.points);
@@ -1358,7 +1383,21 @@ function HubPricesPanel({
     <section className="rounded-xl border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="flex items-center justify-between">
         <h3 className="eyebrow">Hub spot prices</h3>
-        <span className="text-[10px] text-muted-foreground">€/MWh · latest published</span>
+        <span className="flex items-center gap-2 text-[10px] text-muted-foreground">
+          €/MWh · latest published
+          {!demo && (
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={refreshing}
+              className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] text-foreground hover:bg-accent disabled:opacity-50"
+              title="Fetch all exchanges now"
+            >
+              <RefreshCw className={cn("h-3 w-3", refreshing && "animate-spin")} />
+              Refresh
+            </button>
+          )}
+        </span>
       </div>
       {demo ? (
         <p className="mt-2 text-xs text-muted-foreground">Prices are fetched in live mode only.</p>
@@ -1374,11 +1413,11 @@ function HubPricesPanel({
                 className="grid grid-cols-[1fr_auto] items-center gap-x-2 rounded-md px-1.5 py-1 text-xs"
               >
                 <a
-                  href={HUBS[id].url}
+                  href={h?.exchange?.sourceUrl ?? HUBS[id].url}
                   target="_blank"
                   rel="noreferrer"
                   className="truncate text-foreground hover:underline"
-                  title={h?.reason ?? HUBS[id].reason ?? HUBS[id].name}
+                  title={h?.exchange?.licence ?? h?.reason ?? HUBS[id].reason ?? HUBS[id].name}
                 >
                   {HUBS[id].name}
                 </a>
@@ -1387,11 +1426,18 @@ function HubPricesPanel({
                     fmtEur(p.price)
                   ) : (
                     <span className="text-[10px] font-normal text-muted-foreground">
-                      {state === "unavailable" ? "no feed" : state === "loading" ? "…" : state}
+                      {h?.exchange
+                        ? "n/a"
+                        : state === "unavailable"
+                          ? "no feed"
+                          : state === "loading"
+                            ? "…"
+                            : state}
                     </span>
                   )}
                 </span>
-                {p && (
+                {h?.exchange && <ExchangeDetail ex={h.exchange} />}
+                {p && !h?.exchange && (
                   <span className="col-span-2 text-[10px] text-muted-foreground">
                     {p.label === p.date ? p.date : `${p.label} · ${p.date}`}
                     {!p.final && " · provisional"}
@@ -1414,8 +1460,15 @@ function HubPricesPanel({
             </div>
           )}
           <p className="pt-1 text-[10px] leading-snug text-muted-foreground">
-            Only public, key-free sources. Hubs without a machine-readable public price show “no
-            feed”; countries without a hub show a reference hub, never as a local price.
+            Only public, key-free sources, as published: a missing price stays missing. BRM is
+            converted from RON at the BNR fixing shown. CEEREP and BRM data may need a licence for
+            redistribution. Countries without a hub show a reference hub, never as a local price.
+            {storage && (
+              <span className="block">
+                Stored in {storage.mode}
+                {storage.note ? ` · ${storage.note}` : ""}
+              </span>
+            )}
           </p>
         </div>
       )}
