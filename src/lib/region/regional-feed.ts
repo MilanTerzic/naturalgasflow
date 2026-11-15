@@ -47,6 +47,37 @@ function field(rec: Rec, ...names: string[]): string | null {
   return null;
 }
 
+const COUNTRY_NAMES: Record<string, string> = {
+  serbia: "RS",
+  hungary: "HU",
+  bulgaria: "BG",
+  romania: "RO",
+  croatia: "HR",
+  slovenia: "SI",
+  greece: "GR",
+  "north macedonia": "MK",
+  macedonia: "MK",
+  albania: "AL",
+  "bosnia and herzegovina": "BA",
+  montenegro: "ME",
+  turkey: "TR",
+  turkiye: "TR",
+  türkiye: "TR",
+  ukraine: "UA",
+  austria: "AT",
+  italy: "IT",
+  moldova: "MD",
+  slovakia: "SK",
+};
+
+/** ISO-2 code from either a code ("bg") or an English country name ("Bulgaria"); null if unknown. */
+export function countryCode(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const t = raw.trim();
+  if (/^[a-z]{2}$/i.test(t)) return t.toUpperCase();
+  return COUNTRY_NAMES[t.toLowerCase()] ?? null;
+}
+
 /**
  * One ENTSOG `operatorpointdirections` record → point reference.
  * Returns null when the record cannot be keyed or is not an entry/exit.
@@ -64,15 +95,16 @@ export function parseOperatorPointDirection(rec: Rec): RegionalPointRef | null {
     .toLowerCase()
     .replace(/\s+/g, "");
   if (!pointDirection) return null;
-  const country = (
-    field(rec, "tSOCountry", "tsoCountry", "countryKey", "country") ?? operator.slice(0, 2)
-  ).toUpperCase();
-  const adjacentRaw = field(rec, "adjacentCountry", "adjacentCountryKey");
+  const country =
+    countryCode(field(rec, "tSOCountry", "tsoCountry", "countryKey", "country")) ??
+    countryCode(operator.slice(0, 2)) ??
+    "";
+  const adjacent = countryCode(field(rec, "adjacentCountry", "adjacentCountryKey"));
   return {
     pointDirection,
     label,
     country,
-    adjacent: adjacentRaw ? adjacentRaw.toUpperCase() : null,
+    adjacent,
     direction,
     operator,
   };

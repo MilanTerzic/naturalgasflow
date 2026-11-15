@@ -139,3 +139,19 @@ test("capacity uses the exit side when it publishes technical capacity, else the
   ]);
   assert.equal(combineCapacity("tr_bg_str", sel, new Map(), booked), null);
 });
+
+test("country fields are accepted as ISO codes or English names; operator prefix is the fallback", async () => {
+  const { countryCode } = await import("../src/lib/region/regional-feed.ts");
+  assert.equal(countryCode("bg"), "BG");
+  assert.equal(countryCode("North Macedonia"), "MK");
+  assert.equal(countryCode("Atlantis"), null);
+  const parsed = parseOperatorPointDirection({
+    operatorKey: "GR-TSO-0001",
+    pointKey: "ITP-00078",
+    directionKey: "exit",
+    pointLabel: "Kulata (BG) / Sidirokastron (GR)",
+    adjacentCountry: "Bulgaria",
+  });
+  assert.equal(parsed.country, "GR");
+  assert.equal(parsed.adjacent, "BG");
+});
