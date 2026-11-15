@@ -188,9 +188,10 @@ function RegionPage() {
     return () => clearInterval(t);
   }, [playing, days, speed]);
 
-  const regionalRange = { from: dates[0], to: today };
+  const regionalIndicator = series === "allocation" ? "Allocation" : "Physical Flow";
+  const regionalRange = { from: dates[0], to: today, indicator: regionalIndicator } as const;
   const regionalQuery = useQuery({
-    queryKey: ["entsog-regional", regionalRange.from, regionalRange.to],
+    queryKey: ["entsog-regional", regionalRange.from, regionalRange.to, regionalIndicator],
     queryFn: () => fetchEntsogRegionalFlows({ data: regionalRange }),
     enabled: s.mode === "live" && Boolean(regionalRange.from),
     staleTime: 30 * 60 * 1000,
@@ -365,7 +366,7 @@ function RegionPage() {
                 state={regionalState}
                 title={
                   regionalQuery.data?.reason ??
-                  "Regional interconnection points: ENTSOG Physical Flow"
+                  `Regional interconnection points: ENTSOG ${regionalIndicator}`
                 }
               >
                 Region ·{" "}
@@ -373,7 +374,7 @@ function RegionPage() {
                   ? "off in demo"
                   : regionalState === "loading"
                     ? "loading…"
-                    : `${regionalState} · ${regionalWithData} corridors`}
+                    : `${regionalIndicator === "Allocation" ? "Allocation" : "Physical flow"} · ${regionalState} · ${regionalWithData} corridors`}
               </StatusPill>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -431,7 +432,7 @@ function RegionPage() {
               </button>
             </div>
             <label className="sr-only" htmlFor="region-series">
-              Serbian series
+              ENTSOG indicator
             </label>
             <select
               id="region-series"
@@ -439,8 +440,8 @@ function RegionPage() {
               onChange={(e) => setSeries(e.target.value as "allocation" | "physical_flow")}
               className="h-8 rounded-md border bg-background px-2 text-xs font-medium text-foreground"
             >
-              <option value="allocation">Serbia: Allocation</option>
-              <option value="physical_flow">Serbia: Physical flow</option>
+              <option value="allocation">Allocation</option>
+              <option value="physical_flow">Physical flow</option>
             </select>
             <button
               type="button"
@@ -923,9 +924,9 @@ function RegionPage() {
         <Link to="/flows" className="underline underline-offset-2 hover:text-foreground">
           Flow Details
         </Link>{" "}
-        definitions. Regional points: ENTSOG Physical Flow, exit side of the sending TSO (entry side
-        only when the exit side publishes nothing). Basemap: Natural Earth. Pipeline routes are
-        schematic.
+        definitions. Regional points: the same ENTSOG indicator as selected above (Allocation or
+        Physical Flow), exit side of the sending TSO (entry side only when the exit side publishes
+        nothing). Basemap: Natural Earth. Pipeline routes are schematic.
       </p>
     </div>
   );

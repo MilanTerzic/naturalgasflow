@@ -125,7 +125,7 @@ export function buildLinkValues({
         const day = date ? series.days.find((d) => d.date === date) : undefined;
         out[corridor.id] =
           day && day.net !== null
-            ? { value: day.net, status: "actual", label: day.date, source: "physical_flow" }
+            ? { value: day.net, status: "actual", label: day.date, source: primary }
             : { value: null, status: "missing", label: date ?? undefined };
       } else {
         const values = series.days
@@ -136,7 +136,7 @@ export function buildLinkValues({
           value: avg,
           status: avg === null ? "missing" : "actual",
           label: periodLabel,
-          source: "physical_flow",
+          source: primary,
         };
       }
     }

@@ -94,3 +94,11 @@ test("line width grows with volume and is capped", () => {
   assert.equal(linkWidth(80, 40), linkWidth(40, 40));
   assert.equal(linkWidth(null, 40), 1.6);
 });
+
+test("regional values carry the selected indicator as their source", () => {
+  const regional = { tr_bg_str: { id: "tr_bg_str", points: [], days: [{ date: "2026-11-01", forward: 40, reverse: null, net: 40 }] } };
+  const day = buildLinkValues({ mode: "day", date: "2026-11-01", rows: [], balance: [], primary: "allocation", regional });
+  assert.equal(day.tr_bg_str.source, "allocation");
+  const avg = buildLinkValues({ mode: "average", date: null, rows: [], balance: [], primary: "physical_flow", regional });
+  assert.equal(avg.tr_bg_str.source, "physical_flow");
+});

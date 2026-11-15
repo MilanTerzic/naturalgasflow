@@ -1,6 +1,7 @@
 // ENTSOG Transparency Platform — Balkan regional interconnection points (no token).
 // Discovers point directions from the `operatorpointdirections` referential, keeps the
-// ones that match a corridor on the regional map, and fetches daily Physical Flow.
+// ones that match a corridor on the regional map, and fetches daily Physical Flow or
+// Allocation (selectable).
 // Nothing is synthesised: corridors without publications are returned absent and the
 // map draws them as "no data".
 import { createServerFn } from "@tanstack/react-start";
@@ -23,9 +24,11 @@ const BATCH = 25;
 const MAX_DAYS = 120;
 
 export type RegionalStatus = "live" | "cache" | "stale" | "empty" | "error";
+export type RegionalIndicator = "Physical Flow" | "Allocation";
 
 export interface RegionalFlowsResponse {
   status: RegionalStatus;
+  indicator: RegionalIndicator;
   reason?: string;
   from: string;
   to: string;
@@ -85,9 +88,13 @@ function clampRange(from: string, to: string): { from: string; to: string } {
   return { from: new Date(start).toISOString().slice(0, 10), to };
 }
 
-async function fetchRegional(fromIn: string, toIn: string): Promise<RegionalFlowsResponse> {
+async function fetchRegional(
+  fromIn: string,
+  toIn: string,
+  indicator: RegionalIndicator,
+): Promise<RegionalFlowsResponse> {
   const { from, to } = clampRange(fromIn, toIn);
-  const key = `${from}|${to}`;
+  const key = `${indicator}|${from}|${to}`;
   const cached = dataCache.get(key);
   if (cached && Date.now() - cached.at < DATA_TTL_MS) return { ...cached.res, status: "cache" };
 
@@ -123,7 +130,7 @@ async function fetchRegional(fromIn: string, toIn: string): Promise<RegionalFlow
         diagnostics.requests += 1;
         const url =
           `${BASE}/operationaldata.json?pointDirection=${batch.map(encodeURIComponent).join(",")}` +
-          `&from=${from}&to=${to}&indicator=${encodeURIComponent("Physical Flow")}&periodType=day&limit=-1`;
+          `&from=${from}&to=${to}&indicator=${encodeURIComponent(indicator)}&periodType=day&limit=-1`;
         try {
           const rows = records(await getJson(url), [
             "operationaldata",
@@ -186,12 +193,13 @@ async function fetchRegional(fromIn: string, toIn: string): Promise<RegionalFlow
       };
 
     const res: RegionalFlowsResponse = {
+      indicator,
       status: allFailed ? "error" : Object.keys(corridors).length ? "live" : "empty",
       reason: allFailed
         ? "ENTSOG operational data requests failed."
         : Object.keys(corridors).length
           ? undefined
-          : "ENTSOG published no physical flows for the regional points in this window.",
+          : `ENTSOG published no ${indicator.toLowerCase()} for the regional points in this window.`,
       from,
       to,
       fetchedAt: new Date().toISOString(),
@@ -208,6 +216,7 @@ async function fetchRegional(fromIn: string, toIn: string): Promise<RegionalFlow
         reason: "ENTSOG did not answer; showing the last good fetch.",
       };
     return {
+      indicator,
       status: "error",
       reason: err instanceof Error ? err.message : "Unknown error",
       from,
@@ -220,10 +229,19 @@ async function fetchRegional(fromIn: string, toIn: string): Promise<RegionalFlow
 }
 
 export const fetchEntsogRegionalFlows = createServerFn({ method: "POST" })
-  .inputValidator((d: { from: string; to: string }) => {
+  .inputValidator((d: { from: string; to: string; indicator?: RegionalIndicator }) => {
+    if (
+      d.indicator !== undefined &&
+      d.indicator !== "Physical Flow" &&
+      d.indicator !== "Allocation"
+    ) {
+      throw new Error("indicator must be Physical Flow or Allocation");
+    }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d.from) || !/^\d{4}-\d{2}-\d{2}$/.test(d.to)) {
       throw new Error("from/to must be YYYY-MM-DD");
     }
     return d;
   })
-  .handler(async ({ data }) => fetchRegional(data.from, data.to));
+  .handler(async ({ data }) =>
+    fetchRegional(data.from, data.to, data.indicator ?? "Physical Flow"),
+  );
