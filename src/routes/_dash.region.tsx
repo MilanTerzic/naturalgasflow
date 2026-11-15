@@ -1,0 +1,1064 @@
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import {
+  Area,
+  AreaChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import { ChevronLeft, ChevronRight, Globe2, Pause, Play, RefreshCw } from "lucide-react";
+import { BalkanFlowMap, type MapLayers } from "@/components/region/BalkanFlowMap";
+import { Switch } from "@/components/ui/switch";
+import {
+  fetchEntsogRegionalFlows,
+  type RegionalStatus,
+} from "@/lib/data/entsog-regional.functions";
+import { CONVERSION_MCM_TO_GWH, PALETTE } from "@/lib/gas/config";
+import { fmtShortDateYear } from "@/lib/gas/format";
+import {
+  grossPipelineEntryMcm,
+  hasOperationalObservation,
+  netRemainingInSerbiaMcm,
+} from "@/lib/gas/flow-metrics";
+import type { FlowPointName, FlowRow } from "@/lib/gas/types";
+import { buildLinkValues, pointSource, type LinkValue, type MapMode } from "@/lib/region/map-model";
+import { CORRIDOR_BY_ID, CORRIDORS, type Corridor } from "@/lib/region/registry";
+import { cn } from "@/lib/utils";
+import { useDashboard } from "@/state/dashboard-context";
+import { useDashboardData } from "@/state/use-dashboard-data";
+
+export const Route = createFileRoute("/_dash/region")({
+  head: () => ({
+    meta: [
+      { title: "Balkan Flow Map — Serbia Gas Dashboard" },
+      {
+        name: "description",
+        content:
+          "Regional natural gas flows across Balkan interconnection points from ENTSOG, centred on Serbia.",
+      },
+    ],
+  }),
+  component: RegionPage,
+});
+
+const SERBIA_COLORS: Record<FlowPointName, string> = {
+  kiskundorozsma_hu: PALETTE.huOthers,
+  kireevo: PALETTE.bgImport,
+  kiskundorozsma_2: PALETTE.huMet,
+  kalotina: PALETTE.kalotina,
+};
+
+/** Serbian points keep the dashboard palette; regional flows share one teal role colour. */
+const colorFor = (c: Corridor) =>
+  c.group === "serbia" && c.point
+    ? SERBIA_COLORS[c.point]
+    : c.group === "model"
+      ? PALETTE.demand
+      : c.group === "planned"
+        ? "var(--planned)"
+        : "var(--flow)";
+
+type Unit = "mcm" | "gwh";
+const LAYER_KEY = "gas-dashboard.region.layers.v1";
+const UNIT_KEY = "gas-dashboard.region.unit";
+const DEFAULT_LAYERS: MapLayers = {
+  serbia: true,
+  regional: true,
+  lng: true,
+  planned: true,
+  labels: true,
+  cities: true,
+  animate: true,
+};
+
+function readLocal<T>(key: string, fallback: T): T {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? { ...fallback, ...JSON.parse(raw) } : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+const STATUS_STYLE: Record<string, string> = {
+  live: "border-[color-mix(in_oklab,var(--status-good)_40%,transparent)] text-[var(--status-good)]",
+  cache:
+    "border-[color-mix(in_oklab,var(--status-good)_40%,transparent)] text-[var(--status-good)]",
+  stale:
+    "border-[color-mix(in_oklab,var(--status-warning)_45%,transparent)] text-[var(--status-warning)]",
+  empty: "border-border text-muted-foreground",
+  error:
+    "border-[color-mix(in_oklab,var(--status-critical)_45%,transparent)] text-[var(--status-critical)]",
+  demo: "border-[color-mix(in_oklab,var(--status-serious)_45%,transparent)] text-[var(--status-serious)]",
+  off: "border-border text-muted-foreground",
+  loading: "border-border text-muted-foreground",
+  actual:
+    "border-[color-mix(in_oklab,var(--status-good)_40%,transparent)] text-[var(--status-good)]",
+  provisional:
+    "border-[color-mix(in_oklab,var(--status-warning)_45%,transparent)] text-[var(--status-warning)]",
+  model: "border-[color-mix(in_oklab,var(--model)_45%,transparent)] text-[var(--model)]",
+  missing: "border-border text-muted-foreground",
+  planned: "border-[color-mix(in_oklab,var(--planned)_45%,transparent)] text-[var(--planned)]",
+};
+
+function StatusPill({
+  state,
+  children,
+  title,
+}: {
+  state: string;
+  children: React.ReactNode;
+  title?: string;
+}) {
+  return (
+    <span
+      title={title}
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase",
+        STATUS_STYLE[state] ?? STATUS_STYLE.empty,
+      )}
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      {children}
+    </span>
+  );
+}
+
+const STATUS_TEXT: Record<string, string> = {
+  actual: "Reported",
+  provisional: "Nomination",
+  model: "Model",
+  missing: "No data",
+  planned: "Planned",
+};
+
+function RegionPage() {
+  const s = useDashboard();
+  const { flows, allocations, balance, dates, today } = useDashboardData();
+  const [series, setSeries] = useState<"allocation" | "physical_flow">("allocation");
+  const [mode, setMode] = useState<MapMode>("day");
+  const [unit, setUnit] = useState<Unit>(() => readLocal(UNIT_KEY, { u: "mcm" as Unit }).u);
+  const [layers, setLayers] = useState<MapLayers>(() => readLocal(LAYER_KEY, DEFAULT_LAYERS));
+  const [selected, setSelected] = useState<string | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState(700);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(LAYER_KEY, JSON.stringify(layers));
+      window.localStorage.setItem(UNIT_KEY, JSON.stringify({ u: unit }));
+    } catch {
+      /* storage unavailable: settings stay for this visit only */
+    }
+  }, [layers, unit]);
+
+  const rows = useMemo<FlowRow[]>(
+    () =>
+      [...(series === "allocation" ? allocations : flows)]
+        .filter((r) => r.date <= today)
+        .sort((a, b) => a.date.localeCompare(b.date)),
+    [series, allocations, flows, today],
+  );
+  const days = useMemo(() => rows.map((r) => r.date), [rows]);
+  const latest = days.at(-1) ?? null;
+  const [date, setDate] = useState<string | null>(latest);
+  useEffect(() => {
+    if (!date || !days.includes(date)) setDate(latest);
+  }, [days, date, latest]);
+  const idx = date ? days.indexOf(date) : -1;
+
+  // Timeline playback.
+  useEffect(() => {
+    if (!playing) return;
+    const t = setInterval(() => {
+      setDate((current) => {
+        const i = current ? days.indexOf(current) : -1;
+        if (i < 0 || i >= days.length - 1) {
+          setPlaying(false);
+          return current;
+        }
+        return days[i + 1];
+      });
+    }, speed);
+    return () => clearInterval(t);
+  }, [playing, days, speed]);
+
+  const regionalRange = { from: dates[0], to: today };
+  const regionalQuery = useQuery({
+    queryKey: ["entsog-regional", regionalRange.from, regionalRange.to],
+    queryFn: () => fetchEntsogRegionalFlows({ data: regionalRange }),
+    enabled: s.mode === "live" && Boolean(regionalRange.from),
+    staleTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+  const regional = s.mode === "live" ? (regionalQuery.data?.corridors ?? null) : null;
+  const regionalState: RegionalStatus | "demo" | "loading" =
+    s.mode !== "live"
+      ? "demo"
+      : regionalQuery.isLoading
+        ? "loading"
+        : regionalQuery.isError
+          ? "error"
+          : (regionalQuery.data?.status ?? "loading");
+
+  const values = useMemo(
+    () => buildLinkValues({ mode, date, rows, balance, primary: series, regional }),
+    [mode, date, rows, balance, series, regional],
+  );
+
+  const toUnit = (mcm: number) => (unit === "gwh" ? mcm * CONVERSION_MCM_TO_GWH : mcm);
+  const unitLabel = unit === "gwh" ? "GWh/d" : "mcm/d";
+  const fmt = (mcm: number | null | undefined, digits = 2) =>
+    mcm == null || !Number.isFinite(mcm)
+      ? "—"
+      : toUnit(mcm).toLocaleString("en-US", {
+          minimumFractionDigits: digits,
+          maximumFractionDigits: digits,
+        });
+  const fmtShort = (mcm: number) =>
+    unit === "gwh" ? toUnit(mcm).toFixed(0) : toUnit(mcm).toFixed(1);
+
+  // Serbia balance for the selected day, or averaged over days where all points reported.
+  const balanceStats = useMemo(() => {
+    const bosniaByDate = new Map(balance.map((b) => [b.date, b.bosnia_consumption_mcm]));
+    const forRow = (r: FlowRow | undefined) => {
+      if (!r) return null;
+      const gross = grossPipelineEntryMcm(r);
+      const exit = hasOperationalObservation(r, "kiskundorozsma_2") ? r.kiskundorozsma_2 : null;
+      const bosnia = bosniaByDate.get(r.date) ?? null;
+      return { gross, exit, bosnia, net: netRemainingInSerbiaMcm(r, bosnia) };
+    };
+    if (mode === "day") return forRow(rows.find((r) => r.date === date));
+    const all = rows.map(forRow).filter((x): x is NonNullable<typeof x> => x !== null);
+    const avg = (k: "gross" | "exit" | "bosnia" | "net") => {
+      const v = all.map((x) => x[k]).filter((n): n is number => n !== null);
+      return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+    };
+    return { gross: avg("gross"), exit: avg("exit"), bosnia: avg("bosnia"), net: avg("net") };
+  }, [mode, rows, date, balance]);
+
+  const reportedCount = CORRIDORS.filter(
+    (c) => (c.group === "serbia" || c.group === "regional") && values[c.id]?.value != null,
+  ).length;
+  const regionalWithData = Object.keys(regional ?? {}).length;
+
+  const describe = (id: string) => {
+    const c = CORRIDOR_BY_ID[id];
+    if (!c) return null;
+    const v: LinkValue | undefined = values[id];
+    const status = c.group === "planned" ? "planned" : (v?.status ?? "missing");
+    return (
+      <div className="space-y-1.5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="font-semibold leading-tight">{c.name}</div>
+          <StatusPill state={status}>{STATUS_TEXT[status]}</StatusPill>
+        </div>
+        {c.from && (
+          <div className="text-muted-foreground">
+            {v?.value != null && v.value < 0
+              ? `${c.to} → ${c.from} (reverse)`
+              : `${c.from === "LNG" ? "LNG" : c.from} → ${c.to}`}
+          </div>
+        )}
+        {v?.value != null && (
+          <div className="num text-base font-semibold text-foreground">
+            {fmt(Math.abs(v.value))}{" "}
+            <span className="text-xs font-normal text-muted-foreground">{unitLabel}</span>
+          </div>
+        )}
+        {v?.label && (
+          <div className="text-[11px] text-muted-foreground">
+            {mode === "average" ? `Average ${v.label}` : `Gas day ${v.label}`}
+          </div>
+        )}
+        {c.note && <div className="text-[11px] leading-snug text-muted-foreground">{c.note}</div>}
+        <div className="text-[10px] text-muted-foreground">Click to inspect</div>
+      </div>
+    );
+  };
+
+  const sel = selected ? CORRIDOR_BY_ID[selected] : null;
+  const history = useMemo(() => {
+    if (!sel) return [];
+    if (sel.group === "serbia" && sel.point) {
+      return rows.map((r) => ({
+        date: r.date,
+        v: pointSource(r, sel.point!, series) ? toUnit(r[sel.point!]) : null,
+      }));
+    }
+    if (sel.group === "model") {
+      return balance
+        .filter((b) => !b.is_forecast)
+        .map((b) => ({ date: b.date, v: toUnit(b.bosnia_consumption_mcm) }));
+    }
+    if (sel.group === "regional" && regional?.[sel.id]) {
+      return regional[sel.id].days.map((d) => ({
+        date: d.date,
+        v: d.net === null ? null : toUnit(d.net),
+      }));
+    }
+    return [];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sel, rows, series, balance, regional, unit]);
+
+  const regionalRows = useMemo(
+    () =>
+      CORRIDORS.filter(
+        (c) => c.group === "serbia" || c.group === "model" || c.group === "regional",
+      ).map((c) => {
+        const hist: Array<number> =
+          c.group === "serbia" && c.point
+            ? rows
+                .filter((r) => pointSource(r, c.point!, series) === series)
+                .map((r) => r[c.point!])
+            : c.group === "model"
+              ? balance.filter((b) => !b.is_forecast).map((b) => b.bosnia_consumption_mcm)
+              : (regional?.[c.id]?.days ?? [])
+                  .filter((d) => d.net !== null)
+                  .map((d) => d.net as number);
+        return {
+          c,
+          v: values[c.id],
+          avg: hist.length ? hist.reduce((a, b) => a + b, 0) / hist.length : null,
+          min: hist.length ? Math.min(...hist) : null,
+          max: hist.length ? Math.max(...hist) : null,
+          n: hist.length,
+        };
+      }),
+    [rows, series, balance, regional, values],
+  );
+
+  const toggleLayer = (k: keyof MapLayers) => setLayers((l) => ({ ...l, [k]: !l[k] }));
+
+  const pill = (active: boolean) =>
+    cn(
+      "h-7 rounded-md px-2.5 text-xs font-medium transition-colors",
+      active ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+    );
+
+  return (
+    <div className="space-y-4">
+      {/* Command bar */}
+      <section className="rounded-xl border bg-card px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <Globe2 className="h-4 w-4 text-primary" aria-hidden="true" />
+              <h2 className="text-sm font-semibold text-foreground">Balkan gas flow map</h2>
+              <StatusPill
+                state={s.mode === "live" ? "live" : "demo"}
+                title="Serbian border points: the dashboard's ENTSOG series"
+              >
+                Serbia ·{" "}
+                {s.mode === "live"
+                  ? series === "allocation"
+                    ? "Allocation"
+                    : "Physical flow"
+                  : "Demo"}
+              </StatusPill>
+              <StatusPill
+                state={regionalState}
+                title={
+                  regionalQuery.data?.reason ??
+                  "Regional interconnection points: ENTSOG Physical Flow"
+                }
+              >
+                Region ·{" "}
+                {regionalState === "demo"
+                  ? "off in demo"
+                  : regionalState === "loading"
+                    ? "loading…"
+                    : `${regionalState} · ${regionalWithData} corridors`}
+              </StatusPill>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Width ∝ volume · animated = direction of flow · grey dashed = nothing published ·
+              values never filled in.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div
+              className="inline-flex rounded-lg border bg-muted/50 p-0.5"
+              role="group"
+              aria-label="Map mode"
+            >
+              <button
+                type="button"
+                className={pill(mode === "day")}
+                onClick={() => setMode("day")}
+                aria-pressed={mode === "day"}
+              >
+                Gas day
+              </button>
+              <button
+                type="button"
+                className={pill(mode === "average")}
+                onClick={() => {
+                  setMode("average");
+                  setPlaying(false);
+                }}
+                aria-pressed={mode === "average"}
+              >
+                Period avg
+              </button>
+            </div>
+            <div
+              className="inline-flex rounded-lg border bg-muted/50 p-0.5"
+              role="group"
+              aria-label="Units"
+            >
+              <button
+                type="button"
+                className={pill(unit === "mcm")}
+                onClick={() => setUnit("mcm")}
+                aria-pressed={unit === "mcm"}
+              >
+                mcm/d
+              </button>
+              <button
+                type="button"
+                className={pill(unit === "gwh")}
+                onClick={() => setUnit("gwh")}
+                aria-pressed={unit === "gwh"}
+              >
+                GWh/d
+              </button>
+            </div>
+            <label className="sr-only" htmlFor="region-series">
+              Serbian series
+            </label>
+            <select
+              id="region-series"
+              value={series}
+              onChange={(e) => setSeries(e.target.value as "allocation" | "physical_flow")}
+              className="h-8 rounded-md border bg-background px-2 text-xs font-medium text-foreground"
+            >
+              <option value="allocation">Serbia: Allocation</option>
+              <option value="physical_flow">Serbia: Physical flow</option>
+            </select>
+            <button
+              type="button"
+              onClick={() => void regionalQuery.refetch()}
+              disabled={s.mode !== "live" || regionalQuery.isFetching}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
+              title="Refresh regional ENTSOG data"
+            >
+              <RefreshCw
+                className={cn("h-3.5 w-3.5", regionalQuery.isFetching && "animate-spin")}
+              />
+              Refresh
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        {/* Map */}
+        <section className="overflow-hidden rounded-xl border bg-card shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          <BalkanFlowMap
+            values={values}
+            selected={selected}
+            onSelect={setSelected}
+            layers={layers}
+            colorFor={colorFor}
+            formatValue={fmtShort}
+            describe={describe}
+            overlay={
+              <>
+                <div className="pointer-events-none absolute top-3 left-3 rounded-lg border bg-card/90 px-3 py-2 shadow-sm backdrop-blur">
+                  <div className="eyebrow">{mode === "day" ? "Gas day" : "Period average"}</div>
+                  <div className="num mt-0.5 text-sm font-semibold text-foreground">
+                    {mode === "day"
+                      ? date
+                        ? fmtShortDateYear(date)
+                        : "No data"
+                      : days.length
+                        ? `${fmtShortDateYear(days[0])} – ${fmtShortDateYear(days.at(-1)!)}`
+                        : "No data"}
+                  </div>
+                  <div className="mt-0.5 text-[10px] text-muted-foreground">
+                    {reportedCount} corridors reporting · {unitLabel}
+                  </div>
+                </div>
+                <div className="pointer-events-none absolute bottom-3 left-3 hidden space-y-1 rounded-lg border bg-card/90 px-3 py-2 text-[10px] text-muted-foreground shadow-sm backdrop-blur sm:block">
+                  <LegendRow
+                    swatch={
+                      <line
+                        x1="2"
+                        y1="5"
+                        x2="30"
+                        y2="5"
+                        stroke="var(--flow)"
+                        strokeWidth="4"
+                        strokeLinecap="round"
+                      />
+                    }
+                  >
+                    Reported flow
+                  </LegendRow>
+                  <LegendRow
+                    swatch={
+                      <line
+                        x1="2"
+                        y1="5"
+                        x2="30"
+                        y2="5"
+                        stroke={PALETTE.demand}
+                        strokeWidth="3"
+                        strokeDasharray="6 3"
+                      />
+                    }
+                  >
+                    Model / nomination
+                  </LegendRow>
+                  <LegendRow
+                    swatch={
+                      <line
+                        x1="2"
+                        y1="5"
+                        x2="30"
+                        y2="5"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeDasharray="4 4"
+                      />
+                    }
+                  >
+                    No data published
+                  </LegendRow>
+                  <LegendRow
+                    swatch={
+                      <line
+                        x1="2"
+                        y1="5"
+                        x2="30"
+                        y2="5"
+                        stroke="var(--planned)"
+                        strokeWidth="2"
+                        strokeDasharray="1 5"
+                        strokeLinecap="round"
+                      />
+                    }
+                  >
+                    Planned project
+                  </LegendRow>
+                  <LegendRow swatch={<circle cx="16" cy="5" r="4" fill="var(--status-warning)" />}>
+                    LNG terminal
+                  </LegendRow>
+                  <div className="pt-0.5">
+                    Ctrl/⌘ + scroll or double-click to zoom · drag to pan
+                  </div>
+                </div>
+              </>
+            }
+          />
+
+          {/* Timeline */}
+          <div className="flex flex-wrap items-center gap-2 border-t px-3 py-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (mode !== "day") setMode("day");
+                if (idx >= days.length - 1) setDate(days[0]);
+                setPlaying((p) => !p);
+              }}
+              disabled={days.length < 2}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-background text-foreground transition-colors hover:bg-accent disabled:opacity-40"
+              aria-label={playing ? "Pause playback" : "Play through the period"}
+            >
+              {playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+            </button>
+            <button
+              type="button"
+              onClick={() => idx > 0 && setDate(days[idx - 1])}
+              disabled={idx <= 0 || mode !== "day"}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-background text-muted-foreground hover:bg-accent disabled:opacity-40"
+              aria-label="Previous gas day"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <input
+              type="range"
+              min={0}
+              max={Math.max(0, days.length - 1)}
+              value={Math.max(0, idx)}
+              onChange={(e) => {
+                setMode("day");
+                setDate(days[Number(e.target.value)]);
+              }}
+              className="min-w-[160px] flex-1 accent-[var(--flow)]"
+              aria-label="Gas day timeline"
+              aria-valuetext={date ?? undefined}
+            />
+            <button
+              type="button"
+              onClick={() => idx < days.length - 1 && setDate(days[idx + 1])}
+              disabled={idx < 0 || idx >= days.length - 1 || mode !== "day"}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-background text-muted-foreground hover:bg-accent disabled:opacity-40"
+              aria-label="Next gas day"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode("day");
+                setDate(latest);
+              }}
+              disabled={date === latest && mode === "day"}
+              className="h-8 rounded-md border bg-background px-2.5 text-xs font-medium text-foreground hover:bg-accent disabled:opacity-40"
+            >
+              Latest
+            </button>
+            <select
+              value={speed}
+              onChange={(e) => setSpeed(Number(e.target.value))}
+              className="h-8 rounded-md border bg-background px-2 text-xs"
+              aria-label="Playback speed"
+            >
+              <option value={1200}>0.5×</option>
+              <option value={700}>1×</option>
+              <option value={300}>2×</option>
+              <option value={120}>5×</option>
+            </select>
+            <span className="num ml-auto text-[11px] text-muted-foreground">
+              {days[0] ?? "—"} → {latest ?? "—"} · change the window in Gas Balance → Data view
+            </span>
+          </div>
+        </section>
+
+        {/* Inspector */}
+        <aside className="space-y-4">
+          <section className="rounded-xl border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <div className="flex items-center justify-between">
+              <h3 className="eyebrow">Serbia balance</h3>
+              <span className="text-[10px] text-muted-foreground">
+                {mode === "day" ? date : "period avg"} · {unitLabel}
+              </span>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <Stat
+                label="Gross entry"
+                value={fmt(balanceStats?.gross)}
+                hint="Kireevo + Kalotina + Kiskundorozsma"
+              />
+              <Stat
+                label="Transit to Hungary"
+                value={fmt(balanceStats?.exit)}
+                hint="Kiskundorozsma 2 / Horgoš"
+              />
+              <Stat
+                label="Bosnia flow"
+                value={fmt(balanceStats?.bosnia)}
+                hint="Model, not metered"
+                tone="model"
+              />
+              <Stat
+                label="Net in Serbia"
+                value={fmt(balanceStats?.net)}
+                hint="Entry − Hungary − Bosnia"
+                tone="strong"
+              />
+            </div>
+            <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
+              Same definitions as the Flow Details map. Net is shown only when all four points
+              reported.
+            </p>
+          </section>
+
+          {sel && (
+            <section className="rounded-xl border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <h3 className="truncate text-sm font-semibold text-foreground">{sel.name}</h3>
+                  {sel.from && (
+                    <div className="text-xs text-muted-foreground">
+                      {sel.from} → {sel.to}
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => setSelected(null)}
+                >
+                  Close
+                </button>
+              </div>
+              {history.some((h) => h.v !== null) ? (
+                <div className="mt-3 h-36">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={history} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="sel-fill" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor={colorFor(sel)} stopOpacity={0.35} />
+                          <stop offset="100%" stopColor={colorFor(sel)} stopOpacity={0.02} />
+                        </linearGradient>
+                      </defs>
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+                        tickFormatter={(d: string) => d.slice(5)}
+                        minTickGap={24}
+                      />
+                      <YAxis tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} width={44} />
+                      <Tooltip
+                        contentStyle={{
+                          background: "var(--popover)",
+                          border: "1px solid var(--border)",
+                          borderRadius: 8,
+                          fontSize: 11,
+                        }}
+                        formatter={(v) => [
+                          `${typeof v === "number" ? v.toFixed(2) : "—"} ${unitLabel}`,
+                          sel.name,
+                        ]}
+                      />
+                      {date && (
+                        <ReferenceLine
+                          x={date}
+                          stroke="var(--muted-foreground)"
+                          strokeDasharray="3 3"
+                        />
+                      )}
+                      <Area
+                        type="monotone"
+                        dataKey="v"
+                        stroke={colorFor(sel)}
+                        strokeWidth={1.8}
+                        fill="url(#sel-fill)"
+                        connectNulls={false}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <p className="mt-3 rounded-md border border-dashed px-3 py-4 text-center text-xs text-muted-foreground">
+                  {sel.group === "planned"
+                    ? "Planned project — shown for context only."
+                    : "No published values for this corridor in the selected window."}
+                </p>
+              )}
+              {sel.note && (
+                <p className="mt-2 text-[11px] leading-snug text-muted-foreground">{sel.note}</p>
+              )}
+              {sel.group === "regional" && regional?.[sel.id] && (
+                <details className="mt-2 text-[11px] text-muted-foreground">
+                  <summary className="cursor-pointer">
+                    ENTSOG points used ({regional[sel.id].points.length})
+                  </summary>
+                  <ul className="mt-1 space-y-0.5">
+                    {regional[sel.id].points.map((p) => (
+                      <li key={p.pointDirection} className="num break-all">
+                        {p.label} · {p.side} · {p.role} side · {p.pointDirection}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </section>
+          )}
+
+          <section className="rounded-xl border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <div className="flex items-center justify-between">
+              <h3 className="eyebrow">Corridors</h3>
+              <span className="text-[10px] text-muted-foreground">{unitLabel}</span>
+            </div>
+            <CorridorList
+              values={values}
+              selected={selected}
+              onSelect={setSelected}
+              fmtShort={fmtShort}
+            />
+          </section>
+
+          <section className="rounded-xl border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <h3 className="eyebrow">Layers</h3>
+            <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2.5">
+              {(
+                [
+                  ["serbia", "Serbian points"],
+                  ["regional", "Regional points"],
+                  ["lng", "LNG terminals"],
+                  ["planned", "Planned projects"],
+                  ["labels", "Value labels"],
+                  ["cities", "Cities & storage"],
+                  ["animate", "Flow animation"],
+                ] as Array<[keyof MapLayers, string]>
+              ).map(([k, label]) => (
+                <label
+                  key={k}
+                  className="flex cursor-pointer items-center gap-2 text-xs text-foreground"
+                >
+                  <Switch
+                    checked={layers[k]}
+                    onCheckedChange={() => toggleLayer(k)}
+                    aria-label={label}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </section>
+        </aside>
+      </div>
+
+      {/* Corridor table */}
+      <section className="overflow-hidden rounded-xl border bg-card shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">Corridor statistics</h3>
+            <p className="text-xs text-muted-foreground">
+              Signed values: negative = reverse of the listed direction. Statistics use reported
+              days only.
+            </p>
+          </div>
+          {regionalQuery.data && (
+            <details className="text-[11px] text-muted-foreground">
+              <summary className="cursor-pointer">Feed diagnostics</summary>
+              <div className="num mt-1 space-y-0.5 text-right">
+                <div>
+                  window {regionalQuery.data.from} → {regionalQuery.data.to}
+                </div>
+                <div>
+                  {regionalQuery.data.diagnostics.referentialRecords} ENTSOG point directions
+                  scanned
+                </div>
+                <div>{regionalQuery.data.diagnostics.candidatePoints} matched to map corridors</div>
+                <div>
+                  {regionalQuery.data.diagnostics.requests} requests ·{" "}
+                  {regionalQuery.data.diagnostics.failedRequests} failed
+                </div>
+                {Object.keys(regionalQuery.data.diagnostics.droppedUnits).length > 0 && (
+                  <div>
+                    dropped units:{" "}
+                    {Object.entries(regionalQuery.data.diagnostics.droppedUnits)
+                      .map(([u, n]) => `${u} ×${n}`)
+                      .join(", ")}
+                  </div>
+                )}
+                <div>
+                  fetched{" "}
+                  {new Date(regionalQuery.data.fetchedAt).toLocaleString("en-GB", {
+                    timeZone: "Europe/Belgrade",
+                  })}
+                </div>
+              </div>
+            </details>
+          )}
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-muted/40 text-left">
+                {[
+                  "Corridor",
+                  "Direction",
+                  mode === "day" ? `Gas day ${date ?? ""}` : "Period avg",
+                  "Avg",
+                  "Min",
+                  "Max",
+                  "Days",
+                  "Status",
+                ].map((h, i) => (
+                  <th
+                    key={h}
+                    className={cn(
+                      "eyebrow px-3 py-2 whitespace-nowrap",
+                      i >= 2 && i <= 6 && "text-right",
+                    )}
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {regionalRows.map(({ c, v, avg, min, max, n }) => (
+                <tr
+                  key={c.id}
+                  onClick={() => setSelected(c.id)}
+                  className={cn(
+                    "cursor-pointer border-b last:border-0 transition-colors hover:bg-accent/50",
+                    selected === c.id && "bg-accent/60",
+                  )}
+                >
+                  <td className="px-3 py-2">
+                    <span
+                      className="mr-2 inline-block h-2.5 w-2.5 rounded-sm align-middle"
+                      style={{ background: colorFor(c) }}
+                    />
+                    <span className="font-medium text-foreground">{c.name}</span>
+                  </td>
+                  <td className="px-3 py-2 text-xs text-muted-foreground">
+                    {c.from} → {c.to}
+                  </td>
+                  <td className="num px-3 py-2 text-right font-semibold text-foreground">
+                    {fmt(v?.value)}
+                  </td>
+                  <td className="num px-3 py-2 text-right">{fmt(avg)}</td>
+                  <td className="num px-3 py-2 text-right">{fmt(min)}</td>
+                  <td className="num px-3 py-2 text-right">{fmt(max)}</td>
+                  <td className="num px-3 py-2 text-right text-muted-foreground">{n}</td>
+                  <td className="px-3 py-2">
+                    <StatusPill state={v?.status ?? "missing"}>
+                      {STATUS_TEXT[v?.status ?? "missing"]}
+                    </StatusPill>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <p className="text-[11px] text-muted-foreground">
+        Serbian points follow the{" "}
+        <Link to="/flows" className="underline underline-offset-2 hover:text-foreground">
+          Flow Details
+        </Link>{" "}
+        definitions. Regional points: ENTSOG Physical Flow, exit side of the sending TSO (entry side
+        only when the exit side publishes nothing). Basemap: Natural Earth. Pipeline routes are
+        schematic.
+      </p>
+    </div>
+  );
+}
+
+function LegendRow({ swatch, children }: { swatch: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2">
+      <svg width="32" height="10" aria-hidden="true">
+        {swatch}
+      </svg>
+      {children}
+    </div>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  hint,
+  tone,
+}: {
+  label: string;
+  value: string;
+  hint: string;
+  tone?: "model" | "strong";
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-lg border bg-background px-3 py-2",
+        tone === "strong" &&
+          "border-[color-mix(in_oklab,var(--flow)_45%,transparent)] bg-[color-mix(in_oklab,var(--flow)_8%,var(--card))]",
+      )}
+    >
+      <div className="text-[11px] text-muted-foreground">{label}</div>
+      <div
+        className={cn(
+          "num mt-0.5 text-lg font-semibold",
+          tone === "strong"
+            ? "text-[var(--flow)]"
+            : tone === "model"
+              ? "text-[var(--model)]"
+              : "text-foreground",
+        )}
+      >
+        {value}
+      </div>
+      <div className="text-[10px] leading-tight text-muted-foreground">{hint}</div>
+    </div>
+  );
+}
+
+function CorridorList({
+  values,
+  selected,
+  onSelect,
+  fmtShort,
+}: {
+  values: Record<string, LinkValue>;
+  selected: string | null;
+  onSelect: (id: string | null) => void;
+  fmtShort: (v: number) => string;
+}) {
+  const groups: Array<[Corridor["group"], string]> = [
+    ["serbia", "Serbia"],
+    ["model", "Modelled"],
+    ["regional", "Region · ENTSOG"],
+    ["planned", "Planned"],
+  ];
+  const max = Math.max(
+    1,
+    ...Object.values(values).map((v) => (v.value === null ? 0 : Math.abs(v.value))),
+  );
+  return (
+    <div className="mt-2 max-h-[420px] space-y-0.5 overflow-y-auto pr-1">
+      {groups.map(([g, title]) => {
+        const items = CORRIDORS.filter((c) => c.group === g).sort(
+          (a, b) => Math.abs(values[b.id]?.value ?? 0) - Math.abs(values[a.id]?.value ?? 0),
+        );
+        return (
+          <div key={g}>
+            <div className="eyebrow mt-2 mb-1 !text-[10px]">{title}</div>
+            {items.map((c) => {
+              const v = values[c.id];
+              const has = v?.value != null;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => onSelect(selected === c.id ? null : c.id)}
+                  className={cn(
+                    "grid w-full grid-cols-[10px_1fr_auto] items-center gap-x-2 rounded-md px-1.5 py-1.5 text-left text-xs transition-colors hover:bg-accent",
+                    selected === c.id && "bg-accent",
+                  )}
+                >
+                  <span
+                    className="h-2.5 w-2.5 rounded-sm"
+                    style={{ background: colorFor(c), opacity: has || g === "planned" ? 1 : 0.35 }}
+                  />
+                  <span className="min-w-0 truncate text-foreground">
+                    {c.name}
+                    <span className="ml-1 text-[10px] text-muted-foreground">
+                      {c.from ? `${c.from}→${c.to}` : ""}
+                      {has && v!.value! < 0 ? " · reverse" : ""}
+                    </span>
+                  </span>
+                  <span className="num text-right text-foreground">
+                    {g === "planned" ? (
+                      ""
+                    ) : has ? (
+                      `${v!.value! < 0 ? "⇄ " : ""}${fmtShort(Math.abs(v!.value!))}`
+                    ) : (
+                      <span className="text-[10px] text-muted-foreground">no data</span>
+                    )}
+                  </span>
+                  {has && (
+                    <span className="col-span-2 col-start-2 mt-1 h-[3px] overflow-hidden rounded bg-border">
+                      <span
+                        className="block h-full rounded"
+                        style={{
+                          width: `${(Math.abs(v!.value!) / max) * 100}%`,
+                          background: colorFor(c),
+                        }}
+                      />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}

@@ -16,6 +16,7 @@ import { Route as DashBalanceRouteImport } from './routes/_dash.balance'
 import { Route as DashCapacityRouteImport } from './routes/_dash.capacity'
 import { Route as DashFlowsRouteImport } from './routes/_dash.flows'
 import { Route as DashModelRouteImport } from './routes/_dash.model'
+import { Route as DashRegionRouteImport } from './routes/_dash.region'
 import { Route as DashSrbijagasRouteImport } from './routes/_dash.srbijagas'
 import { Route as DashStorageRouteImport } from './routes/_dash.storage'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
@@ -54,6 +55,11 @@ const DashModelRoute = DashModelRouteImport.update({
   path: '/model',
   getParentRoute: () => DashRoute,
 } as any)
+const DashRegionRoute = DashRegionRouteImport.update({
+  id: '/region',
+  path: '/region',
+  getParentRoute: () => DashRoute,
+} as any)
 const DashSrbijagasRoute = DashSrbijagasRouteImport.update({
   id: '/srbijagas',
   path: '/srbijagas',
@@ -77,6 +83,7 @@ export interface FileRoutesByFullPath {
   '/capacity': typeof DashCapacityRoute
   '/flows': typeof DashFlowsRoute
   '/model': typeof DashModelRoute
+  '/region': typeof DashRegionRoute
   '/srbijagas': typeof DashSrbijagasRoute
   '/storage': typeof DashStorageRoute
   '/api/chat': typeof ApiChatRoute
@@ -88,6 +95,7 @@ export interface FileRoutesByTo {
   '/capacity': typeof DashCapacityRoute
   '/flows': typeof DashFlowsRoute
   '/model': typeof DashModelRoute
+  '/region': typeof DashRegionRoute
   '/srbijagas': typeof DashSrbijagasRoute
   '/storage': typeof DashStorageRoute
   '/api/chat': typeof ApiChatRoute
@@ -101,6 +109,7 @@ export interface FileRoutesById {
   '/_dash/capacity': typeof DashCapacityRoute
   '/_dash/flows': typeof DashFlowsRoute
   '/_dash/model': typeof DashModelRoute
+  '/_dash/region': typeof DashRegionRoute
   '/_dash/srbijagas': typeof DashSrbijagasRoute
   '/_dash/storage': typeof DashStorageRoute
   '/api/chat': typeof ApiChatRoute
@@ -114,6 +123,7 @@ export interface FileRouteTypes {
     | '/capacity'
     | '/flows'
     | '/model'
+    | '/region'
     | '/srbijagas'
     | '/storage'
     | '/api/chat'
@@ -125,6 +135,7 @@ export interface FileRouteTypes {
     | '/capacity'
     | '/flows'
     | '/model'
+    | '/region'
     | '/srbijagas'
     | '/storage'
     | '/api/chat'
@@ -137,6 +148,7 @@ export interface FileRouteTypes {
     | '/_dash/capacity'
     | '/_dash/flows'
     | '/_dash/model'
+    | '/_dash/region'
     | '/_dash/srbijagas'
     | '/_dash/storage'
     | '/api/chat'
@@ -200,6 +212,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashModelRouteImport
       parentRoute: typeof DashRoute
     }
+    '/_dash/region': {
+      id: '/_dash/region'
+      path: '/region'
+      fullPath: '/region'
+      preLoaderRoute: typeof DashRegionRouteImport
+      parentRoute: typeof DashRoute
+    }
     '/_dash/srbijagas': {
       id: '/_dash/srbijagas'
       path: '/srbijagas'
@@ -229,6 +248,7 @@ interface DashRouteChildren {
   DashCapacityRoute: typeof DashCapacityRoute
   DashFlowsRoute: typeof DashFlowsRoute
   DashModelRoute: typeof DashModelRoute
+  DashRegionRoute: typeof DashRegionRoute
   DashSrbijagasRoute: typeof DashSrbijagasRoute
   DashStorageRoute: typeof DashStorageRoute
 }
@@ -238,6 +258,7 @@ const DashRouteChildren: DashRouteChildren = {
   DashCapacityRoute: DashCapacityRoute,
   DashFlowsRoute: DashFlowsRoute,
   DashModelRoute: DashModelRoute,
+  DashRegionRoute: DashRegionRoute,
   DashSrbijagasRoute: DashSrbijagasRoute,
   DashStorageRoute: DashStorageRoute,
 }

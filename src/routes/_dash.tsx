@@ -1,6 +1,8 @@
 import { createFileRoute, Link, Outlet, redirect, useNavigate, useRouter } from "@tanstack/react-router";
 import { Fuel, LogOut } from "lucide-react";
+import { FlowTape } from "@/components/dashboard/FlowTape";
 import { Sidebar } from "@/components/dashboard/Sidebar";
+import { ThemeToggle } from "@/components/dashboard/ThemeToggle";
 import { DashboardProvider } from "@/state/dashboard-context";
 import { cn } from "@/lib/utils";
 import { hasAppSession, signOut } from "@/lib/auth";
@@ -18,6 +20,7 @@ export const Route = createFileRoute("/_dash")({
 const TABS = [
   { to: "/balance", label: "Gas Balance" },
   { to: "/flows", label: "Flow Details" },
+  { to: "/region", label: "Balkan Map" },
   { to: "/capacity", label: "Capacity Bookings" },
   { to: "/srbijagas", label: "Srbijagas Full Supply" },
   { to: "/storage", label: "Gas Storage" },
@@ -75,6 +78,7 @@ function DashLayout() {
                   </Link>
                 ))}
               </nav>
+              <ThemeToggle />
               <button
                 type="button"
                 onClick={logout}
@@ -85,6 +89,7 @@ function DashLayout() {
               </button>
             </div>
           </div>
+          <FlowTape />
         </header>
         <div className="flex flex-col lg:flex-row">
           {showSidebar && <Sidebar />}

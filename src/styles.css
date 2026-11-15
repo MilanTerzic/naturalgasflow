@@ -46,6 +46,22 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Regional design system (shared with Power Pulse): data-role colours and type. */
+  --font-sans: "Fira Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-condensed: "Fira Sans Condensed", "Fira Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Fira Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --color-surface-2: var(--surface-2);
+  --color-ink-2: var(--ink-2);
+  --color-border-strong: var(--border-strong);
+  --color-positive: var(--status-good);
+  --color-warning: var(--status-warning);
+  --color-serious: var(--status-serious);
+  --color-critical: var(--status-critical);
+  --color-flow: var(--flow);
+  --color-model: var(--model);
+  --color-planned: var(--planned);
+  --shadow-pop: 0 12px 32px -8px rgb(15 23 42 / 0.28), 0 0 0 1px var(--border-strong);
 }
 
 :root {
@@ -104,6 +120,61 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.55 0.03 264);
+  /* Sidebar and chart tokens were light-only; dark values keep the controls panel legible. */
+  --sidebar: oklch(0.18 0.02 250);
+  --sidebar-foreground: oklch(0.96 0 0);
+  --sidebar-primary: oklch(0.85 0.05 250);
+  --sidebar-primary-foreground: oklch(0.18 0.02 250);
+  --sidebar-accent: oklch(0.26 0.03 250);
+  --sidebar-accent-foreground: oklch(0.96 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.55 0.03 264);
+  --chart-1: oklch(0.7 0.15 245);
+  --chart-2: oklch(0.72 0.13 165);
+  --chart-3: oklch(0.7 0.16 35);
+  --chart-4: oklch(0.7 0.06 250);
+  --chart-5: oklch(0.68 0.19 25);
+}
+
+/* Regional design tokens — light (default). */
+:root {
+  --surface-2: oklch(0.965 0.006 250);
+  --ink-2: oklch(0.38 0.02 250);
+  --border-strong: oklch(0.8 0.014 250);
+  --status-good: #0b8a0b;
+  --status-warning: #b87a00;
+  --status-serious: #c9592b;
+  --status-critical: #c23333;
+  --flow: #0f766e;
+  --model: #a51f2e;
+  --planned: #6250d6;
+  --map-sea: oklch(0.975 0.006 240);
+  --map-land: oklch(0.935 0.006 250);
+  --map-land-core: oklch(0.995 0.002 250);
+  --map-land-home: oklch(0.93 0.035 250);
+  --map-stroke: oklch(0.78 0.012 250);
+  --map-grid: oklch(0.92 0.006 250);
+}
+
+/* Regional design tokens — dark. */
+.dark {
+  color-scheme: dark;
+  --surface-2: oklch(0.24 0.02 250);
+  --ink-2: oklch(0.82 0.01 250);
+  --border-strong: oklch(0.42 0.02 250);
+  --status-good: #34c759;
+  --status-warning: #fab219;
+  --status-serious: #ec835a;
+  --status-critical: #e05252;
+  --flow: #5fd4cf;
+  --model: #ff7a85;
+  --planned: #9f94f0;
+  --map-sea: oklch(0.15 0.02 250);
+  --map-land: oklch(0.2 0.018 250);
+  --map-land-core: oklch(0.25 0.02 250);
+  --map-land-home: oklch(0.3 0.05 250);
+  --map-stroke: oklch(0.38 0.02 250);
+  --map-grid: oklch(0.2 0.015 250);
 }
 
 @layer base {
@@ -113,9 +184,107 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
-    font-family:
-      -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-family: var(--font-sans);
     font-size: 14px;
     text-rendering: optimizeLegibility;
+  }
+}
+
+/* Small uppercase caption for panel titles, table heads and KPI labels. */
+@utility eyebrow {
+  font-family: var(--font-condensed);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+/* Tabular numerals for figures. */
+@utility num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+@keyframes flow-dash {
+  to {
+    stroke-dashoffset: -28;
+  }
+}
+@keyframes ip-pulse {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+@layer utilities {
+  .flow-animated {
+    stroke-dasharray: 2 12;
+    animation: flow-dash 1.6s linear infinite;
+  }
+  .flow-animated.reverse {
+    animation-direction: reverse;
+  }
+  .ip-pulse {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: ip-pulse 2.4s ease-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .flow-animated,
+    .ip-pulse {
+      animation: none;
+    }
+  }
+}
+
+/*
+ * Dark theme: existing components use light status tints (amber-50, emerald-700, …).
+ * Remap them once here so every page stays legible in dark mode without per-file edits.
+ */
+@layer utilities {
+  .dark :is(.bg-amber-50, .bg-amber-50\/50, .bg-amber-50\/80, .bg-amber-100) {
+    background-color: color-mix(in oklab, var(--status-warning) 14%, var(--card));
+  }
+  .dark :is(.bg-emerald-50, .bg-emerald-50\/50, .bg-emerald-50\/60, .bg-emerald-100) {
+    background-color: color-mix(in oklab, var(--status-good) 14%, var(--card));
+  }
+  .dark :is(.bg-rose-50\/50, .bg-rose-100, .bg-red-50) {
+    background-color: color-mix(in oklab, var(--status-critical) 14%, var(--card));
+  }
+  .dark :is(.bg-sky-50\/50, .bg-blue-50, .bg-slate-50, .bg-slate-100) {
+    background-color: var(--surface-2);
+  }
+  .dark :is(.border-amber-200, .border-amber-300, .ring-amber-100) {
+    border-color: color-mix(in oklab, var(--status-warning) 40%, transparent);
+    --tw-ring-color: color-mix(in oklab, var(--status-warning) 25%, transparent);
+  }
+  .dark :is(.border-emerald-200, .border-emerald-300, .ring-emerald-100) {
+    border-color: color-mix(in oklab, var(--status-good) 40%, transparent);
+    --tw-ring-color: color-mix(in oklab, var(--status-good) 25%, transparent);
+  }
+  .dark :is(.border-rose-200, .border-red-200, .ring-rose-100) {
+    border-color: color-mix(in oklab, var(--status-critical) 40%, transparent);
+    --tw-ring-color: color-mix(in oklab, var(--status-critical) 25%, transparent);
+  }
+  .dark :is(.border-sky-300, .border-slate-200) {
+    border-color: var(--border-strong);
+  }
+  .dark :is(.text-amber-700, .text-amber-800, .text-amber-900, .text-amber-950) {
+    color: var(--status-warning);
+  }
+  .dark :is(.text-emerald-700, .text-emerald-800, .text-emerald-900) {
+    color: var(--status-good);
+  }
+  .dark :is(.text-rose-700, .text-rose-800, .text-red-700, .text-red-800) {
+    color: var(--status-critical);
+  }
+  .dark :is(.text-blue-700, .text-blue-800, .text-slate-700) {
+    color: var(--ink-2);
   }
 }

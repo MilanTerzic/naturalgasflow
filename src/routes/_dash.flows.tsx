@@ -1,4 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { ArrowRight, Globe2 } from "lucide-react";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChartCard } from "@/components/dashboard/ChartCard";
@@ -99,6 +100,20 @@ function FlowsPage() {
         balance={balance}
         storage={latestStorage}
       />
+
+      <Link
+        to="/region"
+        className="group flex items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3 text-sm transition-colors hover:bg-accent"
+      >
+        <span className="flex items-center gap-2">
+          <Globe2 className="h-4 w-4 text-[var(--flow)]" aria-hidden="true" />
+          <span className="font-medium text-foreground">Balkan flow map</span>
+          <span className="hidden text-xs text-muted-foreground sm:inline">
+            Serbia in its regional context — TurkStream, IGB, Trans-Balkan, LNG and neighbouring borders from ENTSOG.
+          </span>
+        </span>
+        <ArrowRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+      </Link>
 
       {isGastransResidualOutlier(latestAllocation) && (
         <div role="alert" className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
