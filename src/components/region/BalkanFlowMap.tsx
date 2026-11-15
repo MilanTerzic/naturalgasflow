@@ -29,6 +29,15 @@ export interface MapLayers {
   animate: boolean;
   /** Firm technical / booked capacity drawn as casings around the flow line. */
   capacity: boolean;
+  /** Hub spot price tags under country names. */
+  prices: boolean;
+}
+
+export interface CountryBadge {
+  text: string;
+  /** "price" = own hub price, "ref" = reference hub, "none" = no price. */
+  tone: "price" | "ref" | "none";
+  title?: string;
 }
 
 /** Catmull-Rom → cubic Bézier through the corridor vertices. */
@@ -83,6 +92,7 @@ export function BalkanFlowMap({
   describe,
   className,
   overlay,
+  countryBadges,
 }: {
   values: Record<string, LinkValue>;
   selected: string | null;
@@ -94,6 +104,7 @@ export function BalkanFlowMap({
   describe: (id: string) => ReactNode;
   className?: string;
   overlay?: ReactNode;
+  countryBadges?: Record<string, CountryBadge>;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -290,6 +301,53 @@ export function BalkanFlowMap({
             {COUNTRY_LABEL[name] ?? name}
           </text>
         ))}
+
+        {layers.prices &&
+          countryBadges &&
+          Object.entries(countryBadges).map(([name, badge]) => {
+            const at = LABELS[name];
+            if (!at) return null;
+            const k = Math.max(scale, 0.6);
+            const w = (badge.text.length * 5.6 + 12) * k;
+            const h = 15 * k;
+            const [x, y] = [at[0], at[1] + 8 * k];
+            const fill =
+              badge.tone === "price"
+                ? "var(--primary)"
+                : badge.tone === "ref"
+                  ? "var(--card)"
+                  : "var(--surface-2)";
+            const ink =
+              badge.tone === "price" ? "var(--primary-foreground)" : "var(--muted-foreground)";
+            return (
+              <g key={`badge-${name}`} className="pointer-events-auto">
+                <title>{badge.title ?? badge.text}</title>
+                <rect
+                  x={x - w / 2}
+                  y={y}
+                  width={w}
+                  height={h}
+                  rx={h / 2}
+                  fill={fill}
+                  stroke={badge.tone === "price" ? "none" : "var(--border-strong)"}
+                  strokeWidth={0.8 * k}
+                  strokeDasharray={badge.tone === "none" ? `${2 * k} ${2 * k}` : undefined}
+                  opacity={0.95}
+                />
+                <text
+                  x={x}
+                  y={y + h * 0.7}
+                  textAnchor="middle"
+                  fontSize={9.5 * k}
+                  fontWeight={600}
+                  fill={ink}
+                  className="num"
+                >
+                  {badge.text}
+                </text>
+              </g>
+            );
+          })}
 
         {corridors.map((c) => {
           const d = PATHS[c.id];

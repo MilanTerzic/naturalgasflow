@@ -12,7 +12,14 @@ import {
   YAxis,
 } from "recharts";
 import { ChevronLeft, ChevronRight, Globe2, Pause, Play, RefreshCw } from "lucide-react";
-import { BalkanFlowMap, type MapLayers } from "@/components/region/BalkanFlowMap";
+import {
+  BalkanFlowMap,
+  type CountryBadge,
+  type MapLayers,
+} from "@/components/region/BalkanFlowMap";
+import { fetchGasPrices, type HubPrices } from "@/lib/data/gas-prices.functions";
+import { COUNTRY_PRICING, HUBS, type HubId } from "@/lib/prices/hubs";
+import type { PricePoint } from "@/lib/prices/parsers";
 import { Switch } from "@/components/ui/switch";
 import {
   fetchEntsogRegionalFlows,
@@ -81,6 +88,7 @@ const DEFAULT_LAYERS: MapLayers = {
   cities: true,
   animate: true,
   capacity: true,
+  prices: true,
 };
 
 function readLocal<T>(key: string, fallback: T): T {
@@ -207,6 +215,15 @@ function RegionPage() {
   });
   const regional = s.mode === "live" ? (regionalQuery.data?.corridors ?? null) : null;
   const capacity = s.mode === "live" ? (regionalQuery.data?.capacity ?? null) : null;
+  const pricesQuery = useQuery({
+    queryKey: ["gas-prices"],
+    queryFn: () => fetchGasPrices(),
+    enabled: s.mode === "live",
+    staleTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+  const hubPrices = s.mode === "live" ? (pricesQuery.data?.hubs ?? null) : null;
+  const countryBadges = useMemo(() => buildCountryBadges(hubPrices), [hubPrices]);
   const regionalState: RegionalStatus | "demo" | "loading" =
     s.mode !== "live"
       ? "demo"
@@ -503,6 +520,7 @@ function RegionPage() {
             colorFor={colorFor}
             formatValue={fmtShort}
             describe={describe}
+            countryBadges={countryBadges}
             overlay={
               <>
                 <div className="pointer-events-none absolute top-3 left-3 rounded-lg border bg-card/90 px-3 py-2 shadow-sm backdrop-blur">
@@ -743,6 +761,12 @@ function RegionPage() {
             </p>
           </section>
 
+          <HubPricesPanel
+            hubs={hubPrices}
+            loading={pricesQuery.isLoading}
+            demo={s.mode !== "live"}
+          />
+
           {sel && (
             <section className="rounded-xl border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
               <div className="flex items-start justify-between gap-2">
@@ -901,6 +925,7 @@ function RegionPage() {
                   ["cities", "Cities & storage"],
                   ["animate", "Flow animation"],
                   ["capacity", "Capacity casings"],
+                  ["prices", "Gas prices"],
                 ] as Array<[keyof MapLayers, string]>
               ).map(([k, label]) => (
                 <label
@@ -1254,5 +1279,126 @@ function CapacityBars({
         );
       })}
     </div>
+  );
+}
+
+/** Latest published point: newest date, ties resolved by publication order. */
+function latestPoint(points: PricePoint[] | undefined): PricePoint | null {
+  if (!points?.length) return null;
+  return points.reduce((best, p) => ((p.date ?? "") > (best.date ?? "") ? p : best), points[0]);
+}
+
+const fmtEur = (v: number) => v.toFixed(2);
+
+function buildCountryBadges(hubs: Record<HubId, HubPrices> | null): Record<string, CountryBadge> {
+  const out: Record<string, CountryBadge> = {};
+  for (const [country, pricing] of Object.entries(COUNTRY_PRICING)) {
+    const own = pricing.hub ? latestPoint(hubs?.[pricing.hub]?.points) : null;
+    if (pricing.hub && own) {
+      out[country] = {
+        text: `${pricing.hub} ${fmtEur(own.price)}`,
+        tone: "price",
+        title: `${HUBS[pricing.hub].name}: ${fmtEur(own.price)} €/MWh · ${own.label} · ${own.date ?? ""}`,
+      };
+      continue;
+    }
+    const ref = (pricing.reference ?? [])
+      .map((id) => ({ id, p: latestPoint(hubs?.[id]?.points) }))
+      .find((r) => r.p);
+    if (ref?.p) {
+      out[country] = {
+        text: `${pricing.hub ? `${pricing.hub} n/a` : "no hub"} · ref ${ref.id}`,
+        tone: "ref",
+        title: `${pricing.hub ? `${HUBS[pricing.hub].name}: no public feed.` : "No traded hub."} Reference only: ${HUBS[ref.id].name} ${fmtEur(ref.p.price)} €/MWh (${ref.p.date ?? ""}). Not a local price.`,
+      };
+      continue;
+    }
+    out[country] = {
+      text: pricing.hub ? `${pricing.hub} · no feed` : "no hub",
+      tone: "none",
+      title: pricing.hub ? HUBS[pricing.hub].reason : "No traded gas hub.",
+    };
+  }
+  return out;
+}
+
+function HubPricesPanel({
+  hubs,
+  loading,
+  demo,
+}: {
+  hubs: Record<HubId, HubPrices> | null;
+  loading: boolean;
+  demo: boolean;
+}) {
+  const order: HubId[] = ["TTF", "CEGH", "BGH", "CEEGEX", "HENEX", "BRM", "EPIAS"];
+  const ttf = latestPoint(hubs?.TTF.points);
+  const cegh = latestPoint(hubs?.CEGH.points);
+  return (
+    <section className="rounded-xl border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="flex items-center justify-between">
+        <h3 className="eyebrow">Hub spot prices</h3>
+        <span className="text-[10px] text-muted-foreground">€/MWh · latest published</span>
+      </div>
+      {demo ? (
+        <p className="mt-2 text-xs text-muted-foreground">Prices are fetched in live mode only.</p>
+      ) : (
+        <div className="mt-2 space-y-1">
+          {order.map((id) => {
+            const h = hubs?.[id];
+            const p = latestPoint(h?.points);
+            const state = loading ? "loading" : (h?.status ?? "loading");
+            return (
+              <div
+                key={id}
+                className="grid grid-cols-[1fr_auto] items-center gap-x-2 rounded-md px-1.5 py-1 text-xs"
+              >
+                <a
+                  href={HUBS[id].url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="truncate text-foreground hover:underline"
+                  title={h?.reason ?? HUBS[id].reason ?? HUBS[id].name}
+                >
+                  {HUBS[id].name}
+                </a>
+                <span className="num text-right font-semibold text-foreground">
+                  {p ? (
+                    fmtEur(p.price)
+                  ) : (
+                    <span className="text-[10px] font-normal text-muted-foreground">
+                      {state === "unavailable" ? "no feed" : state === "loading" ? "…" : state}
+                    </span>
+                  )}
+                </span>
+                {p && (
+                  <span className="col-span-2 text-[10px] text-muted-foreground">
+                    {p.label === p.date ? p.date : `${p.label} · ${p.date}`}
+                    {!p.final && " · provisional"}
+                    {h?.status === "stale" && " · stale"}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+          {ttf && cegh && (
+            <div className="mt-2 rounded-md border bg-background px-2.5 py-2 text-xs">
+              <span className="text-muted-foreground">CEGH − TTF spread </span>
+              <span className="num font-semibold text-foreground">
+                {(cegh.price - ttf.price >= 0 ? "+" : "") + (cegh.price - ttf.price).toFixed(2)}
+              </span>
+              <span className="text-[10px] text-muted-foreground">
+                {" "}
+                · CEGH {cegh.date} vs TTF {ttf.date}
+              </span>
+            </div>
+          )}
+          <p className="pt-1 text-[10px] leading-snug text-muted-foreground">
+            Only public, key-free sources. Hubs without a machine-readable public price show “no
+            feed”; countries without a hub show a reference hub, never as a local price.
+          </p>
+        </div>
+      )}
+    </section>
   );
 }
