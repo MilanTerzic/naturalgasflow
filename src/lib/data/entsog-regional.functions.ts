@@ -8,6 +8,13 @@ import { createServerFn } from "@tanstack/react-start";
 import { ENTSOG_POINT_DIRECTIONS } from "@/lib/gas/config";
 import { CORRIDORS } from "@/lib/region/registry";
 import {
+  ENTSOG_AGGREGATE_COUNTRIES,
+  SUPPLEMENTS,
+  applySupplements,
+  parseAggregated,
+  type NetComponents,
+} from "@/lib/region/net-position";
+import {
   combineCapacity,
   combineCorridor,
   parseOperatorPointDirection,
@@ -339,3 +346,92 @@ export const fetchEntsogRegionalFlows = createServerFn({ method: "POST" })
   .handler(async ({ data }) =>
     fetchRegional(data.from, data.to, data.indicator ?? "Physical Flow"),
   );
+
+// ------------------------------------------------------------------ country net positions
+
+export interface NetPositionsResponse {
+  status: "live" | "partial" | "error";
+  /** country → gas day → components (mcm/d, Physical Flow). */
+  countries: Record<string, Record<string, NetComponents>>;
+  failedCountries: string[];
+  fetchedAt: string;
+}
+
+const netCache = new Map<string, { at: number; res: NetPositionsResponse }>();
+
+async function fetchNetPositions(from: string, to: string): Promise<NetPositionsResponse> {
+  const key = `${from}|${to}`;
+  const cached = netCache.get(key);
+  if (cached && Date.now() - cached.at < DATA_TTL_MS) return cached.res;
+
+  const failedCountries: string[] = [];
+  const rows: Array<Record<string, unknown>> = [];
+  await pooled(
+    ENTSOG_AGGREGATE_COUNTRIES.map((country) => async () => {
+      const url =
+        `${BASE}/aggregatedData?countryKey=${country}&from=${from}&to=${to}` +
+        `&indicator=${encodeURIComponent("Physical Flow")}&periodType=day&limit=-1`;
+      try {
+        rows.push(...records(await getJson(url), ["aggregatedData", "aggregateddata"]));
+      } catch (err) {
+        failedCountries.push(country);
+        console.warn(`[ENTSOG net position] ${country} failed`, err);
+      }
+    }),
+    3,
+  );
+  const net = parseAggregated(rows);
+
+  // Points missing from the aggregates (Greek FSRU, TAP into DESFA).
+  const pds = Object.values(SUPPLEMENTS).flatMap((s) => s.map((x) => x.pointDirection));
+  if (pds.length) {
+    try {
+      const url =
+        `${BASE}/operationaldata.json?pointDirection=${pds.map(encodeURIComponent).join(",")}` +
+        `&from=${from}&to=${to}&indicator=${encodeURIComponent("Physical Flow")}&periodType=day&limit=-1`;
+      const indexed = indexOperationalRows(
+        records(await getJson(url), ["operationaldata", "operationalData"]),
+        "Physical Flow",
+        from,
+        to,
+        new Map(),
+        {},
+      );
+      const flows = new Map(
+        [...indexed].map(([pd, byDay]) => [pd, new Map([...byDay].map(([d, v]) => [d, v.value]))]),
+      );
+      applySupplements(net, flows);
+    } catch (err) {
+      console.warn("[ENTSOG net position] supplements failed", err);
+    }
+  }
+
+  const countries: NetPositionsResponse["countries"] = {};
+  for (const [c, byDay] of net) countries[c] = Object.fromEntries(byDay);
+  const res: NetPositionsResponse = {
+    status:
+      failedCountries.length === ENTSOG_AGGREGATE_COUNTRIES.length
+        ? "error"
+        : failedCountries.length
+          ? "partial"
+          : "live",
+    countries,
+    failedCountries,
+    fetchedAt: new Date().toISOString(),
+  };
+  if (res.status === "live") netCache.set(key, { at: Date.now(), res });
+  if (res.status === "error" && cached) return cached.res;
+  return res;
+}
+
+export const fetchEntsogNetPositions = createServerFn({ method: "POST" })
+  .inputValidator((d: { from: string; to: string }) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d.from) || !/^\d{4}-\d{2}-\d{2}$/.test(d.to)) {
+      throw new Error("from/to must be YYYY-MM-DD");
+    }
+    return d;
+  })
+  .handler(async ({ data }) => {
+    const r = clampRange(data.from, data.to);
+    return fetchNetPositions(r.from, r.to);
+  });

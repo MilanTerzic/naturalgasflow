@@ -23,10 +23,13 @@ import {
   type HubPrices,
 } from "@/lib/data/gas-prices.functions";
 import { ExchangeDetail } from "@/components/region/ExchangeDetail";
+import { NetPositionPanel } from "@/components/region/NetPositionPanel";
+import { buildNetRows } from "@/lib/region/net-position-view";
 import { COUNTRY_PRICING, HUBS, type HubId } from "@/lib/prices/hubs";
 import type { PricePoint } from "@/lib/prices/parsers";
 import { Switch } from "@/components/ui/switch";
 import {
+  fetchEntsogNetPositions,
   fetchEntsogRegionalFlows,
   type RegionalStatus,
 } from "@/lib/data/entsog-regional.functions";
@@ -94,6 +97,7 @@ const DEFAULT_LAYERS: MapLayers = {
   animate: true,
   capacity: true,
   prices: true,
+  netPosition: true,
 };
 
 function readLocal<T>(key: string, fallback: T): T {
@@ -252,6 +256,44 @@ function RegionPage() {
   const values = useMemo(
     () => buildLinkValues({ mode, date, rows, balance, primary: series, regional, capacity }),
     [mode, date, rows, balance, series, regional, capacity],
+  );
+
+  const netQuery = useQuery({
+    queryKey: ["entsog-net", dates[0], today],
+    queryFn: () => fetchEntsogNetPositions({ data: { from: dates[0], to: today } }),
+    enabled: s.mode === "live" && Boolean(dates[0]),
+    staleTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+  const netRows = useMemo(
+    () =>
+      buildNetRows({
+        mode,
+        date,
+        days,
+        entsog: s.mode === "live" ? (netQuery.data?.countries ?? null) : null,
+        values,
+        balance,
+      }),
+    [mode, date, days, s.mode, netQuery.data, values, balance],
+  );
+  const netBadges = useMemo(
+    () =>
+      s.mode !== "live"
+        ? undefined
+        : Object.fromEntries(
+            netRows
+              .filter((r) => r.c)
+              .map((r) => [
+                r.mapName,
+                {
+                  text: `net ${(unit === "gwh" ? r.c!.net * CONVERSION_MCM_TO_GWH : r.c!.net).toFixed(unit === "gwh" ? 0 : 1)}`,
+                  tone: "ref" as const,
+                  title: `${r.label} net position (${r.source}): imports + storage + production + LNG − exports`,
+                },
+              ]),
+          ),
+    [netRows, s.mode, unit],
   );
 
   const toUnit = (mcm: number) => (unit === "gwh" ? mcm * CONVERSION_MCM_TO_GWH : mcm);
@@ -552,6 +594,7 @@ function RegionPage() {
             formatValue={fmtShort}
             describe={describe}
             countryBadges={countryBadges}
+            netBadges={netBadges}
             overlay={
               <>
                 <div className="pointer-events-none absolute top-3 left-3 rounded-lg border bg-card/90 px-3 py-2 shadow-sm backdrop-blur">
@@ -792,6 +835,16 @@ function RegionPage() {
             </p>
           </section>
 
+          <NetPositionPanel
+            rows={netRows}
+            fmt={fmt}
+            unitLabel={unitLabel}
+            heading={mode === "day" ? `gas day ${date ?? ""}` : "period avg"}
+            loading={netQuery.isLoading}
+            demo={s.mode !== "live"}
+            failed={netQuery.data?.failedCountries ?? []}
+          />
+
           <HubPricesPanel
             hubs={hubPrices}
             loading={pricesQuery.isLoading}
@@ -960,6 +1013,7 @@ function RegionPage() {
                   ["animate", "Flow animation"],
                   ["capacity", "Capacity casings"],
                   ["prices", "Gas prices"],
+                  ["netPosition", "Net position"],
                 ] as Array<[keyof MapLayers, string]>
               ).map(([k, label]) => (
                 <label

@@ -31,6 +31,8 @@ export interface MapLayers {
   capacity: boolean;
   /** Hub spot price tags under country names. */
   prices: boolean;
+  /** Country net position (imports + storage + production + LNG − exports) tags. */
+  netPosition: boolean;
 }
 
 export interface CountryBadge {
@@ -93,6 +95,7 @@ export function BalkanFlowMap({
   className,
   overlay,
   countryBadges,
+  netBadges,
 }: {
   values: Record<string, LinkValue>;
   selected: string | null;
@@ -105,6 +108,8 @@ export function BalkanFlowMap({
   className?: string;
   overlay?: ReactNode;
   countryBadges?: Record<string, CountryBadge>;
+  /** Second row of tags (net position), keyed by map country name. */
+  netBadges?: Record<string, CountryBadge>;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -302,15 +307,20 @@ export function BalkanFlowMap({
           </text>
         ))}
 
-        {layers.prices &&
-          countryBadges &&
-          Object.entries(countryBadges).map(([name, badge]) => {
+        {(
+          [
+            [layers.prices ? countryBadges : undefined, 0],
+            [layers.netPosition ? netBadges : undefined, 1],
+          ] as const
+        ).flatMap(([set, rowIdx]) =>
+          Object.entries(set ?? {}).map(([name, badge]) => {
+            const row = rowIdx === 1 && layers.prices && countryBadges?.[name] ? 1 : 0;
             const at = LABELS[name];
             if (!at) return null;
             const k = Math.max(scale, 0.6);
             const w = (badge.text.length * 5.6 + 12) * k;
             const h = 15 * k;
-            const [x, y] = [at[0], at[1] + 8 * k];
+            const [x, y] = [at[0], at[1] + 8 * k + row * 17 * k];
             const fill =
               badge.tone === "price"
                 ? "var(--primary)"
@@ -320,7 +330,7 @@ export function BalkanFlowMap({
             const ink =
               badge.tone === "price" ? "var(--primary-foreground)" : "var(--muted-foreground)";
             return (
-              <g key={`badge-${name}`} className="pointer-events-auto">
+              <g key={`badge-${rowIdx}-${name}`} className="pointer-events-auto">
                 <title>{badge.title ?? badge.text}</title>
                 <rect
                   x={x - w / 2}
@@ -347,7 +357,8 @@ export function BalkanFlowMap({
                 </text>
               </g>
             );
-          })}
+          }),
+        )}
 
         {corridors.map((c) => {
           const d = PATHS[c.id];
