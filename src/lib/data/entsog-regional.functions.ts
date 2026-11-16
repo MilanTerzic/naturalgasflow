@@ -6,6 +6,7 @@
 // map draws them as "no data".
 import { createServerFn } from "@tanstack/react-start";
 import { ENTSOG_POINT_DIRECTIONS } from "@/lib/gas/config";
+import { CORRIDORS } from "@/lib/region/registry";
 import {
   combineCapacity,
   combineCorridor,
@@ -16,6 +17,7 @@ import {
   type CorridorCapacity,
   type CorridorSelection,
   type RegionalCorridorSeries,
+  indexOperationalRows,
   type RegionalPointRef,
 } from "@/lib/region/regional-feed";
 
@@ -167,30 +169,7 @@ async function fetchIndicator(
           "operationalData",
           "operationaldatas",
         ]);
-        for (const row of rows) {
-          const pd = String(
-            row.pointDirection ??
-              `${row.operatorKey ?? ""}${row.pointKey ?? ""}${row.directionKey ?? ""}`,
-          )
-            .toLowerCase()
-            .replace(/\s+/g, "");
-          const date = typeof row.periodFrom === "string" ? row.periodFrom.slice(0, 10) : null;
-          const raw =
-            typeof row.value === "number" ? row.value : row.value == null ? NaN : Number(row.value);
-          if (!date || !Number.isFinite(raw)) continue;
-          const mcm = toMcmPerDay(raw, row.unit as string | undefined);
-          if (mcm === null) {
-            const unit = `${String(row.unit ?? "(blank)")} (${indicator})`;
-            diagnostics.droppedUnits[unit] = (diagnostics.droppedUnits[unit] ?? 0) + 1;
-            continue;
-          }
-          // Keep the latest revision for each gas day.
-          const updated = String(row.lastUpdateDateTime ?? "");
-          const byDate = latest.get(pd) ?? new Map();
-          const prev = byDate.get(date);
-          if (!prev || updated >= prev.updated) byDate.set(date, { value: mcm, updated });
-          latest.set(pd, byDate);
-        }
+        indexOperationalRows(rows, indicator, from, to, latest, diagnostics.droppedUnits);
       } catch (err) {
         if (isFlow) diagnostics.failedRequests += 1;
         else diagnostics.failedCapacityRequests += 1;
@@ -231,6 +210,26 @@ async function fetchRegional(
     const { refs, total } = await loadReferential();
     diagnostics.referentialRecords = total;
     const selection = selectCorridorPoints(refs);
+    // Corridors bound to explicit ENTSOG point directions (TAP) bypass label matching.
+    for (const c of CORRIDORS) {
+      if (!c.entsog) continue;
+      const ref = (pd: string): RegionalPointRef => ({
+        pointDirection: pd,
+        label: c.name,
+        country: "CH",
+        adjacent: null,
+        direction: pd.endsWith("exit") ? "exit" : "entry",
+        operator: "TAP",
+      });
+      const fwd = c.entsog.forward.map(ref);
+      const rev = (c.entsog.reverse ?? []).map(ref);
+      selection[c.id] = {
+        forwardExit: fwd.filter((r) => r.direction === "exit"),
+        forwardEntry: fwd.filter((r) => r.direction === "entry"),
+        reverseExit: rev.filter((r) => r.direction === "exit"),
+        reverseEntry: rev.filter((r) => r.direction === "entry"),
+      };
+    }
     const pds = [
       ...new Set(
         Object.values(selection).flatMap((sel) =>

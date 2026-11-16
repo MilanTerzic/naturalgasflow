@@ -132,10 +132,19 @@ test("capacity uses the exit side when it publishes technical capacity, else the
     reverseEntry: [],
   };
   const technical = new Map([["bg-entry", new Map([["2026-11-01", 50]])]]);
-  const booked = new Map([["bg-entry", new Map([["2026-11-01", 45]])], ["tr-exit", new Map([["2026-11-01", 99]])]]);
+  const booked = new Map([
+    ["bg-entry", new Map([["2026-11-01", 45]])],
+    ["tr-exit", new Map([["2026-11-01", 99]])],
+  ]);
   const cap = combineCapacity("tr_bg_str", sel, technical, booked);
   assert.deepEqual(cap.days, [
-    { date: "2026-11-01", forwardTechnical: 50, forwardBooked: 45, reverseTechnical: null, reverseBooked: null },
+    {
+      date: "2026-11-01",
+      forwardTechnical: 50,
+      forwardBooked: 45,
+      reverseTechnical: null,
+      reverseBooked: null,
+    },
   ]);
   assert.equal(combineCapacity("tr_bg_str", sel, new Map(), booked), null);
 });
@@ -154,4 +163,90 @@ test("country fields are accepted as ISO codes or English names; operator prefix
   });
   assert.equal(parsed.country, "GR");
   assert.equal(parsed.adjacent, "BG");
+});
+
+// ------------------------------------------------------------------ real ENTSOG rows (captured)
+import { readFileSync as readFixture } from "node:fs";
+import { expandPeriod, indexOperationalRows } from "../src/lib/region/regional-feed.ts";
+import { CORRIDOR_BY_ID } from "../src/lib/region/registry.ts";
+
+const entsog = JSON.parse(
+  readFixture(new URL("./fixtures/entsog-tap-capacity-20261116.json", import.meta.url), "utf8"),
+);
+
+test("expandPeriod: validity periods become gas days, clipped, end exclusive", () => {
+  assert.deepEqual(expandPeriod("2026-11-14", "2026-11-15", "2026-11-10", "2026-11-15"), [
+    "2026-11-14",
+  ]);
+  assert.deepEqual(expandPeriod("2026-10-01", "2041-10-01", "2026-11-13", "2026-11-15"), [
+    "2026-11-13",
+    "2026-11-14",
+    "2026-11-15",
+  ]);
+  assert.deepEqual(expandPeriod("2026-11-07", "2026-11-12", "2026-11-10", "2026-11-15"), [
+    "2026-11-10",
+    "2026-11-11",
+  ]);
+  assert.deepEqual(expandPeriod("2026-11-20", "2026-11-24", "2026-11-10", "2026-11-15"), []);
+});
+
+test("captured ENTSOG capacity periods fill every gas day (TAP, Kireevo, Kalotina)", () => {
+  const dropped = {};
+  const tech = indexOperationalRows(
+    entsog["Firm Technical"],
+    "Firm Technical",
+    "2026-11-10",
+    "2026-11-15",
+    new Map(),
+    dropped,
+  );
+  const booked = indexOperationalRows(
+    entsog["Firm Booked"],
+    "Firm Booked",
+    "2026-11-10",
+    "2026-11-15",
+    new Map(),
+    dropped,
+  );
+  const mcm = (m, pd, d) => +m.get(pd).get(d).value.toFixed(2);
+  // Kipoi: 390 GWh/d technical valid 2026-10-25 → 2028-12-31, applies to every day in window.
+  for (const d of ["2026-11-10", "2026-11-14", "2026-11-15"])
+    assert.equal(mcm(tech, "al-tso-0001itp-00274entry", d), 36.97);
+  // Kalotina: 53.16 GWh/d ≈ 5.04 mcm/d (matches the "5" in the GY 25/26 table).
+  assert.equal(mcm(tech, "bg-tso-0001itp-00134exit", "2026-11-14"), 5.04);
+  assert.equal(mcm(tech, "bg-tso-0001itp-00529exit", "2026-11-14"), 38.72);
+  // Nea Mesimvria technical changes on 11-11: the period starting latest wins from then on.
+  assert.equal(mcm(tech, "al-tso-0001itp-00427exit", "2026-11-10"), 6.48);
+  assert.equal(mcm(tech, "al-tso-0001itp-00427exit", "2026-11-11"), 7.0);
+  // Melendugno booked: gap on 11-12 in this subset stays empty, never filled.
+  assert.equal(booked.get("al-tso-0001itp-00008exit").has("2026-11-12"), false);
+  assert.equal(mcm(booked, "al-tso-0001itp-00008exit", "2026-11-14"), 31.21);
+  // "" values (dead reverse directions) are missing, not zero.
+  assert.equal(tech.has("al-tso-0001itp-00275entry"), false);
+  assert.deepEqual(dropped, {});
+});
+
+test("captured flows: real zero kept, empty string dropped", () => {
+  const flows = indexOperationalRows(
+    entsog["Physical Flow"],
+    "Physical Flow",
+    "2026-11-10",
+    "2026-11-15",
+    new Map(),
+    {},
+  );
+  assert.equal(+flows.get("al-tso-0001itp-00274entry").get("2026-11-14").value.toFixed(2), 37.55);
+  assert.equal(flows.get("al-tso-0001itp-00427entry").get("2026-11-14").value, 0);
+  assert.equal(flows.has("al-tso-0001itp-00275entry"), false);
+});
+
+test("TAP corridors are bound to TAP's ENTSOG point directions (TSO registered in CH)", () => {
+  assert.deepEqual(CORRIDOR_BY_ID.tap_kipoi.entsog.forward, ["al-tso-0001itp-00274entry"]);
+  assert.deepEqual(CORRIDOR_BY_ID.gr_al_tap.entsog.forward, ["al-tso-0001itp-00008exit"]);
+  assert.deepEqual(CORRIDOR_BY_ID.tap_komotini.entsog.forward, ["al-tso-0001itp-00275exit"]);
+  assert.deepEqual(CORRIDOR_BY_ID.tap_nm.entsog.forward, ["al-tso-0001itp-00427exit"]);
+  // No keyword matching for TAP any more (it would catch DESFA's Nea Mesimvria).
+  assert.ok(
+    !matchCorridors("Nea Mesimvria").some((c) => c.id.startsWith("tap") || c.id === "gr_al_tap"),
+  );
 });

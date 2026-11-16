@@ -358,3 +358,79 @@ export function combineCapacity(
     })),
   };
 }
+
+// ------------------------------------------------------------------ operational rows
+
+/**
+ * Gas days covered by an ENTSOG row: [periodFrom, periodTo) clipped to [from, to].
+ * A daily row (periodTo = next day, or missing) covers just its own day.
+ */
+export function expandPeriod(
+  start: string,
+  end: string | null,
+  from: string,
+  to: string,
+): string[] {
+  const dayMs = 86_400_000;
+  const startMs = Date.parse(`${start}T00:00:00Z`);
+  const endMs = end ? Date.parse(`${end}T00:00:00Z`) : startMs + dayMs;
+  if (!(endMs > startMs)) return start >= from && start <= to ? [start] : [];
+  const lo = Math.max(startMs, Date.parse(`${from}T00:00:00Z`));
+  const hi = Math.min(endMs - dayMs, Date.parse(`${to}T00:00:00Z`));
+  const out: string[] = [];
+  for (let t = lo; t <= hi && out.length < 400; t += dayMs)
+    out.push(new Date(t).toISOString().slice(0, 10));
+  return out;
+}
+
+export type IndexedRows = Map<string, Map<string, { value: number; updated: string }>>;
+
+/**
+ * Indexes ENTSOG operationaldata rows by point direction → gas day → mcm/d.
+ * - The key is rebuilt as lower(operatorKey + pointKey + directionKey).
+ * - "" / null values are missing, never zero.
+ * - Capacity rows are validity periods (periodFrom → periodTo, e.g. a firm technical value
+ *   valid 2026-10-01 → 2041-10-01): every gas day in the period, clipped to [from, to],
+ *   gets the value; where periods overlap, the one starting latest wins, then the latest
+ *   revision.
+ */
+export function indexOperationalRows(
+  rows: Array<Record<string, unknown>>,
+  indicator: string,
+  from: string,
+  to: string,
+  into: IndexedRows,
+  droppedUnits: Record<string, number>,
+): IndexedRows {
+  for (const row of rows) {
+    const pd = String(
+      row.pointDirection ??
+        `${row.operatorKey ?? ""}${row.pointKey ?? ""}${row.directionKey ?? ""}`,
+    )
+      .toLowerCase()
+      .replace(/\s+/g, "");
+    const date = typeof row.periodFrom === "string" ? row.periodFrom.slice(0, 10) : null;
+    const raw =
+      typeof row.value === "number"
+        ? row.value
+        : row.value == null || String(row.value).trim() === ""
+          ? NaN
+          : Number(row.value);
+    if (!date || !Number.isFinite(raw)) continue;
+    const mcm = toMcmPerDay(raw, row.unit as string | undefined);
+    if (mcm === null) {
+      const unit = `${String(row.unit ?? "(blank)")} (${indicator})`;
+      droppedUnits[unit] = (droppedUnits[unit] ?? 0) + 1;
+      continue;
+    }
+    const end = typeof row.periodTo === "string" ? row.periodTo.slice(0, 10) : null;
+    const rank = `${date}|${String(row.lastUpdateDateTime ?? "")}`;
+    const byDate = into.get(pd) ?? new Map();
+    for (const day of expandPeriod(date, end, from, to)) {
+      const prev = byDate.get(day);
+      if (!prev || rank >= prev.updated) byDate.set(day, { value: mcm, updated: rank });
+    }
+    into.set(pd, byDate);
+  }
+  return into;
+}

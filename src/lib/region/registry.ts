@@ -30,6 +30,13 @@ export interface Corridor {
   keywords?: string[];
   lng?: boolean;
   note?: string;
+  /**
+   * Explicit ENTSOG point directions (lower-case operatorKey+pointKey+direction), used
+   * instead of keyword/country matching. Needed for TAP, which ENTSOG registers as a
+   * Swiss TSO (AL-TSO-0001, country CH), so country-pair matching can never find it.
+   * forward = flow in the line's drawn direction; reverse = the opposite direction.
+   */
+  entsog?: { forward: string[]; reverse?: string[] };
 }
 
 export const CORRIDORS: Corridor[] = [
@@ -208,15 +215,55 @@ export const CORRIDORS: Corridor[] = [
     keywords: ["kipi"],
     note: "Turkey–Greece.",
   },
+  // TAP — Trans Adriatic Pipeline (ENTSOG operator AL-TSO-0001 "TAP", registered in CH).
+  {
+    id: "tap_kipoi",
+    name: "TAP · Kipoi entry (from TANAP)",
+    group: "regional",
+    from: "TR",
+    to: "GR",
+    ip: 1,
+    entsog: { forward: ["al-tso-0001itp-00274entry"] },
+    note: "Azeri gas entering TAP from TANAP at the Turkish–Greek border.",
+  },
   {
     id: "gr_al_tap",
-    name: "TAP · Greece → Albania",
+    name: "TAP · Melendugno exit to Italy",
     group: "regional",
     from: "GR",
     to: "AL",
-    ip: 4,
-    keywords: ["tap", "nea mesimvria", "bilisht", "fier"],
-    note: "Trans Adriatic Pipeline.",
+    ip: 9,
+    entsog: {
+      forward: ["al-tso-0001itp-00008exit"],
+      reverse: ["al-tso-0001itp-00008entry"],
+    },
+    note: "TAP flow delivered to SNAM at Melendugno (Greece → Albania → Italy).",
+  },
+  {
+    id: "tap_komotini",
+    name: "TAP → IGB · Komotini",
+    group: "regional",
+    from: "GR",
+    to: "BG",
+    ip: 0,
+    entsog: {
+      forward: ["al-tso-0001itp-00275exit"],
+      reverse: ["al-tso-0001itp-00275entry"],
+    },
+    note: "TAP gas handed to IGB towards Bulgaria (and on to Serbia).",
+  },
+  {
+    id: "tap_nm",
+    name: "TAP → DESFA · Nea Mesimvria",
+    group: "regional",
+    from: "GR",
+    to: "GR",
+    ip: 0,
+    entsog: {
+      forward: ["al-tso-0001itp-00427exit"],
+      reverse: ["al-tso-0001itp-00427entry"],
+    },
+    note: "TAP gas handed to the Greek grid (DESFA) near Thessaloniki.",
   },
   {
     id: "bg_mk_zid",
