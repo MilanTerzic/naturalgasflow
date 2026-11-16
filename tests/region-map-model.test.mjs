@@ -91,6 +91,17 @@ test("regional values are signed net flows for the selected day", () => {
   );
 });
 
+test("HU–SK interconnection is shown from regional data, never inferred when missing", () => {
+  const date = "2026-11-16";
+  const values = buildLinkValues({
+    mode: "day", date, rows: [], balance: [], primary: "physical_flow",
+    regional: { hu_sk_bal: { id: "hu_sk_bal", points: [], days: [{ date, forward: 3, reverse: 5, net: -2 }] } },
+  });
+  assert.equal(values.hu_sk_bal.value, -2); // SK → HU signed reverse flow
+  assert.equal(values.hu_sk_bal.status, "actual");
+  assert.equal(values.at_hu_mos.value, null); // no invented values for other HU points
+});
+
 test("line width grows with volume and is capped", () => {
   assert.ok(linkWidth(10, 40) < linkWidth(40, 40));
   assert.equal(linkWidth(80, 40), linkWidth(40, 40));

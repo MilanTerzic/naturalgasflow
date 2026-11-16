@@ -91,6 +91,8 @@ const geo = {
   ZID: [22.58, 42.27],
   ISAC: [28.46, 45.27],
   MOS: [17.27, 47.88],
+  // Hungary–Slovakia gas IP: coordinates from the bilateral pipeline agreement.
+  BAL: [19.313333, 48.086056],
   BER: [22.55, 48.2],
   BIL: [20.99, 40.62],
   FIER: [19.56, 40.72],
@@ -279,6 +281,12 @@ const L = {
     [17.27, 47.88],
     [17.95, 47.7],
     [18.65, 47.55],
+  ],
+  hu_sk_bal: [
+    [19.42, 47.63],
+    [19.37, 47.83],
+    [19.313333, 48.086056], // HU–SK border crossing (Balassagyarmat / Veľké Zlievce)
+    [19.28, 48.2],
   ],
   ua_hu_ber: [
     [22.95, 48.45],

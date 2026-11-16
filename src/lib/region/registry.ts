@@ -4,7 +4,7 @@
 import type { FlowPointName } from "../gas/types";
 
 export type CountryCode =
-  "RS" | "HU" | "BG" | "RO" | "HR" | "SI" | "GR" | "MK" | "AL" | "BA" | "ME" | "TR" | "UA" | "AT";
+  "RS" | "HU" | "BG" | "RO" | "HR" | "SI" | "SK" | "GR" | "MK" | "AL" | "BA" | "ME" | "TR" | "UA" | "AT";
 
 /**
  * serbia   – bound to the dashboard's own ENTSOG Allocation / Physical Flow series
@@ -294,6 +294,16 @@ export const CORRIDORS: Corridor[] = [
     ip: 1,
     keywords: ["mosonmagyarovar"],
     note: "Austria–Hungary (HAG).",
+  },
+  {
+    id: "hu_sk_bal",
+    name: "Balassagyarmat / Veľké Zlievce",
+    group: "regional",
+    from: "HU",
+    to: "SK",
+    ip: 2,
+    keywords: ["balassagyarmat", "velke zlievce"],
+    note: "Bidirectional Hungary–Slovakia interconnector (FGSZ / Eustream). Positive values indicate HU → SK; negative values SK → HU.",
   },
   {
     id: "ua_hu_ber",
