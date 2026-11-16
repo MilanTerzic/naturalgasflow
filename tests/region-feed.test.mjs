@@ -39,6 +39,26 @@ test("labels match corridors without diacritics; short keywords are whole words"
   assert.equal(matchCorridors("Kapitan Andreevo").length, 0);
 });
 
+test("Balassagyarmat / Veľké Zlievce matches both labels without double counting either TSO", () => {
+  assert.deepEqual(matchCorridors("Balassagyarmat (HU) / Veľké Zlievce (SK)").map((c) => c.id), ["hu_sk_bal"]);
+  assert.deepEqual(matchCorridors("Veľké Zlievce").map((c) => c.id), ["hu_sk_bal"]);
+  const sel = selectCorridorPoints([
+    ref("Balassagyarmat", "HU", "exit", "hu-exit", "SK"),
+    ref("Veľké Zlievce", "SK", "entry", "sk-entry", "HU"),
+    ref("Balassagyarmat", "HU", "entry", "hu-entry", "SK"),
+    ref("Veľké Zlievce", "SK", "exit", "sk-exit", "HU"),
+  ]);
+  assert.deepEqual(sel.hu_sk_bal.forwardExit.map((r) => r.pointDirection), ["hu-exit"]);
+  assert.deepEqual(sel.hu_sk_bal.forwardEntry.map((r) => r.pointDirection), ["sk-entry"]);
+  assert.deepEqual(sel.hu_sk_bal.reverseExit.map((r) => r.pointDirection), ["sk-exit"]);
+  const combined = combineCorridor("hu_sk_bal", sel.hu_sk_bal, new Map([
+    ["hu-exit", new Map([["2026-11-16", 8]])],
+    ["sk-entry", new Map([["2026-11-16", 8]])],
+    ["sk-exit", new Map([["2026-11-16", 2]])],
+  ]));
+  assert.equal(combined.days[0].net, 6); // exit preferred to matching entry, not 14
+});
+
 test("operator point direction records are keyed like the dashboard ENTSOG keys", () => {
   const parsed = parseOperatorPointDirection({
     operatorKey: "BG-TSO-0001",
