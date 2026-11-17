@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Excerpt of https://curs.bnr.ro/nbrfxrates10days.xml captured 2026-11-17 (USD/EUR/HUF kept, other currencies removed). -->
+<DataSet xmlns="https://www.bnr.ro/xsd" xmlns:xsi="https://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="https://curs.bnr.ro/xsd/nbrfxrates.xsd"><Header><Publisher>National Bank of Romania</Publisher><PublishingDate>2026-11-17</PublishingDate><MessageType>DR</MessageType></Header><Body><Subject>Reference rates</Subject><OrigCurrency>RON</OrigCurrency><Cube date="2026-11-17"><Rate currency="USD">4.8665</Rate><Rate currency="EUR">5.3485</Rate><Rate currency="HUF" multiplier="100">1.4663</Rate></Cube>
+<Cube date="2026-11-16"><Rate currency="USD">4.8600</Rate><Rate currency="EUR">5.3494</Rate><Rate currency="HUF" multiplier="100">1.4662</Rate></Cube>
+<Cube date="2026-11-13"><Rate currency="USD">4.8428</Rate><Rate currency="EUR">5.3498</Rate><Rate currency="HUF" multiplier="100">1.4619</Rate></Cube>
+<Cube date="2026-11-12"><Rate currency="USD">4.8155</Rate><Rate currency="EUR">5.3459</Rate><Rate currency="HUF" multiplier="100">1.4683</Rate></Cube>
+<Cube date="2026-11-11"><Rate currency="USD">4.7991</Rate><Rate currency="EUR">5.3460</Rate><Rate currency="HUF" multiplier="100">1.4639</Rate></Cube>
+<Cube date="2026-11-10"><Rate currency="USD">4.7617</Rate><Rate currency="EUR">5.3443</Rate><Rate currency="HUF" multiplier="100">1.4736</Rate></Cube>
+<Cube date="2026-11-09"><Rate currency="USD">4.7734</Rate><Rate currency="EUR">5.3426</Rate><Rate currency="HUF" multiplier="100">1.4722</Rate></Cube>
+<Cube date="2026-11-06"><Rate currency="USD">4.7795</Rate><Rate currency="EUR">5.3408</Rate><Rate currency="HUF" multiplier="100">1.4662</Rate></Cube>
+<Cube date="2026-11-05"><Rate currency="USD">4.7556</Rate><Rate currency="EUR">5.3398</Rate><Rate currency="HUF" multiplier="100">1.4708</Rate></Cube>
+<Cube date="2026-11-04"><Rate currency="USD">4.7518</Rate><Rate currency="EUR">5.3443</Rate><Rate currency="HUF" multiplier="100">1.4704</Rate></Cube></Body></DataSet>

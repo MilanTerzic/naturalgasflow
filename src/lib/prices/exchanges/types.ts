@@ -112,7 +112,9 @@ export const MARKET_META: Record<ExchangeMarket, MarketMeta> = {
     market: "BRM",
     country: "RO",
     name: "BRM (Romanian Commodities Exchange)",
-    benchmarks: ["PMP_GLOBAL", "VWAP"],
+    // Day-Ahead ring VWAP only; PMP_GLOBAL (blends weekend/Monday contracts) is stored
+    // separately and never shown as the DA price.
+    benchmarks: ["VWAP"],
     sourcePage: "https://brm.ro/PIATA-SPOT-GN/",
     timeZone: "Europe/Bucharest",
     publishAfter: "16:00",

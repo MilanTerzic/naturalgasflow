@@ -35,7 +35,12 @@ import {
   parseBghPage,
   previousWeekday,
 } from "../src/lib/prices/exchanges/bgh.ts";
-import { brmFieldMap, parseBnrRates, parseBrm, rateFor } from "../src/lib/prices/exchanges/brm.ts";
+import {
+  brmDaDelivery,
+  parseBnrRates,
+  parseBrm,
+  rateFor,
+} from "../src/lib/prices/exchanges/brm.ts";
 import { henexDatesToFetch, runProvider, summarise } from "../src/lib/prices/exchanges/run.ts";
 import { fromRow, toRow } from "../src/lib/prices/exchanges/store.server.ts";
 import { ExchangeDetail } from "../src/components/region/ExchangeDetail.tsx";
@@ -349,86 +354,67 @@ test("BGH fetch: replays the page request with type=DA and CSRF", async () => {
 });
 
 // ------------------------------------------------------------------ BRM
+// BRM/BNR fixtures are REAL: dayaheadgas.brm.ro/gassstats/quotes (fields used by the page
+// kept, others dropped) and curs.bnr.ro/nbrfxrates10days.xml (EUR/USD/HUF kept), both
+// captured 2026-11-17. Expected values are those shown in BRM's on-screen "Cotații" table.
 
-const bnrXml = `<DataSet><Body><Cube date="2026-11-12"><Rate currency="EUR">5.0812</Rate></Cube>
-<Cube date="2026-11-13"><Rate currency="USD">4.40</Rate><Rate currency="EUR">5.0850</Rate></Cube></Body></DataSet>`;
+const brmQuotes = () => JSON.parse(bghFixture("brm-quotes-20261117.json"));
+const bnrRates = () => parseBnrRates(bghFixture("bnr-10days-20261117.xml"));
 
-test("BRM: RON converted with the BNR fixing of the trading day; original kept", () => {
-  const rates = parseBnrRates(bnrXml);
-  assert.equal(rates.get("2026-11-13"), 5.085);
-  assert.deepEqual(rateFor(rates, "2026-11-15"), { rate: 5.085, date: "2026-11-13" }); // weekend → Friday
-  assert.equal(rateFor(rates, "2026-11-30"), null); // too far from any fixing
-  const recs = [
-    {
-      quoteDate: "2026-11-13T00:00:00",
-      deliveryDate: "2026-11-14",
-      weightedAveragePrice: 470.25,
-      quantity: 12000,
-      trades: 18,
-    },
-    {
-      quoteDate: "2026-11-13T00:00:00",
-      deliveryDate: "2026-11-15",
-      weightedAveragePrice: "-",
-      quantity: 0,
-      trades: 0,
-    },
-  ];
-  const r = parseBrm(recs, { metric: "VWAP", ...ctx, rates });
-  assert.equal(r.status, "OK");
-  assert.equal(r.observations.length, 1);
-  const o = r.observations[0];
-  assert.equal(o.originalPrice, 470.25);
-  assert.equal(o.originalCurrency, "RON");
-  assert.equal(o.fxRate, 5.085);
-  assert.equal(o.priceEurMwh, +(470.25 / 5.085).toFixed(3));
-  assert.equal(o.deliveryDate, "2026-11-14");
+test("BNR: rates from curs.bnr.ro; no same-day rate on a business day → wait", () => {
+  const rates = bnrRates();
+  assert.equal(rates.get("2026-11-17"), 5.3485);
+  assert.equal(rates.size, 10);
+  assert.deepEqual(rateFor(rates, "2026-11-15"), { rate: 5.3498, date: "2026-11-13" }); // Sunday
+  assert.deepEqual(rateFor(rates, "2026-11-14"), { rate: 5.3498, date: "2026-11-13" }); // Saturday
+  assert.equal(rateFor(rates, "2026-11-18"), null); // Wednesday rate not out yet
+  assert.equal(rateFor(new Map(), "2026-11-17"), null);
 });
 
-test("BRM: EUR stated → no conversion; unknown currency rejected; unknown JSON → PARSE_ERROR", () => {
-  const rates = parseBnrRates(bnrXml);
-  const eur = parseBrm(
+test("BRM DA: Day-Ahead ring only, matches BRM's table, converted at the trading-day BNR rate", () => {
+  const r = parseBrm(brmQuotes(), { ...ctx, rates: bnrRates() });
+  const vwap = r.observations.filter((o) => o.metric === "VWAP");
+  assert.deepEqual(
+    vwap.map((o) => [o.tradingDate, o.deliveryDate, o.originalPrice, o.volumeMwh, o.trades]),
     [
-      {
-        quoteDate: "2026-11-13",
-        deliveryDate: "2026-11-14",
-        price: 93.1,
-        quantity: 10,
-        currency: "EUR",
-      },
+      ["2026-11-17", "2026-11-18", 417.219277, 62211, 160],
+      ["2026-11-16", "2026-11-17", 427.743535, 59528, 158],
+      ["2026-11-15", "2026-11-16", 444.188101, 16725, 26],
+      ["2026-11-14", "2026-11-15", 447.159278, 97, 3],
+      ["2026-11-12", "2026-11-13", 438.450136, 75863, 196],
+      ["2026-11-11", "2026-11-12", 423.585339, 80518, 161],
     ],
-    { metric: "VWAP", ...ctx, rates },
   );
-  assert.equal(eur.observations[0].priceEurMwh, 93.1);
-  assert.equal(eur.observations[0].fxRate, null);
-  const usd = parseBrm(
-    [
-      {
-        quoteDate: "2026-11-13",
-        deliveryDate: "2026-11-14",
-        price: 93.1,
-        quantity: 10,
-        currency: "USD",
-      },
-    ],
-    { metric: "VWAP", ...ctx, rates },
+  assert.ok(vwap.every((o) => o.product === "DA" && o.originalCurrency === "RON"));
+  const d18 = vwap[0];
+  assert.equal(d18.fxRate, 5.3485);
+  assert.equal(d18.fxDate, "2026-11-17");
+  assert.equal(d18.priceEurMwh, +(417.219277 / 5.3485).toFixed(3)); // 78.007
+  assert.equal(vwap[2].fxDate, "2026-11-13"); // Sunday trade → Friday fixing
+  // 14 Nov DA had no trades (BRM shows N/A) → no price; weekend product NOT substituted.
+  assert.deepEqual(r.noTradeDays, ["2026-11-14"]);
+  assert.ok(!r.observations.some((o) => o.deliveryDate === "2026-11-14" && o.metric === "VWAP"));
+  // Global PMP kept separate (16 Nov: 443.69893 vs DA 444.188101).
+  const g = r.observations.find(
+    (o) => o.metric === "PMP_GLOBAL" && o.deliveryDate === "2026-11-16",
   );
-  assert.equal(usd.observations.length, 0);
-  const changed = parseBrm([{ foo: 1, bar: "x" }], { metric: "VWAP", ...ctx, rates });
-  assert.equal(changed.status, "PARSE_ERROR");
-  assert.match(changed.message, /foo/);
-  // No delivery day in the record → never assume trading day = delivery day.
-  const noDelivery = parseBrm([{ quoteDate: "2026-11-13", price: 470, quantity: 5 }], {
-    metric: "VWAP",
-    ...ctx,
-    rates,
-  });
-  assert.equal(noDelivery.status, "PARSE_ERROR");
-  assert.equal(noDelivery.observations.length, 0);
-  assert.equal(
-    brmFieldMap([{ quoteDate: 1, minPrice: 1, weightedAveragePrice: 2 }]).price,
-    "weightedaverageprice",
-  );
+  assert.equal(g.originalPrice, 443.69893);
+  const series = benchmarkSeries(r.observations, MARKET_META.BRM.benchmarks);
+  assert.ok(series.every((p) => p.metric === "VWAP"));
+  assert.equal(series.at(-1).deliveryDate, "2026-11-18");
+});
+
+test("BRM DA: product name is the only delivery source; bad shapes rejected", () => {
+  assert.equal(brmDaDelivery("BRMGAS_DA18_M11_2026"), "2026-11-18");
+  assert.equal(brmDaDelivery("BRMGAS_DA31_M02_2026"), null);
+  assert.equal(brmDaDelivery("BRMWK_14-11-2026"), null);
+  const rates = bnrRates();
+  // FX not out yet → waits, never uses an older rate on a business day
+  const pending = parseBrm(brmQuotes(), { ...ctx, rates: new Map([["2026-11-16", 5.3494]]) });
+  assert.ok(pending.pendingFx.includes("2026-11-18"));
+  const eur = parseBrm([{ ...brmQuotes()[0], currencyCode: "EUR" }], { ...ctx, rates });
+  assert.equal(eur.observations.length, 0);
+  assert.throws(() => parseBrm({ error: 1 }, { ...ctx, rates }), /not a list/);
 });
 
 // ------------------------------------------------------------------ store, summary, isolation

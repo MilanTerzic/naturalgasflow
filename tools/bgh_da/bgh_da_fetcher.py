@@ -27,7 +27,7 @@ restrict commercial reuse without written consent; get BGH's permission (or its 
 API agreement) before production/commercial use.
 
 Exit codes: 0 OK, 2 NO_TRADE (nothing traded in range), 1 SOURCE_ERROR.
-Outputs: data/bgh_da_latest.json, data/bgh_da.sqlite; failures save debug/ artifacts.
+Outputs: tools/data/bgh_da_latest.json and the shared tools/data/gas_da.sqlite; failures save debug/ artifacts.
 
 Schedule (Windows Task Scheduler, once daily after BGH closes the DA session; the reference
 price for the next gas day appeared on the page by the evening on observation day):
@@ -39,19 +39,16 @@ few days via the provisional_days field before relying on it.)
 from __future__ import annotations
 
 import argparse
-import dataclasses
 import http.cookiejar
 import json
 import logging
 import re
-import sqlite3
 import sys
 import time
 import urllib.parse
 import urllib.request
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Iterable
 from zoneinfo import ZoneInfo
 
 PAGE_URL = "https://www.balkangashub.bg/public"
@@ -64,48 +61,9 @@ UA = "Mozilla/5.0 (compatible; SerbiaGasDashboard/1.0; daily BGH DA price check)
 ROOT = Path(__file__).resolve().parent
 log = logging.getLogger("bgh_da")
 
-STATUS_OK, STATUS_NO_TRADE, STATUS_SOURCE_ERROR = "OK", "NO_TRADE", "SOURCE_ERROR"
-
-
-# ── shared model (CEEGEX / HEnEx / BRM extractors can return the same type) ─────────
-@dataclasses.dataclass(frozen=True)
-class GasDayAheadPrice:
-    exchange: str
-    product: str
-    market_zone: str
-    delivery_date: str            # gas day exactly as the exchange displays it
-    vwap_eur_mwh: float | None
-    volume_mwh: float | None
-    trades: int | None
-    source_url: str
-    extracted_at_utc: str
-    status: str                   # OK | NO_TRADE
-    reference_index_eur_mwh: float | None = None   # BGHSPOTIndex, kept separate from VWAP
-
-    def to_json(self) -> dict:
-        return dataclasses.asdict(self)
-
-
-JSON_SCHEMA = {
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "title": "GasDayAheadPrice",
-    "type": "object",
-    "required": ["exchange", "product", "market_zone", "delivery_date", "vwap_eur_mwh",
-                 "volume_mwh", "trades", "source_url", "extracted_at_utc", "status"],
-    "properties": {
-        "exchange": {"type": "string"},
-        "product": {"const": "DA"},
-        "market_zone": {"type": "string"},
-        "delivery_date": {"type": "string", "format": "date"},
-        "vwap_eur_mwh": {"type": ["number", "null"]},
-        "volume_mwh": {"type": ["number", "null"]},
-        "trades": {"type": ["integer", "null"]},
-        "source_url": {"type": "string", "format": "uri"},
-        "extracted_at_utc": {"type": "string", "format": "date-time"},
-        "status": {"enum": ["OK", "NO_TRADE", "SOURCE_ERROR"]},
-        "reference_index_eur_mwh": {"type": ["number", "null"]},
-    },
-}
+sys.path.insert(0, str(ROOT.parent))
+from gas_da_common import (  # noqa: E402  shared with tools/brm_da
+    JSON_SCHEMA, STATUS_NO_TRADE, STATUS_OK, STATUS_SOURCE_ERROR, GasDayAheadPrice, upsert_sqlite)
 
 
 class SourceError(RuntimeError):
@@ -283,31 +241,6 @@ def _save(debug: Path, name: str, text: str) -> None:
     (debug / name).write_text(text, encoding="utf-8")
 
 
-# ── storage ───────────────────────────────────────────────────────────────────────────
-def upsert_sqlite(db: Path, prices: Iterable[GasDayAheadPrice]) -> int:
-    db.parent.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(db)
-    con.execute("""CREATE TABLE IF NOT EXISTS gas_da_price (
-        exchange TEXT, product TEXT, market_zone TEXT, delivery_date TEXT,
-        vwap_eur_mwh REAL, volume_mwh REAL, trades INTEGER, reference_index_eur_mwh REAL,
-        source_url TEXT, extracted_at_utc TEXT, status TEXT,
-        PRIMARY KEY (exchange, product, market_zone, delivery_date))""")
-    n = 0
-    for p in prices:
-        con.execute("""INSERT INTO gas_da_price VALUES (?,?,?,?,?,?,?,?,?,?,?)
-            ON CONFLICT(exchange, product, market_zone, delivery_date) DO UPDATE SET
-              vwap_eur_mwh=excluded.vwap_eur_mwh, volume_mwh=excluded.volume_mwh,
-              trades=excluded.trades, reference_index_eur_mwh=excluded.reference_index_eur_mwh,
-              source_url=excluded.source_url, extracted_at_utc=excluded.extracted_at_utc,
-              status=excluded.status""",
-                    (p.exchange, p.product, p.market_zone, p.delivery_date, p.vwap_eur_mwh, p.volume_mwh,
-                     p.trades, p.reference_index_eur_mwh, p.source_url, p.extracted_at_utc, p.status))
-        n += 1
-    con.commit()
-    con.close()
-    return n
-
-
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     ap.add_argument("--mode", choices=["browser", "http"], default="browser")
@@ -315,7 +248,7 @@ def main(argv=None) -> int:
     ap.add_argument("--zone", help=f"must equal {DEFAULT_ZONE!r} until BGH adds a zone selector")
     ap.add_argument("--days", type=int, default=35, help="history window ending at the next business day")
     ap.add_argument("--from", dest="date_from"), ap.add_argument("--to", dest="date_to")
-    ap.add_argument("--out", type=Path, default=ROOT / "data")
+    ap.add_argument("--out", type=Path, default=ROOT.parent / "data")
     ap.add_argument("--debug-dir", type=Path, default=ROOT / "debug")
     ap.add_argument("--stale-days", type=int, default=3, help="alert if newest price is older")
     ap.add_argument("--verbose", action="store_true")
@@ -344,7 +277,7 @@ def main(argv=None) -> int:
         (a.out / "bgh_da_last_error.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
         return 1
 
-    upsert_sqlite(a.out / "bgh_da.sqlite", prices)
+    upsert_sqlite(a.out / "gas_da.sqlite", prices)
     ok = sorted((p for p in prices if p.status == STATUS_OK), key=lambda p: p.delivery_date)
     latest = ok[-1] if ok else None
     stale = latest is None or (today - date.fromisoformat(latest.delivery_date)).days > a.stale_days

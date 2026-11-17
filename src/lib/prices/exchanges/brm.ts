@@ -1,24 +1,29 @@
-// BRM (Romania) — public Gas Spot statistics endpoints documented in BRM's
-// "Public API – Excel step by step" guide:
-//   quotes : https://dayaheadgas.brm.ro/gassstats/quotes?pageSize=65535&sortBy=quoteDate&sortDirection=desc
-//   assets : https://dayaheadgas.brm.ro/gassstats/assets/?&pageIndex=1&pageSize=65535&sortBy=limitDate&sortDirection=desc
-//   grp-144: https://dayaheadgas.brm.ro/gassstats/grp-144/?&pageIndex=1&pageSize=65535&sortDirection=asc
-// These are NOT BRM's authenticated trading API.
+// BRM — Bursa Română de Mărfuri (Romania) — gas Day-Ahead VWAP, converted to EUR/MWh.
 //
-// The JSON field names could not be inspected from the build environment, so fields are
-// discovered by name and every assumption is reported in diagnostics. If a price or a
-// delivery day cannot be identified, the provider reports PARSE_ERROR with the keys it saw
-// — it never guesses a number.
+// Verified live on 2026-11-17 in a browser:
+// - BRM's official SPOT page (https://brm.ro/PIATA-SPOT-GN/, tab "Cotații") renders its
+//   quotes table from https://dayaheadgas.brm.ro/gassstats/quotes (configured in
+//   brm.ro/ext/configs.js as urlGasSpotHost). Plain public GET, JSON, no login.
+// - Each record is one product on one trading day. Rings are separate:
+//     "Ring Day Ahead"  / "Gas DAY product"  name BRMGAS_DA18_M11_2026 → gas day 2026-11-18
+//     "Ring Within Day", "Ring Weekend", "Ring Monday", "Ring Balance of Month" → NOT DA.
+// - Page column ↔ JSON field (checked row by row against the on-screen table):
+//     Data ↔ quoteDate (trading day) · Produs ↔ nameEn · Cantitate totală ↔ qtyEn
+//     Preț mediu ponderat Lei/MWh ↔ value · Nr. tranzacții ↔ numarTranzactiiEn
+//     Preț Mediu Ponderat Global ↔ globalAvgPrice (blends Weekend/Monday contracts that
+//     cover the same day — a different number, stored as PMP_GLOBAL, never shown as DA).
+// - A DA product with no trades has qtyEn 0, numarTranzactiiEn 0, value null.
 //
-// Prices are in RON/MWh unless the record states a currency. Conversion to EUR uses the
-// official National Bank of Romania (BNR) EUR fixing for the trading date (latest fixing on
-// or before it); original price, rate and fixing date are kept on every observation.
+// Prices are RON/MWh. EUR uses the National Bank of Romania (BNR) EUR reference rate of
+// the trading day. BNR moved its XML files to curs.bnr.ro on 6 Aug 2026 (the old
+// www.bnr.ro/*.xml addresses now redirect to the homepage). On a business day before BNR
+// has published that day's rate, the price waits rather than using an older rate; on a
+// weekend/holiday trading day the latest earlier fixing is used (BNR does not fix then).
+// The original RON price, rate and fixing date are kept on every observation.
 
 import { fetchText } from "./http";
 import {
   MARKET_META,
-  findDate,
-  parseNum,
   validEurPrice,
   type GasPriceObservation,
   type ObservationStatus,
@@ -26,95 +31,23 @@ import {
 } from "./types";
 
 export const BRM_QUOTES_URL =
-  "https://dayaheadgas.brm.ro/gassstats/quotes?pageSize=65535&sortBy=quoteDate&sortDirection=desc";
-export const BRM_ASSETS_URL =
-  "https://dayaheadgas.brm.ro/gassstats/assets/?&pageIndex=1&pageSize=65535&sortBy=limitDate&sortDirection=desc";
-export const BRM_PMP_URL =
-  "https://dayaheadgas.brm.ro/gassstats/grp-144/?&pageIndex=1&pageSize=65535&sortDirection=asc";
-export const BNR_RECENT_URL = "https://www.bnr.ro/nbrfxrates10days.xml";
+  "https://dayaheadgas.brm.ro/gassstats/quotes?pageSize=200&sortBy=quoteDate&sortDirection=desc";
+export const BNR_RECENT_URL = "https://curs.bnr.ro/nbrfxrates10days.xml";
 export const bnrYearUrl = (year: number) =>
-  `https://www.bnr.ro/files/xml/years/nbrfxrates${year}.xml`;
+  `https://curs.bnr.ro/files/xml/years/nbrfxrates${year}.xml`;
 
-type Rec = Record<string, unknown>;
+export const BRM_DA_RING = "Ring Day Ahead";
+export const BRM_DA_PRODUCT = "Gas DAY product";
+/** BRM publishes one DA product per gas day for the Romanian virtual trading point. */
+export const BRM_MARKET_ZONE = "Romania VTP (BRM Ring Day Ahead)";
 
-/** Finds the array of records in a JSON payload (root array or first array property). */
-export function jsonRecords(payload: unknown): Rec[] {
-  if (Array.isArray(payload)) return payload.filter((r) => r && typeof r === "object") as Rec[];
-  if (payload && typeof payload === "object") {
-    const obj = payload as Rec;
-    for (const k of [
-      "items",
-      "data",
-      "content",
-      "results",
-      "rows",
-      "records",
-      "list",
-      "quotes",
-      "assets",
-    ]) {
-      if (Array.isArray(obj[k])) return jsonRecords(obj[k]);
-    }
-    for (const v of Object.values(obj))
-      if (Array.isArray(v) && v.length && typeof v[0] === "object") return jsonRecords(v);
-  }
-  return [];
-}
-
-/** Flattens one level of nesting: {asset:{name}} → "asset.name". Keys lower-cased. */
-function flat(rec: Rec, prefix = ""): Map<string, unknown> {
-  const out = new Map<string, unknown>();
-  for (const [k, v] of Object.entries(rec)) {
-    const key = (prefix + k).toLowerCase();
-    if (v && typeof v === "object" && !Array.isArray(v) && !prefix) {
-      for (const [k2, v2] of flat(v as Rec, `${k}.`)) out.set(k2, v2);
-    } else out.set(key, v);
-  }
-  return out;
-}
-
-function pick(keys: string[], patterns: RegExp[], exclude?: RegExp): string | null {
-  for (const p of patterns) {
-    const k = keys.find((key) => p.test(key) && !(exclude && exclude.test(key)));
-    if (k) return k;
-  }
-  return null;
-}
-
-export interface BrmFieldMap {
-  tradingDate: string | null;
-  delivery: string | null;
-  product: string | null;
-  price: string | null;
-  volume: string | null;
-  trades: string | null;
-  currency: string | null;
-}
-
-/** Chooses fields by name from a sample of records. Exported for tests and diagnostics. */
-export function brmFieldMap(sample: Rec[]): BrmFieldMap {
-  const keys = [...new Set(sample.flatMap((r) => [...flat(r).keys()]))];
-  return {
-    tradingDate: pick(keys, [/^quotedate$/, /quote.?date/, /trad(e|ing).?date/, /^date$/]),
-    delivery: pick(keys, [/deliver/, /gas.?day/, /flow.?date/, /limitdate/, /(start|from).?date/]),
-    product: pick(keys, [
-      /asset.*(name|code|symbol)/,
-      /^asset$/,
-      /product/,
-      /contract/,
-      /instrument/,
-      /symbol/,
-      /name/,
-    ]),
-    price: pick(
-      keys,
-      [/pmp/, /weighted/, /vwap/, /average.?price/, /avg.?price/, /^price$/, /price/],
-      /min|max|start|open|last|previous|change|limit/,
-    ),
-    volume: pick(keys, [/quantity/, /volume/, /mwh/], /value|amount/),
-    trades: pick(keys, [/trades/, /transactions/, /no.?of/, /count/]),
-    currency: pick(keys, [/currency/, /ccy/, /moneda/]),
-  };
+/** BRMGAS_DA18_M11_2026 → 2026-11-18. Anything else → null (never guessed). */
+export function brmDaDelivery(name: unknown): string | null {
+  const m = String(name ?? "").match(/^BRMGAS_DA(\d{2})_M(\d{2})_(\d{4})$/);
+  if (!m) return null;
+  const iso = `${m[3]}-${m[2]}-${m[1]}`;
+  const d = new Date(`${iso}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === iso ? iso : null;
 }
 
 /** BNR XML → date → RON per 1 EUR. */
@@ -129,231 +62,209 @@ export function parseBnrRates(xml: string): Map<string, number> {
   return out;
 }
 
-/** Latest fixing on or before `date` (BNR does not fix on weekends/holidays). */
+const isWeekend = (d: string) => [0, 6].includes(new Date(`${d}T00:00:00Z`).getUTCDay());
+
+/**
+ * BNR EUR rate for a trading day. Same-day fixing when it exists. A business day after the
+ * newest fixing (rate not out yet) → null. A weekend/holiday → latest earlier fixing
+ * (holiday = a weekday with no fixing although a later fixing exists).
+ */
 export function rateFor(
   rates: Map<string, number>,
   date: string,
 ): { rate: number; date: string } | null {
-  let best: string | null = null;
-  for (const d of rates.keys()) if (d <= date && (!best || d > best)) best = d;
-  if (!best) return null;
+  if (rates.has(date)) return { rate: rates.get(date)!, date };
+  const keys = [...rates.keys()].sort();
+  const newest = keys.at(-1);
+  if (!newest) return null;
+  if (date > newest && !isWeekend(date)) return null; // today's fixing not published yet
+  const prior = keys.filter((d) => d < date).at(-1);
+  if (!prior) return null;
   // More than 5 days without a fixing means the rate file is missing, not a holiday.
-  if ((Date.parse(date) - Date.parse(best)) / 86400000 > 5) return null;
-  return { rate: rates.get(best)!, date: best };
+  if ((Date.parse(date) - Date.parse(prior)) / 86400000 > 5) return null;
+  return { rate: rates.get(prior)!, date: prior };
+}
+
+type Rec = Record<string, unknown>;
+
+const num = (v: unknown): number | null => {
+  if (v === null || v === undefined || v === "") return null;
+  const n = typeof v === "number" ? v : Number(String(v).replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+};
+
+export interface BrmParsed {
+  observations: GasPriceObservation[];
+  noTradeDays: string[];
+  pendingFx: string[];
+  rejected: string[];
+  daRecords: number;
 }
 
 export function parseBrm(
-  records: Rec[],
-  ctx: {
-    metric: "VWAP" | "PMP_GLOBAL";
-    sourceUrl: string;
-    fetchedAt: string;
-    rates: Map<string, number>;
-    assets?: Map<string, string>;
-  },
-): {
-  status: ObservationStatus;
-  message?: string;
-  observations: GasPriceObservation[];
-  diagnostics: Record<string, unknown>;
-} {
-  const sample = records.slice(0, 50);
-  const fields = brmFieldMap(sample);
-  const sampleKeys = [...new Set(sample.flatMap((r) => [...flat(r).keys()]))];
-  const diagnostics: Record<string, unknown> = { records: records.length, fields, sampleKeys };
-  if (!records.length)
-    return {
-      status: "NOT_PUBLISHED",
-      message: "Endpoint returned no records",
-      observations: [],
-      diagnostics,
-    };
-  if (!fields.price || (!fields.tradingDate && !fields.delivery))
-    return {
-      status: "PARSE_ERROR",
-      message: `Price or date field not identifiable (keys: ${sampleKeys.slice(0, 15).join(", ")})`,
-      observations: [],
-      diagnostics,
-    };
-
-  const out: GasPriceObservation[] = [];
-  let noDelivery = 0;
-  let noFx = 0;
-  let currencyStated = 0;
-  for (const rec of records) {
-    const f = flat(rec);
-    const get = (k: string | null) => (k ? f.get(k) : undefined);
-    const productRaw = String(get(fields.product) ?? "");
-    // Asset id → asset name, when the quotes reference assets by id.
-    const productName = ctx.assets?.get(productRaw) ?? productRaw;
-    if (/intra|within|\bid\b/i.test(productName)) continue;
-    const tradingDate = findDate(get(fields.tradingDate));
-    const delivery = findDate(get(fields.delivery)) ?? findDate(productName);
-    if (!delivery) {
-      noDelivery++;
+  records: unknown,
+  ctx: { sourceUrl: string; fetchedAt: string; rates: Map<string, number> },
+): BrmParsed {
+  if (!Array.isArray(records)) throw new Error("BRM quotes response is not a list");
+  const out: BrmParsed = {
+    observations: [],
+    noTradeDays: [],
+    pendingFx: [],
+    rejected: [],
+    daRecords: 0,
+  };
+  for (const r of records as Rec[]) {
+    if (!r || typeof r !== "object") continue;
+    if (r.ringNameEn !== BRM_DA_RING || r.activSupportNameEn !== BRM_DA_PRODUCT) continue;
+    out.daRecords++;
+    const deliveryDate = brmDaDelivery(r.nameEn);
+    const tradingDate = typeof r.quoteDate === "string" ? r.quoteDate.slice(0, 10) : null;
+    if (!deliveryDate || !tradingDate || !/^\d{4}-\d{2}-\d{2}$/.test(tradingDate)) {
+      out.rejected.push(`unrecognised DA record ${String(r.nameEn)} / ${String(r.quoteDate)}`);
       continue;
     }
-    const original = parseNum(get(fields.price), "decimal");
-    if (original === null || original <= 0) continue;
-    const volume = parseNum(get(fields.volume));
-    const trades = parseNum(get(fields.trades));
-    if (volume === 0 || trades === 0) continue; // no trades → no price
-    const stated = String(get(fields.currency) ?? "").toUpperCase();
-    if (stated) currencyStated++;
-    const currency = /EUR/.test(stated) ? "EUR" : /RON|LEI/.test(stated) || !stated ? "RON" : null;
-    if (!currency) continue; // unknown currency → reject
-    let price: number | null = original;
-    let fx: { rate: number; date: string } | null = null;
-    if (currency === "RON") {
-      fx = rateFor(ctx.rates, tradingDate ?? delivery);
-      if (!fx) {
-        noFx++;
-        continue;
-      }
-      price = +(original / fx.rate).toFixed(3);
+    if (deliveryDate <= tradingDate) {
+      out.rejected.push(`${String(r.nameEn)}: delivery not after trading day ${tradingDate}`);
+      continue;
     }
-    if (!validEurPrice(price)) continue;
-    const product = /weekend|w\/?e\b/i.test(productName)
-      ? "WE"
-      : /mon(day)?|luni/i.test(productName)
-        ? "MON"
-        : "DA";
-    out.push({
-      market: "BRM",
-      country: "RO",
-      tradingDate: tradingDate ?? delivery,
-      deliveryDate: delivery,
-      product: ctx.metric === "PMP_GLOBAL" ? "GLOBAL" : product,
-      metric: ctx.metric,
-      priceEurMwh: price,
-      originalPrice: original,
-      originalCurrency: currency,
-      fxRate: fx?.rate ?? null,
-      fxDate: fx?.date ?? null,
-      volumeMwh: volume,
-      trades,
+    if (String(r.currencyCode) !== "RON" || String(r.unitCode) !== "MWh") {
+      out.rejected.push(`${String(r.nameEn)}: ${String(r.currencyCode)}/${String(r.unitCode)}`);
+      continue;
+    }
+    const ron = num(r.value);
+    const volume = num(r.qtyEn);
+    const trades = num(r.numarTranzactiiEn);
+    if (!trades || !volume || ron === null) {
+      out.noTradeDays.push(deliveryDate);
+      continue;
+    }
+    const fx = rateFor(ctx.rates, tradingDate);
+    if (!fx) {
+      out.pendingFx.push(deliveryDate);
+      continue;
+    }
+    const base = {
+      market: "BRM" as const,
+      country: "RO" as const,
+      tradingDate,
+      deliveryDate,
+      product: "DA",
+      originalCurrency: "RON",
+      fxRate: fx.rate,
+      fxDate: fx.date,
       sourceUrl: ctx.sourceUrl,
       fetchedAt: ctx.fetchedAt,
-      status: "OK",
-    });
+      status: "OK" as const,
+    };
+    const eur = +(ron / fx.rate).toFixed(3);
+    if (validEurPrice(eur))
+      out.observations.push({
+        ...base,
+        metric: "VWAP",
+        priceEurMwh: eur,
+        originalPrice: ron,
+        volumeMwh: volume,
+        trades,
+      });
+    else out.rejected.push(`${deliveryDate}: ${eur} EUR/MWh outside sanity bounds`);
+    const global = num(r.globalAvgPrice);
+    const globalEur = global === null ? null : +(global / fx.rate).toFixed(3);
+    if (validEurPrice(globalEur))
+      out.observations.push({
+        ...base,
+        metric: "PMP_GLOBAL",
+        priceEurMwh: globalEur,
+        originalPrice: global,
+        volumeMwh: num(r.qtyGlobalAvgPrice),
+        trades: null,
+      });
   }
-  Object.assign(diagnostics, {
-    skippedNoDeliveryDate: noDelivery,
-    skippedNoFxRate: noFx,
-    currencyField: currencyStated ? "stated" : "absent → RON assumed (BRM spot quotes in lei/MWh)",
-  });
-  if (out.length) return { status: "OK", observations: out, diagnostics };
-  return {
-    status: "PARSE_ERROR",
-    message: noDelivery
-      ? "Records have no identifiable delivery gas day"
-      : noFx
-        ? "No BNR EUR rate for the trading dates"
-        : "No valid priced records",
-    observations: [],
-    diagnostics,
-  };
+  return out;
 }
 
-async function loadRates(years: number[]): Promise<Map<string, number>> {
+async function loadRates(
+  years: number[],
+): Promise<{ rates: Map<string, number>; errors: string[] }> {
   const rates = new Map<string, number>();
-  const urls = [BNR_RECENT_URL, ...years.map(bnrYearUrl)];
+  const errors: string[] = [];
   await Promise.all(
-    urls.map(async (u) => {
+    [BNR_RECENT_URL, ...years.map(bnrYearUrl)].map(async (u) => {
       try {
-        const xml = await fetchText(u, { attempts: 2, timeoutMs: 15_000 });
-        if (xml) for (const [d, r] of parseBnrRates(xml)) rates.set(d, r);
-      } catch {
-        /* reported through missing rates */
+        const xml = await fetchText(u, { attempts: 2, timeoutMs: 15_000, accept: "text/xml" });
+        const parsed = xml ? parseBnrRates(xml) : new Map<string, number>();
+        if (!parsed.size) errors.push(`${u}: no EUR rates (moved or format changed?)`);
+        for (const [d, r] of parsed) rates.set(d, r);
+      } catch (err) {
+        errors.push(`${u}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }),
   );
-  return rates;
+  return { rates, errors };
 }
 
-async function getJson(url: string): Promise<unknown | null> {
-  const text = await fetchText(url, { attempts: 3, timeoutMs: 25_000, accept: "application/json" });
-  return text ? JSON.parse(text) : null;
-}
-
-export async function fetchBrm(): Promise<ProviderResult> {
-  const fetchedAt = new Date().toISOString();
+export async function fetchBrm(at: Date = new Date()): Promise<ProviderResult> {
+  const fetchedAt = at.toISOString();
   const base = { market: "BRM" as const, sourceUrl: MARKET_META.BRM.sourcePage, fetchedAt };
-  const thisYear = new Date().getUTCFullYear();
-  const [quotes, pmp, assets, rates] = await Promise.allSettled([
-    getJson(BRM_QUOTES_URL),
-    getJson(BRM_PMP_URL),
-    getJson(BRM_ASSETS_URL),
-    loadRates(new Date().getUTCMonth() === 0 ? [thisYear - 1, thisYear] : [thisYear]),
+  const year = at.getUTCFullYear();
+  const [quotes, fx] = await Promise.all([
+    fetchText(BRM_QUOTES_URL, { attempts: 3, timeoutMs: 25_000, accept: "application/json" })
+      .then((t) => ({ ok: true as const, text: t }))
+      .catch((err: unknown) => ({ ok: false as const, err })),
+    loadRates(at.getUTCMonth() === 0 ? [year - 1, year] : [year]),
   ]);
-  if (quotes.status === "rejected" && pmp.status === "rejected")
+  if (!quotes.ok || !quotes.text)
     return {
       ...base,
       status: "SOURCE_UNAVAILABLE",
-      message: `BRM statistics endpoints did not answer (${String(quotes.reason)})`,
+      message: `BRM quotes did not answer (${quotes.ok ? "404" : String(quotes.err)})`,
       observations: [],
       diagnostics: {},
     };
-  const fx = rates.status === "fulfilled" ? rates.value : new Map<string, number>();
-
-  // Asset id → name map, so quotes that reference an asset id can be labelled/dated.
-  const assetNames = new Map<string, string>();
-  if (assets.status === "fulfilled") {
-    const recs = jsonRecords(assets.value);
-    const fm = brmFieldMap(recs.slice(0, 50));
-    const keys = [...new Set(recs.slice(0, 50).flatMap((r) => Object.keys(r)))];
-    const idKey = keys.find((k) => /^id$|assetid|asset_id/i.test(k));
-    for (const r of recs) {
-      const id = idKey ? String(r[idKey]) : "";
-      const name = [
-        fm.product ? String(r[fm.product.split(".").pop()!] ?? "") : "",
-        fm.delivery ? String(r[fm.delivery.split(".").pop()!] ?? "") : "",
-      ]
-        .filter(Boolean)
-        .join(" ");
-      if (id && name) assetNames.set(id, name);
-    }
+  let parsed: BrmParsed;
+  try {
+    parsed = parseBrm(JSON.parse(quotes.text), {
+      sourceUrl: BRM_QUOTES_URL,
+      fetchedAt,
+      rates: fx.rates,
+    });
+  } catch (err) {
+    return {
+      ...base,
+      status: "PARSE_ERROR",
+      message: err instanceof Error ? err.message : String(err),
+      observations: [],
+      diagnostics: { sample: quotes.text.slice(0, 600) },
+    };
   }
-
-  const results = [
-    pmp.status === "fulfilled"
-      ? parseBrm(jsonRecords(pmp.value), {
-          metric: "PMP_GLOBAL",
-          sourceUrl: BRM_PMP_URL,
-          fetchedAt,
-          rates: fx,
-          assets: assetNames,
-        })
-      : null,
-    quotes.status === "fulfilled"
-      ? parseBrm(jsonRecords(quotes.value), {
-          metric: "VWAP",
-          sourceUrl: BRM_QUOTES_URL,
-          fetchedAt,
-          rates: fx,
-          assets: assetNames,
-        })
-      : null,
-  ];
-  const observations = results.flatMap((r) => r?.observations ?? []);
   const diagnostics = {
-    pmpGlobal: results[0]?.diagnostics ?? {
-      error: pmp.status === "rejected" ? String(pmp.reason) : null,
-    },
-    quotes: results[1]?.diagnostics ?? {
-      error: quotes.status === "rejected" ? String(quotes.reason) : null,
-    },
-    assets: assets.status === "fulfilled" ? assetNames.size : String(assets.reason),
-    fxFixings: fx.size,
+    product: "DA",
+    marketZone: BRM_MARKET_ZONE,
+    daRecords: parsed.daRecords,
+    noTradeDays: parsed.noTradeDays,
+    pendingFx: parsed.pendingFx,
+    rejected: parsed.rejected,
+    fxFixings: fx.rates.size,
+    fxErrors: fx.errors,
   };
-  if (observations.length)
-    return { ...base, status: "OK", message: MARKET_META.BRM.licence, observations, diagnostics };
-  const first = results.find((r) => r) ?? null;
-  return {
-    ...base,
-    status: first?.status ?? "SOURCE_UNAVAILABLE",
-    message: first?.message,
-    observations: [],
-    diagnostics,
-  };
+  if (parsed.observations.length)
+    return {
+      ...base,
+      status: "OK",
+      message: MARKET_META.BRM.licence,
+      observations: parsed.observations,
+      diagnostics,
+    };
+  let status: ObservationStatus = "NOT_PUBLISHED";
+  let message = "BRM returned no Day-Ahead records.";
+  if (!parsed.daRecords) {
+    status = "PARSE_ERROR";
+    message = `No "${BRM_DA_RING}" records found; BRM may have renamed its rings.`;
+  } else if (parsed.pendingFx.length && !fx.rates.size) {
+    status = "SOURCE_UNAVAILABLE";
+    message = "BNR exchange rates unavailable, so RON prices cannot be converted.";
+  } else if (parsed.noTradeDays.length) {
+    status = "NO_TRADES";
+    message = "No traded Day-Ahead products in the period.";
+  }
+  return { ...base, status, message, observations: [], diagnostics };
 }

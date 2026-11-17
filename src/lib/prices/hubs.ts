@@ -42,7 +42,7 @@ export const HUBS: Record<HubId, HubDef> = {
   },
   BRM: {
     id: "BRM",
-    name: "BRM (PMP Global)",
+    name: "BRM (Day-Ahead VWAP)",
     url: "https://brm.ro/PIATA-SPOT-GN/",
     feed: "live",
   },

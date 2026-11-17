@@ -16,7 +16,7 @@ python bgh_da_fetcher.py --schema                    # JSON schema
 python -m unittest test_bgh_da_fetcher.py
 ```
 
-Outputs `data/bgh_da_latest.json` and `data/bgh_da.sqlite` (upsert keyed on exchange/product/zone/gas day).
+Outputs `tools/data/bgh_da_latest.json` and the shared `tools/data/gas_da.sqlite` (table `gas_da_price`, upsert keyed on exchange/product/zone/gas day; Romania writes to the same table).
 Exit 0 = OK, 2 = NO_TRADE, 1 = SOURCE_ERROR (details in `data/bgh_da_last_error.json`,
 screenshot/HTML in `debug/`). A gas day after today with no reference price yet is still trading
 and is listed under `provisional_days`, never stored as a price.
