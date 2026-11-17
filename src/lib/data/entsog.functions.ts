@@ -164,7 +164,11 @@ function pickForDate(
   pick?: DailyPick;
   source?: FlowPointOperationalSource;
 } {
-  const actual = bundle.actual.get(date);
+  // Physical Flow for the current gas day is an intraday running total (e.g. Horgoš
+  // 70.9 GWh at 14:21 vs ~238 GWh for the full day), so it is never a daily value:
+  // today falls through to the nomination substitutes below.
+  const partialToday = primarySource === "physical_flow" && date === today;
+  const actual = partialToday ? undefined : bundle.actual.get(date);
   if (actual) return { pick: actual, source: primarySource };
 
   // Nomination data is a provisional substitute only for the current day.

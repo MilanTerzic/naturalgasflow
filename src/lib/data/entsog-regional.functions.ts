@@ -124,6 +124,16 @@ async function loadReferential(): Promise<{ refs: RegionalPointRef[]; total: num
   return referentialCache;
 }
 
+/** Current gas-day date in Belgrade (YYYY-MM-DD). */
+function belgradeToday(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Belgrade",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
 function clampRange(from: string, to: string): { from: string; to: string } {
   const end = Date.parse(`${to}T00:00:00Z`);
   const minStart = end - (MAX_DAYS - 1) * 86_400_000;
@@ -259,6 +269,11 @@ async function fetchRegional(
 
     // Flows first, then capacity: a burst of parallel requests gets throttled by ENTSOG.
     const flat = await fetchIndicator(pds, indicator, from, to, diagnostics, true);
+    // Physical Flow for the current gas day is an intraday running total, not a daily value.
+    if (indicator === "Physical Flow") {
+      const today = belgradeToday();
+      for (const byDate of flat.values()) byDate.delete(today);
+    }
     const capPds = [...serbianPds, ...pds];
     const technical = await fetchIndicator(capPds, "Firm Technical", from, to, diagnostics, false);
     const booked = await fetchIndicator(capPds, "Firm Booked", from, to, diagnostics, false);

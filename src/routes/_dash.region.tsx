@@ -165,7 +165,7 @@ const STATUS_TEXT: Record<string, string> = {
 function RegionPage() {
   const s = useDashboard();
   const { flows, allocations, balance, dates, today } = useDashboardData();
-  const [series, setSeries] = useState<"allocation" | "physical_flow">("allocation");
+  const [series, setSeries] = useState<"allocation" | "physical_flow">("physical_flow");
   const [mode, setMode] = useState<MapMode>("day");
   const [unit, setUnit] = useState<Unit>(() => readLocal(UNIT_KEY, { u: "mcm" as Unit }).u);
   const [layers, setLayers] = useState<MapLayers>(() => readLocal(LAYER_KEY, DEFAULT_LAYERS));
@@ -563,8 +563,8 @@ function RegionPage() {
               onChange={(e) => setSeries(e.target.value as "allocation" | "physical_flow")}
               className="h-8 rounded-md border bg-background px-2 text-xs font-medium text-foreground"
             >
-              <option value="allocation">Allocation</option>
               <option value="physical_flow">Physical flow</option>
+              <option value="allocation">Allocation</option>
             </select>
             <button
               type="button"
@@ -1168,9 +1168,9 @@ function RegionPage() {
         <Link to="/flows" className="underline underline-offset-2 hover:text-foreground">
           Flow Details
         </Link>{" "}
-        definitions. Regional points: the same ENTSOG indicator as selected above (Allocation or
-        Physical Flow), exit side of the sending TSO (entry side only when the exit side publishes
-        nothing). Basemap: Natural Earth. Pipeline routes are schematic.
+        definitions. Regional points: the same ENTSOG indicator as selected above (Physical Flow by
+        default, or Allocation), exit side of the sending TSO (entry side only when the exit side
+        publishes nothing). Basemap: Natural Earth. Pipeline routes are schematic.
       </p>
     </div>
   );

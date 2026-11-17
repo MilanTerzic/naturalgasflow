@@ -180,7 +180,8 @@ export const CORRIDORS: Corridor[] = [
     to: "HR",
     ip: 1,
     lng: true,
-    keywords: ["krk", "omisalj", "lng hrvatska"],
+    // ENTSOG labels the terminal "Croatia LNG" (HR-TSO-0001 LNG-00032 entry).
+    keywords: ["croatia lng", "krk", "omisalj", "lng hrvatska"],
     note: "FSRU send-out into Croatia.",
   },
   {
