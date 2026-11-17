@@ -24,11 +24,9 @@ export const HUBS: Record<HubId, HubDef> = {
   CEGH: { id: "CEGH", name: "CEGH VTP (CEGHIX)", url: "https://www.cegh.at", feed: "live" },
   BGH: {
     id: "BGH",
-    name: "Balkan Gas Hub (BGHSPOT)",
-    url: "https://www.balkangashub.bg/en",
+    name: "Balkan Gas Hub (Day-Ahead VWAP)",
+    url: "https://www.balkangashub.bg/public",
     feed: "live",
-    reason:
-      "BGH fills its price table in the browser; its public-data API needs the BGH registration form and API agreement.",
   },
   CEEGEX: {
     id: "CEEGEX",

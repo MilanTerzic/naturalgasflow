@@ -75,13 +75,15 @@ export const MARKET_META: Record<ExchangeMarket, MarketMeta> = {
     market: "BGH",
     country: "BG",
     name: "Balkan Gas Hub",
-    benchmarks: ["BGHSPOT", "VWAP"],
-    sourcePage: "https://www.balkangashub.bg/en",
+    // Day-Ahead VWAP only. BGHSPOTIndex is stored as its own metric but never shown as
+    // the DA price.
+    benchmarks: ["VWAP"],
+    sourcePage: "https://www.balkangashub.bg/public",
     timeZone: "Europe/Sofia",
     publishAfter: "18:00",
     retryMinutes: 60,
     licence:
-      "Public-data API requires BGH registration form + API agreement (balkangashub.bg/en/products/api-services).",
+      "Read from BGH's public page. BGH terms restrict commercial reuse without written consent; confirm with BGH before using beyond internal viewing.",
   },
   CEEGEX: {
     market: "CEEGEX",

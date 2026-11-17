@@ -29,7 +29,12 @@ import {
   parseHenexListing,
 } from "../src/lib/prices/exchanges/henex.ts";
 import { ceegexProduct, parseCeegexDaily } from "../src/lib/prices/exchanges/ceegex.ts";
-import { parseBghHome, previousWeekday } from "../src/lib/prices/exchanges/bgh.ts";
+import {
+  fetchBgh,
+  parseBghDa,
+  parseBghPage,
+  previousWeekday,
+} from "../src/lib/prices/exchanges/bgh.ts";
 import { brmFieldMap, parseBnrRates, parseBrm, rateFor } from "../src/lib/prices/exchanges/brm.ts";
 import { henexDatesToFetch, runProvider, summarise } from "../src/lib/prices/exchanges/run.ts";
 import { fromRow, toRow } from "../src/lib/prices/exchanges/store.server.ts";
@@ -242,25 +247,105 @@ test("benchmark: preferred metric per day, weekend spread without double countin
 
 // ------------------------------------------------------------------ BGH
 
-test("BGH: empty server table → no prices; EUR rows parsed; BGN table rejected", () => {
-  const empty = `<table><tr><th>Gas day</th><th>Traded Volume (MWh/d)</th><th>Trades</th><th>VWAP (EUR/MWh)</th><th>VWAP Relative(%)</th><th>Reference Price / BGHSPOTIndex(EUR/MWh)</th></tr></table>`;
-  assert.equal(parseBghHome(empty, ctx).observations.length, 0);
-  const full = empty.replace(
-    "</table>",
-    `<tr><td>16.11.2026</td><td>4 200</td><td>9</td><td>45,10</td><td>1,2</td><td>45,05</td></tr><tr><td>15.11.2026</td><td>120</td><td>2</td><td>44,00</td><td>-</td><td></td></tr></table>`,
+// BGH fixtures below are REAL: captured from www.balkangashub.bg/public on 2026-11-17
+// 15:58 CET in a browser (page excerpt + the page's own spotMarketData responses).
+const bghFixture = (n) => readFileSync(new URL(`./fixtures/${n}`, import.meta.url), "utf8");
+
+test("BGH page: DA tab active, data request found, no zone selector", () => {
+  const info = parseBghPage(bghFixture("bgh-public-page-20261117.html"));
+  assert.equal(info.activeTab, "DA");
+  assert.deepEqual(info.tabs, ["WD", "DA", "WEEK", "MONTH", "QUARTER"]);
+  assert.equal(info.dataUrl, "https://www.balkangashub.bg/ajax/spotMarketData");
+  assert.equal(info.csrf, "TEST_CSRF_TOKEN");
+  assert.deepEqual(info.holidays, ["2026-12-24", "2026-12-25", "2026-12-28"]);
+  assert.throws(() => parseBghPage("<html>maintenance</html>"), /page changed/);
+  assert.throws(
+    () =>
+      parseBghPage(
+        bghFixture("bgh-public-page-20261117.html") +
+          `<select name="zone"><option>VTP Bulgaria</option></select>`,
+      ),
+    /zone selector/,
   );
-  const r = parseBghHome(full, ctx);
+});
+
+test("BGH DA: matches 5+ official rows exactly; provisional and index kept apart", () => {
+  const json = JSON.parse(bghFixture("bgh-da-20261117.json"));
+  const r = parseBghDa(json, { ...ctx, today: "2026-11-17" });
+  const vwap = r.observations.filter((o) => o.metric === "VWAP");
+  // Values as displayed on the BGH Day Ahead table, 2026-11-17.
   assert.deepEqual(
-    r.observations.map((o) => [o.deliveryDate, o.metric, o.priceEurMwh]),
+    vwap.map((o) => [o.deliveryDate, o.priceEurMwh, o.volumeMwh, o.trades]),
     [
-      ["2026-11-16", "VWAP", 45.1],
-      ["2026-11-16", "BGHSPOT", 45.05],
-      ["2026-11-15", "VWAP", 44],
+      ["2026-11-17", 79.99, 32586, 137],
+      ["2026-11-16", 82.08, 59068, 209],
+      ["2026-11-15", 80.9, 58249, 223],
+      ["2026-11-14", 80.91, 58749, 224],
+      ["2026-11-13", 80.43, 50744, 243],
+      ["2026-11-12", 77.1, 53637, 222],
     ],
-  ); // 15th: below liquidity rule → BGHSPOT blank, not invented
-  assert.equal(r.observations[0].tradingDate, "2026-11-13"); // Monday delivery traded Friday
-  assert.equal(previousWeekday("2026-11-17"), "2026-11-16");
-  assert.equal(parseBghHome(full.replace(/EUR/g, "BGN"), ctx).observations.length, 0);
+  );
+  assert.ok(vwap.every((o) => o.product === "DA" && o.originalCurrency === "EUR"));
+  // Gas day 18th is still trading at capture time → not published as a price.
+  assert.deepEqual(r.provisionalDays, ["2026-11-18"]);
+  // Once BGH publishes the reference price, the next-day VWAP is final (77.01 is a
+  // synthetic stand-in for the not-yet-published index).
+  const closed = json.map((row) =>
+    row.day === "2026-11-18" ? { ...row, reference_price: "77.01" } : row,
+  );
+  const r2 = parseBghDa(closed, { ...ctx, today: "2026-11-17" });
+  assert.equal(r2.observations.find((o) => o.deliveryDate === "2026-11-18").priceEurMwh, 76.98);
+  // BGHSPOTIndex is a separate metric (80.93 vs VWAP 80.90 on the 15th).
+  const idx = r.observations.find((o) => o.metric === "BGHSPOT" && o.deliveryDate === "2026-11-15");
+  assert.equal(idx.priceEurMwh, 80.93);
+  // Only VWAP is the map benchmark.
+  const series = benchmarkSeries(r.observations, MARKET_META.BGH.benchmarks);
+  assert.equal(series.at(-1).price, 79.99);
+  assert.ok(series.every((p) => p.metric === "VWAP"));
+  assert.equal(vwap[0].tradingDate, "2026-11-16"); // derived, previous weekday
+  assert.equal(previousWeekday("2026-11-16"), "2026-11-13");
+});
+
+test("BGH DA: no-trade rows ('-') stay empty, never zero; non-EUR rejected", () => {
+  const wd = JSON.parse(bghFixture("bgh-wd-20261117.json"));
+  const r = parseBghDa(wd, { ...ctx, today: "2026-11-17" });
+  assert.deepEqual(r.noTradeDays, ["2026-11-18"]);
+  const bgn = parseBghDa(
+    [{ day: "2026-11-10", volume: 10, trades_cnt: 3, vwa_price: "150", currency: "BGN" }],
+    {
+      ...ctx,
+      today: "2026-11-17",
+    },
+  );
+  assert.equal(bgn.observations.length, 0);
+  assert.throws(() => parseBghDa({ error: "x" }, { ...ctx, today: "2026-11-17" }), /not a list/);
+});
+
+test("BGH fetch: replays the page request with type=DA and CSRF", async () => {
+  const orig = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push({ url: String(url), init });
+    if (!init.method)
+      return new Response(bghFixture("bgh-public-page-20261117.html"), {
+        status: 200,
+        headers: { "set-cookie": "XSRF-TOKEN=abc%3D; path=/" },
+      });
+    return new Response(bghFixture("bgh-da-20261117.json"), { status: 200 });
+  };
+  try {
+    const res = await fetchBgh(new Date("2026-11-17T15:00:00Z"));
+    assert.equal(res.status, "OK");
+    const post = calls[1];
+    const body = new URLSearchParams(post.init.body);
+    assert.equal(body.get("type"), "DA");
+    assert.equal(body.get("currency"), "EUR");
+    assert.equal(post.init.headers["x-csrf-token"], "TEST_CSRF_TOKEN");
+    assert.equal(post.init.headers["x-xsrf-token"], "abc=");
+    assert.equal(res.diagnostics.activeTabOnPage, "DA");
+  } finally {
+    globalThis.fetch = orig;
+  }
 });
 
 // ------------------------------------------------------------------ BRM

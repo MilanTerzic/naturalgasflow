@@ -1,0 +1,2 @@
+# Only needed for --mode browser. --mode http uses the Python standard library.
+playwright>=1.45
