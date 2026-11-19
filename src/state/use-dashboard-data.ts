@@ -76,7 +76,7 @@ export function useDashboardData(): DashboardData {
       if (tempQuery.data?.warning) warnings.push(tempQuery.data.warning);
       temps = tempQuery.data?.data ?? [];
     }
-    // Physical flows remain available for Flow Details / the pipeline map.
+    // Physical flows feed the Balkan Map (per-point chart and map links).
     if (flowQuery.data?.error || flowQuery.isError) {
       flows = flowQuery.data?.data ?? [];
     } else {

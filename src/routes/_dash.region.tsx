@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -35,11 +35,11 @@ import {
 } from "@/lib/data/entsog-regional.functions";
 import { CONVERSION_MCM_TO_GWH, PALETTE } from "@/lib/gas/config";
 import { fmtShortDateYear } from "@/lib/gas/format";
-import {
-  grossPipelineEntryMcm,
-  hasOperationalObservation,
-  netRemainingInSerbiaMcm,
-} from "@/lib/gas/flow-metrics";
+import { isGastransResidualOutlier } from "@/lib/gas/flow-metrics";
+import { fetchAgsiStorage } from "@/lib/data/agsi.functions";
+import { ChartCard } from "@/components/dashboard/ChartCard";
+import { FlowsChart } from "@/components/dashboard/FlowsChart";
+import { gastransResidualStats, serbiaBalance } from "@/lib/region/serbia-balance";
 import type { FlowPointName, FlowRow } from "@/lib/gas/types";
 import {
   buildLinkValues,
@@ -258,6 +258,12 @@ function RegionPage() {
     [mode, date, rows, balance, series, regional, capacity],
   );
 
+  // Serbia's cross-border balance: one source for the balance card, net row and map tag.
+  const serbia = useMemo(
+    () => serbiaBalance({ mode, date, rows, balance }),
+    [mode, date, rows, balance],
+  );
+
   const netQuery = useQuery({
     queryKey: ["entsog-net", dates[0], today],
     queryFn: () => fetchEntsogNetPositions({ data: { from: dates[0], to: today } }),
@@ -274,8 +280,9 @@ function RegionPage() {
         entsog: s.mode === "live" ? (netQuery.data?.countries ?? null) : null,
         values,
         balance,
+        serbia,
       }),
-    [mode, date, days, s.mode, netQuery.data, values, balance],
+    [mode, date, days, s.mode, netQuery.data, values, balance, serbia],
   );
   const netBadges = useMemo(
     () =>
@@ -289,7 +296,10 @@ function RegionPage() {
                 {
                   text: `net ${(unit === "gwh" ? r.c!.net * CONVERSION_MCM_TO_GWH : r.c!.net).toFixed(unit === "gwh" ? 0 : 1)}`,
                   tone: "ref" as const,
-                  title: `${r.label} net position (${r.source}): imports + storage + production + LNG − exports`,
+                  title:
+                    r.code === "RS"
+                      ? "Serbia net (same as the Serbia balance card): Kalotina + Kireevo + Kiskundorozsma − Horgoš − Bosnia flow (model)"
+                      : `${r.label} net position (${r.source}): imports + storage + production + LNG − exports`,
                 },
               ]),
           ),
@@ -308,24 +318,37 @@ function RegionPage() {
   const fmtShort = (mcm: number) =>
     unit === "gwh" ? toUnit(mcm).toFixed(0) : toUnit(mcm).toFixed(1);
 
-  // Serbia balance for the selected day, or averaged over days where all points reported.
-  const balanceStats = useMemo(() => {
-    const bosniaByDate = new Map(balance.map((b) => [b.date, b.bosnia_consumption_mcm]));
-    const forRow = (r: FlowRow | undefined) => {
-      if (!r) return null;
-      const gross = grossPipelineEntryMcm(r);
-      const exit = hasOperationalObservation(r, "kiskundorozsma_2") ? r.kiskundorozsma_2 : null;
-      const bosnia = bosniaByDate.get(r.date) ?? null;
-      return { gross, exit, bosnia, net: netRemainingInSerbiaMcm(r, bosnia) };
-    };
-    if (mode === "day") return forRow(rows.find((r) => r.date === date));
-    const all = rows.map(forRow).filter((x): x is NonNullable<typeof x> => x !== null);
-    const avg = (k: "gross" | "exit" | "bosnia" | "net") => {
-      const v = all.map((x) => x[k]).filter((n): n is number => n !== null);
-      return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
-    };
-    return { gross: avg("gross"), exit: avg("exit"), bosnia: avg("bosnia"), net: avg("net") };
-  }, [mode, rows, date, balance]);
+  // Moved from the former Flow Details page: Gastrans residual and Serbian storage.
+  const selectedRow = useMemo(() => rows.find((r) => r.date === date), [rows, date]);
+  const residualOutlier = mode === "day" && isGastransResidualOutlier(selectedRow);
+  const residual = useMemo(() => {
+    const period = gastransResidualStats(rows);
+    if (mode !== "day") return period;
+    const day = gastransResidualStats(selectedRow ? [selectedRow] : []);
+    return { ...period, latest: day.latest, latestDate: day.latestDate };
+  }, [rows, mode, selectedRow]);
+
+  const storageQuery = useQuery({
+    queryKey: ["agsi-serbia-latest", today],
+    queryFn: () =>
+      fetchAgsiStorage({
+        data: {
+          country: "rs",
+          from: new Date(Date.parse(`${today}T00:00:00Z`) - 7 * 86_400_000)
+            .toISOString()
+            .slice(0, 10),
+          to: today,
+        },
+      }),
+    enabled: s.mode === "live",
+    staleTime: 6 * 60 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+  const latestStorage = storageQuery.data?.data?.at(-1);
+  const storageMcm =
+    latestStorage?.gasInStorage == null
+      ? null
+      : (latestStorage.gasInStorage * 1000) / CONVERSION_MCM_TO_GWH;
 
   const reportedCount = CORRIDORS.filter(
     (c) => (c.group === "serbia" || c.group === "regional") && values[c.id]?.value != null,
@@ -808,31 +831,107 @@ function RegionPage() {
             <div className="mt-3 grid grid-cols-2 gap-2">
               <Stat
                 label="Gross entry"
-                value={fmt(balanceStats?.gross)}
+                value={fmt(serbia.gross)}
                 hint="Kireevo + Kalotina + Kiskundorozsma"
               />
               <Stat
                 label="Transit to Hungary"
-                value={fmt(balanceStats?.exit)}
+                value={fmt(serbia.exit)}
                 hint="Kiskundorozsma 2 / Horgoš"
               />
               <Stat
                 label="Bosnia flow"
-                value={fmt(balanceStats?.bosnia)}
+                value={fmt(serbia.bosnia)}
                 hint="Model, not metered"
                 tone="model"
               />
               <Stat
                 label="Net in Serbia"
-                value={fmt(balanceStats?.net)}
+                value={fmt(serbia.net)}
                 hint="Entry − Hungary − Bosnia"
                 tone="strong"
               />
             </div>
             <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
-              Same definitions as the Flow Details map. Net is shown only when all four points
-              reported.
+              Net is shown only when all four points reported
+              {mode === "average" ? `; averaged over ${serbia.days} complete gas days` : ""}. The
+              same figure is Serbia&apos;s net in the country table and on the map. Production and
+              storage are not included.
             </p>
+
+            <div className="mt-3 border-t pt-3">
+              <div className="flex items-baseline justify-between gap-2">
+                <h4 className="text-[11px] font-medium text-foreground">
+                  Kireevo − Horgoš residual
+                </h4>
+                <span className="text-[10px] text-muted-foreground">
+                  {series === "allocation" ? "allocation" : "physical flow"}
+                </span>
+              </div>
+              <div className="num mt-1.5 grid grid-cols-4 gap-1.5 text-center">
+                {(
+                  [
+                    [mode === "day" ? "Day" : "Latest", residual.latest],
+                    ["Avg", residual.avg],
+                    ["Max", residual.max],
+                    ["Min", residual.min],
+                  ] as const
+                ).map(([k, v]) => (
+                  <div key={k} className="rounded-md border bg-background px-1 py-1.5">
+                    <div className="text-[10px] text-muted-foreground">{k}</div>
+                    <div
+                      className={cn(
+                        "text-xs font-semibold",
+                        v == null
+                          ? "text-muted-foreground"
+                          : v >= 0
+                            ? "text-emerald-700 dark:text-emerald-400"
+                            : "text-red-700 dark:text-red-400",
+                      )}
+                    >
+                      {fmt(v, 1)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-1.5 text-[10px] leading-snug text-muted-foreground">
+                Kireevo entry − Kiskundorozsma 2 exit. Positive: more allocated in at Kireevo than
+                out at Horgoš. A cross-TSO residual, not a measure of Serbian domestic imports;
+                linepack, measurement or reporting timing can move it. Avg/Max/Min over the loaded
+                window.
+              </p>
+              {residualOutlier && (
+                <div
+                  role="alert"
+                  className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-[11px] leading-snug text-amber-950"
+                >
+                  <strong>Reconciliation warning:</strong> the residual exceeds the indicative
+                  Gastrans Serbian-network exit reference (~11.5 mcm/d). It is not verified Serbian
+                  imports; compare the same gas day and indicator at both TSOs.
+                </div>
+              )}
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-2 border-t pt-3">
+              <Stat
+                label="Serbia storage"
+                value={latestStorage?.full == null ? "—" : `${latestStorage.full.toFixed(1)}%`}
+                hint={
+                  latestStorage
+                    ? `AGSI+ · ${latestStorage.gasDayStart}`
+                    : storageQuery.data?.missingKey
+                      ? "AGSI_API_KEY not configured"
+                      : s.mode !== "live"
+                        ? "Live data only"
+                        : "AGSI+ latest available"
+                }
+              />
+              <Stat
+                label="Gas in storage"
+                value={storageMcm == null ? "—" : fmt(storageMcm, 0)}
+                hint={`${unitLabel === "GWh/d" ? "GWh" : "mcm"} · latest AGSI+ day, not the map day`}
+              />
+            </div>
           </section>
 
           <NetPositionPanel
@@ -843,6 +942,7 @@ function RegionPage() {
             loading={netQuery.isLoading}
             demo={s.mode !== "live"}
             failed={netQuery.data?.failedCountries ?? []}
+            indicator={series === "allocation" ? "allocation" : "physical flow"}
           />
 
           <HubPricesPanel
@@ -1033,6 +1133,15 @@ function RegionPage() {
         </aside>
       </div>
 
+      {/* Per-point Serbian flows (moved from the former Flow Details page) */}
+      <ChartCard
+        title="Serbian border points — physical flows (mcm/day)"
+        subtitle="ENTSOG Physical Flow per point over the loaded window; may differ from the Allocation values used for the gas balance. Missing observations stay blank."
+        height={420}
+      >
+        <FlowsChart flows={flows} dates={dates} today={today} />
+      </ChartCard>
+
       {/* Corridor table */}
       <section className="overflow-hidden rounded-xl border bg-card shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
@@ -1164,13 +1273,11 @@ function RegionPage() {
       </section>
 
       <p className="text-[11px] text-muted-foreground">
-        Serbian points follow the{" "}
-        <Link to="/flows" className="underline underline-offset-2 hover:text-foreground">
-          Flow Details
-        </Link>{" "}
-        definitions. Regional points: the same ENTSOG indicator as selected above (Physical Flow by
-        default, or Allocation), exit side of the sending TSO (entry side only when the exit side
-        publishes nothing). Basemap: Natural Earth. Pipeline routes are schematic.
+        Serbian points use the dashboard&apos;s ENTSOG series (Serbia balance: entry − Horgoš −
+        modelled Bosnia flow). Regional points: the same ENTSOG indicator as selected above
+        (Physical Flow by default, or Allocation), exit side of the sending TSO (entry side only
+        when the exit side publishes nothing). Basemap: Natural Earth. Pipeline routes are
+        schematic.
       </p>
     </div>
   );

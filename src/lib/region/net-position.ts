@@ -26,6 +26,11 @@ export interface NetComponents {
   /** Signed flow per neighbour (+ import, − export), mcm/d. */
   byNeighbour: Record<string, number>;
   provisional: boolean;
+  /**
+   * Components shown in the table but left out of `net`. Serbia's net is defined as
+   * cross-border only (entry − Hungary − Bosnia), matching its "Serbia balance" card.
+   */
+  outsideNet?: Array<"storage" | "production">;
 }
 
 export interface Supplement {
@@ -66,7 +71,7 @@ export const SUPPLEMENTS: Record<string, Supplement[]> = {
 export const COVERAGE_NOTES: Record<string, string> = {
   AT: "ENTSOG aggregates for Austria cover cross-border flows only (no storage, production or consumption), so the net position includes unknown storage injection.",
   GR: "TAP and the Alexandroupolis FSRU are added from point data; they are missing from ENTSOG's Greek aggregate.",
-  RS: "Serbia: border flows from ENTSOG points, production and storage from the dashboard balance (storage is the balance model's feasible injection/withdrawal).",
+  RS: "Serbia: net = entry (Kalotina + Kireevo + Kiskundorozsma) − Horgoš − modelled Bosnia flow, the same figure as the Serbia balance card. Production and storage come from the dashboard balance model and are shown for reference only; they are not added to Serbia's net.",
   MK: "North Macedonia: imports at Kyustendil/Zidilovo only; no production or storage.",
   BA: "Bosnia and Herzegovina: modelled share of the Serbian balance at Zvornik, not metered.",
 };
@@ -85,7 +90,14 @@ const empty = (): NetComponents => ({
 
 function finish(c: NetComponents): NetComponents {
   const r = (v: number) => +v.toFixed(3);
-  c.net = r(c.imports + c.storage + c.production + c.lng - c.exports);
+  const out = new Set(c.outsideNet ?? []);
+  c.net = r(
+    c.imports +
+      (out.has("storage") ? 0 : c.storage) +
+      (out.has("production") ? 0 : c.production) +
+      c.lng -
+      c.exports,
+  );
   for (const k of ["imports", "exports", "storage", "production", "lng"] as const) c[k] = r(c[k]);
   if (c.consumption !== null) c.consumption = r(c.consumption);
   for (const k of Object.keys(c.byNeighbour)) c.byNeighbour[k] = r(c.byNeighbour[k]);
@@ -171,7 +183,12 @@ export function applySupplements(
 export function fromParts(
   parts: Partial<NetComponents> & { byNeighbour?: Record<string, number> },
 ): NetComponents {
-  return finish({ ...empty(), ...parts, byNeighbour: { ...(parts.byNeighbour ?? {}) } });
+  return finish({
+    ...empty(),
+    ...parts,
+    byNeighbour: { ...(parts.byNeighbour ?? {}) },
+    outsideNet: parts.outsideNet ? [...parts.outsideNet] : undefined,
+  });
 }
 
 /** Average over several days (period mode). Consumption averages only where published. */

@@ -112,13 +112,56 @@ test("period average and non-ENTSOG countries from corridor values", () => {
       demand_mcm: 10.2,
     },
   ];
-  const rows = buildNetRows({ mode: "day", date: D, days: [D], entsog: null, values, balance });
+  // Serbia's row comes from the shared Serbia balance (entry − Horgoš − Bosnia).
+  const serbia = {
+    gross: 31.6,
+    exit: 22.57,
+    bosnia: 0.6,
+    net: 31.6 - 22.57 - 0.6,
+    byNeighbour: { HU: 0.1 - 22.57, BG: 31.5, BA: -0.6 },
+    days: 1,
+  };
+  const rows = buildNetRows({ mode: "day", date: D, days: [D], entsog: null, values, balance, serbia });
   const rs = rows.find((r) => r.code === "RS").c;
   near(rs.imports, 31.6);
   near(rs.exports, 23.17);
-  near(rs.net, 31.6 + 1.0 + 0.9 - 23.17);
+  // Production and storage are shown but not in Serbia's net: it equals the balance card's net.
+  near(rs.net, serbia.net);
+  near(rs.storage, 1.0);
+  near(rs.production, 0.9);
   near(rs.byNeighbour.HU, 0.1 - 22.57);
   assert.equal(rows.find((r) => r.code === "MK").c.imports, 1.4);
   assert.equal(rows.find((r) => r.code === "BA").source, "model");
   assert.equal(rows.find((r) => r.code === "BG").c, null); // no ENTSOG data passed
+});
+
+test("Serbia balance: net row equals entry − Horgoš − Bosnia, day and average", async () => {
+  const { serbiaBalance } = await import("../src/lib/region/serbia-balance.ts");
+  const mk = (date, kal, kir, hu, kkd2) => ({
+    date,
+    kalotina: kal,
+    kireevo: kir,
+    kiskundorozsma_hu: hu,
+    kiskundorozsma_2: kkd2,
+  });
+  const rows = [mk("2026-11-01", 0.1, 30, 0.2, 20), mk("2026-11-02", 0.2, 32, 0, 22)];
+  const balance = rows.map((r, i) => ({
+    date: r.date,
+    is_forecast: false,
+    bosnia_consumption_mcm: 0.5 + i * 0.1,
+    domestic_production_mcm: 0.9,
+    storage_withdrawal_mcm: 2,
+    storage_injection_mcm: 0,
+    demand_mcm: 11,
+  }));
+  for (const mode of ["day", "average"]) {
+    const serbia = serbiaBalance({ mode, date: "2026-11-02", rows, balance });
+    const days = rows.map((r) => r.date);
+    const rs = buildNetRows({ mode, date: "2026-11-02", days, entsog: null, values: {}, balance, serbia })
+      .find((r) => r.code === "RS").c;
+    near(serbia.gross - serbia.exit - serbia.bosnia, serbia.net);
+    near(rs.net, serbia.net);
+  }
+  const day = serbiaBalance({ mode: "day", date: "2026-11-02", rows, balance });
+  near(day.net, 0.2 + 32 + 0 - 22 - 0.6);
 });

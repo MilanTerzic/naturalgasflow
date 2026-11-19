@@ -11,6 +11,7 @@ export function NetPositionPanel({
   loading,
   demo,
   failed,
+  indicator,
 }: {
   rows: NetRow[];
   fmt: (mcm: number | null | undefined, digits?: number) => string;
@@ -19,6 +20,8 @@ export function NetPositionPanel({
   loading: boolean;
   demo: boolean;
   failed: string[];
+  /** ENTSOG indicator behind the flows, e.g. "physical flow" or "allocation". */
+  indicator: string;
 }) {
   const signed = (v: number | null | undefined) =>
     v == null ? "—" : `${v > 0 ? "+" : v < 0 ? "−" : ""}${fmt(Math.abs(v), 1)}`;
@@ -27,7 +30,7 @@ export function NetPositionPanel({
       <div className="mb-2 flex items-baseline justify-between gap-2">
         <h3 className="eyebrow">Country net position</h3>
         <span className="text-[10px] text-muted-foreground">
-          {heading} · {unitLabel} · physical flow
+          {heading} · {unitLabel} · {indicator}
         </span>
       </div>
       {demo ? (
@@ -77,6 +80,18 @@ export function NetPositionPanel({
                       .map(([k, v]) => `${k} ${v > 0 ? "+" : "−"}${Math.abs(v).toFixed(2)}`)
                       .join(", ")
                   : "";
+                const outside = new Set(c?.outsideNet ?? []);
+                const ref = (k: "storage" | "production", text: string) =>
+                  outside.has(k) && text !== "—" ? (
+                    <span
+                      className="text-muted-foreground"
+                      title="Shown for reference; not included in this country's net"
+                    >
+                      ({text})
+                    </span>
+                  ) : (
+                    text
+                  );
                 const title = [
                   `${r.label} — source: ${r.source}${c?.provisional ? " (provisional)" : ""}`,
                   neighbours && `By neighbour (mcm/d, + import): ${neighbours}`,
@@ -100,9 +115,11 @@ export function NetPositionPanel({
                         </td>
                         <td className="px-1 py-1 text-right">{fmt(c.imports, 1)}</td>
                         <td className="px-1 py-1 text-right">{fmt(c.exports, 1)}</td>
-                        <td className="px-1 py-1 text-right">{signed(c.storage)}</td>
                         <td className="px-1 py-1 text-right">
-                          {c.production ? fmt(c.production, 1) : "—"}
+                          {ref("storage", signed(c.storage))}
+                        </td>
+                        <td className="px-1 py-1 text-right">
+                          {ref("production", c.production ? fmt(c.production, 1) : "—")}
                         </td>
                         <td className="px-1 py-1 text-right">{c.lng ? fmt(c.lng, 1) : "—"}</td>
                         <td className="px-1 py-1 text-right">
@@ -136,8 +153,10 @@ export function NetPositionPanel({
       <p className="mt-2 text-[10px] leading-snug text-muted-foreground">
         Net = imports + storage withdrawal + production + LNG − exports. Cons = reported exits to
         distribution and final customers; Gap shows what the balance does not explain (linepack,
-        unmetered points). Tap a row for neighbours and source. * coverage note. Turkey and Albania
-        are not published by ENTSOG.
+        unmetered points). Tap a row for neighbours and source. * coverage note. Serbia&apos;s net
+        is cross-border only (entry − Hungary − Bosnia), the same figure as the Serbia balance card;
+        its storage and production, in brackets, are not added. Turkey and Albania are not published
+        by ENTSOG.
       </p>
     </section>
   );

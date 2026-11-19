@@ -6,6 +6,7 @@ import type { BalanceRow } from "../gas/types";
 import type { LinkValue } from "./map-model";
 import { averageComponents, COVERAGE_NOTES, fromParts, type NetComponents } from "./net-position";
 import { CORRIDOR_BY_ID } from "./registry";
+import type { SerbiaBalance } from "./serbia-balance";
 
 export interface NetRow {
   code: string;
@@ -66,8 +67,10 @@ export function buildNetRows(args: {
   entsog: Record<string, Record<string, NetComponents>> | null;
   values: Record<string, LinkValue>;
   balance: BalanceRow[];
+  /** Serbia's cross-border balance (see serbia-balance.ts); drives Serbia's row. */
+  serbia: SerbiaBalance | null;
 }): NetRow[] {
-  const { mode, date, days, entsog, values, balance } = args;
+  const { mode, date, days, entsog, values, balance, serbia } = args;
   const pickEntsog = (code: string): NetComponents | null => {
     const byDay = entsog?.[code];
     if (!byDay) return null;
@@ -86,23 +89,20 @@ export function buildNetRows(args: {
   return NET_COUNTRIES.map(({ code, mapName, label }) => {
     const base = { code, mapName, label, note: COVERAGE_NOTES[code] };
     if (code === "RS") {
-      const f = corridorFlows(
-        "RS",
-        ["hu_rs_1", "rs_hu_2", "bg_rs_kz", "bg_rs_kal", "rs_ba_zv"],
-        values,
-      );
-      if (!f.complete || !balRows.length)
+      // Same numbers as the Serbia balance card: net = entry − Hungary − Bosnia.
+      if (!serbia || serbia.net === null || !balRows.length)
         return { ...base, c: null, source: "ENTSOG points + dashboard balance" };
       return {
         ...base,
         source: "ENTSOG points + dashboard balance",
         c: fromParts({
-          imports: f.imports,
-          exports: f.exports,
-          byNeighbour: f.byNeighbour,
+          imports: serbia.gross!,
+          exports: serbia.exit! + serbia.bosnia!,
+          byNeighbour: serbia.byNeighbour ?? {},
           production: avg((b) => b.domestic_production_mcm) ?? 0,
           storage: avg((b) => b.storage_withdrawal_mcm - b.storage_injection_mcm) ?? 0,
           consumption: avg((b) => (b.is_forecast ? null : b.demand_mcm)),
+          outsideNet: ["storage", "production"],
         }),
       };
     }

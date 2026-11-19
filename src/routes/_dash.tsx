@@ -19,7 +19,6 @@ export const Route = createFileRoute("/_dash")({
 
 const TABS = [
   { to: "/balance", label: "Gas Balance" },
-  { to: "/flows", label: "Flow Details" },
   { to: "/region", label: "Balkan Map" },
   { to: "/capacity", label: "Capacity Bookings" },
   { to: "/srbijagas", label: "Srbijagas Full Supply" },
