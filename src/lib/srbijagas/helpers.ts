@@ -64,7 +64,12 @@ export function buildAnalysis(opts: {
   return opts.dates.map((date): AnalysisRow => {
     const ts = Date.parse(`${date}T00:00:00Z`);
     const f = flowByDate.get(date);
-    const requiredPoints = ["kireevo", "kiskundorozsma_2", "kiskundorozsma_hu", "kalotina"] as const;
+    const requiredPoints = [
+      "kireevo",
+      "kiskundorozsma_2",
+      "kiskundorozsma_hu",
+      "kalotina",
+    ] as const;
     const measured =
       !!f &&
       (!f.publishedPoints || requiredPoints.every((point) => f.publishedPoints?.includes(point)));
@@ -94,25 +99,30 @@ export function buildAnalysis(opts: {
         break;
       }
     }
+    // A share of partial flows is not a Bosnia estimate: without complete flow data for
+    // the day, only an explicit constant/manual assumption gives a Bosnia figure.
+    if (
+      !measured &&
+      (opts.bosnia.method === "share_of_net" || opts.bosnia.method === "share_of_kireevo_spread")
+    )
+      bosnia = 0;
     const bosniaManualDay = opts.manualBosniaDaily[date];
     if (bosniaManualDay != null) bosnia = bosniaManualDay;
 
     // Temperature override
     const tManual = opts.manualTempDaily[date];
-    const temperature_c = tManual != null ? tManual : tempByDate.get(date) ?? null;
+    const temperature_c = tManual != null ? tManual : (tempByDate.get(date) ?? null);
 
     // Power (GWh electricity) -> mcm gas
     const powerGwh = opts.manualPowerDaily[date] ?? null;
     const powerGas =
       powerGwh != null && opts.power.efficiencyPct > 0
         ? // gwh elec / eff -> gwh gas; mcm = gwh / (cv kWh/m3 / 1000) ; with cv=10.55 -> mcm = gwh / 10.55
-          (powerGwh / opts.power.efficiencyPct) / (opts.power.gasCvKwhM3)
+          powerGwh / opts.power.efficiencyPct / opts.power.gasCvKwhM3
         : null;
 
     const manualS = opts.manualSerbianDaily[date];
-    let serbianConsumption = measured
-      ? imports_total + opts.domesticProduction - bosnia
-      : 0;
+    let serbianConsumption = measured ? imports_total + opts.domesticProduction - bosnia : 0;
     if (manualS != null) serbianConsumption = manualS;
 
     let source: AnalysisRow["source"] = measured ? "measured" : "missing";
@@ -162,9 +172,9 @@ export function aggregateMonthly(rows: AnalysisRow[]): MonthlyAggRow[] {
     }
     if (r.source !== "missing") {
       agg.serbian_mcm += r.serbian_consumption_mcm;
+      agg.bosnia_mcm += r.bosnia_mcm;
       agg.valid_days += 1;
     }
-    agg.bosnia_mcm += r.bosnia_mcm;
     if (r.power_gas_equiv_mcm != null) agg.power_gas_mcm += r.power_gas_equiv_mcm;
     if (r.temperature_c != null) {
       agg._tSum += r.temperature_c;
@@ -191,10 +201,7 @@ export function aggregateMonthly(rows: AnalysisRow[]): MonthlyAggRow[] {
 // Smooth extreme outliers in numeric fields by carrying forward the previous
 // day's value. An "extreme" is > 2.5× or < 0.4× the previous non-zero value.
 // Used for chart display only — raw analysis rows are preserved for tables.
-export function smoothExtremes<T extends object>(
-  rows: T[],
-  fields: (keyof T)[],
-): T[] {
+export function smoothExtremes<T extends object>(rows: T[], fields: (keyof T)[]): T[] {
   const prev: Partial<Record<keyof T, number>> = {};
   return rows.map((r) => {
     const next = { ...r } as T;
@@ -211,8 +218,6 @@ export function smoothExtremes<T extends object>(
     return next;
   });
 }
-
-
 
 export function seasonalProfile(monthly: MonthlyAggRow[]) {
   // Average by calendar month across all years.
@@ -240,9 +245,9 @@ export function seasonalProfile(monthly: MonthlyAggRow[]) {
 // Convert Brent USD/bbl -> EUR/MWh proxy: configurable factor (default 0.55).
 export function reconstructPrice(opts: {
   months: string[];
-  ttfByMonth: Record<string, number>;     // EUR/MWh
-  brentByMonth: Record<string, number>;   // USD/bbl
-  fxByMonth: Record<string, number>;      // EUR per USD or USD per EUR? — assume EUR/USD i.e. 1 EUR = X USD
+  ttfByMonth: Record<string, number>; // EUR/MWh
+  brentByMonth: Record<string, number>; // USD/bbl
+  fxByMonth: Record<string, number>; // EUR per USD or USD per EUR? — assume EUR/USD i.e. 1 EUR = X USD
   officialByMonth: Record<string, number>;
   formula: PriceFormula;
 }): PriceRow[] {
@@ -416,37 +421,167 @@ export const DEFAULT_OVERRIDES: SrbijagasOverrides = {
 export function syntheticTtf(month: string): number {
   // EUR/MWh — calibrated approximation of monthly TTF Day-Ahead averages.
   const data: Record<string, number> = {
-    "2020-01": 12, "2020-02": 9, "2020-03": 8, "2020-04": 6, "2020-05": 5, "2020-06": 5,
-    "2020-07": 7, "2020-08": 9, "2020-09": 11, "2020-10": 13, "2020-11": 14, "2020-12": 17,
-    "2021-01": 18, "2021-02": 17, "2021-03": 17, "2021-04": 20, "2021-05": 25, "2021-06": 31,
-    "2021-07": 37, "2021-08": 45, "2021-09": 67, "2021-10": 90, "2021-11": 84, "2021-12": 116,
-    "2022-01": 84, "2022-02": 81, "2022-03": 127, "2022-04": 99, "2022-05": 95, "2022-06": 109,
-    "2022-07": 175, "2022-08": 235, "2022-09": 197, "2022-10": 100, "2022-11": 115, "2022-12": 110,
-    "2023-01": 65, "2023-02": 55, "2023-03": 45, "2023-04": 41, "2023-05": 30, "2023-06": 27,
-    "2023-07": 28, "2023-08": 33, "2023-09": 35, "2023-10": 44, "2023-11": 44, "2023-12": 37,
-    "2024-01": 31, "2024-02": 25, "2024-03": 26, "2024-04": 29, "2024-05": 32, "2024-06": 33,
-    "2024-07": 33, "2024-08": 39, "2024-09": 36, "2024-10": 39, "2024-11": 44, "2024-12": 46,
-    "2025-01": 49, "2025-02": 50, "2025-03": 42, "2025-04": 38, "2025-05": 36, "2025-06": 34,
-    "2025-07": 34, "2025-08": 33, "2025-09": 32, "2025-10": 33, "2025-11": 35, "2025-12": 36,
-    "2026-01": 36, "2026-02": 35, "2026-03": 33, "2026-04": 31, "2026-05": 29, "2026-06": 28,
+    "2020-01": 12,
+    "2020-02": 9,
+    "2020-03": 8,
+    "2020-04": 6,
+    "2020-05": 5,
+    "2020-06": 5,
+    "2020-07": 7,
+    "2020-08": 9,
+    "2020-09": 11,
+    "2020-10": 13,
+    "2020-11": 14,
+    "2020-12": 17,
+    "2021-01": 18,
+    "2021-02": 17,
+    "2021-03": 17,
+    "2021-04": 20,
+    "2021-05": 25,
+    "2021-06": 31,
+    "2021-07": 37,
+    "2021-08": 45,
+    "2021-09": 67,
+    "2021-10": 90,
+    "2021-11": 84,
+    "2021-12": 116,
+    "2022-01": 84,
+    "2022-02": 81,
+    "2022-03": 127,
+    "2022-04": 99,
+    "2022-05": 95,
+    "2022-06": 109,
+    "2022-07": 175,
+    "2022-08": 235,
+    "2022-09": 197,
+    "2022-10": 100,
+    "2022-11": 115,
+    "2022-12": 110,
+    "2023-01": 65,
+    "2023-02": 55,
+    "2023-03": 45,
+    "2023-04": 41,
+    "2023-05": 30,
+    "2023-06": 27,
+    "2023-07": 28,
+    "2023-08": 33,
+    "2023-09": 35,
+    "2023-10": 44,
+    "2023-11": 44,
+    "2023-12": 37,
+    "2024-01": 31,
+    "2024-02": 25,
+    "2024-03": 26,
+    "2024-04": 29,
+    "2024-05": 32,
+    "2024-06": 33,
+    "2024-07": 33,
+    "2024-08": 39,
+    "2024-09": 36,
+    "2024-10": 39,
+    "2024-11": 44,
+    "2024-12": 46,
+    "2025-01": 49,
+    "2025-02": 50,
+    "2025-03": 42,
+    "2025-04": 38,
+    "2025-05": 36,
+    "2025-06": 34,
+    "2025-07": 34,
+    "2025-08": 33,
+    "2025-09": 32,
+    "2025-10": 33,
+    "2025-11": 35,
+    "2025-12": 36,
+    "2026-01": 36,
+    "2026-02": 35,
+    "2026-03": 33,
+    "2026-04": 31,
+    "2026-05": 29,
+    "2026-06": 28,
   };
   return data[month] ?? 35;
 }
 export function syntheticBrent(month: string): number {
   const data: Record<string, number> = {
-    "2020-01": 64, "2020-02": 55, "2020-03": 32, "2020-04": 19, "2020-05": 30, "2020-06": 40,
-    "2020-07": 43, "2020-08": 45, "2020-09": 41, "2020-10": 41, "2020-11": 43, "2020-12": 50,
-    "2021-01": 55, "2021-02": 62, "2021-03": 65, "2021-04": 65, "2021-05": 68, "2021-06": 73,
-    "2021-07": 75, "2021-08": 71, "2021-09": 74, "2021-10": 84, "2021-11": 81, "2021-12": 75,
-    "2022-01": 86, "2022-02": 97, "2022-03": 117, "2022-04": 105, "2022-05": 113, "2022-06": 123,
-    "2022-07": 105, "2022-08": 100, "2022-09": 91, "2022-10": 93, "2022-11": 91, "2022-12": 81,
-    "2023-01": 83, "2023-02": 83, "2023-03": 78, "2023-04": 84, "2023-05": 75, "2023-06": 75,
-    "2023-07": 80, "2023-08": 86, "2023-09": 94, "2023-10": 91, "2023-11": 83, "2023-12": 78,
-    "2024-01": 80, "2024-02": 83, "2024-03": 84, "2024-04": 89, "2024-05": 83, "2024-06": 82,
-    "2024-07": 85, "2024-08": 79, "2024-09": 74, "2024-10": 76, "2024-11": 74, "2024-12": 74,
-    "2025-01": 78, "2025-02": 75, "2025-03": 72, "2025-04": 68, "2025-05": 65, "2025-06": 67,
-    "2025-07": 70, "2025-08": 72, "2025-09": 73, "2025-10": 72, "2025-11": 71, "2025-12": 70,
-    "2026-01": 70, "2026-02": 70, "2026-03": 69, "2026-04": 68, "2026-05": 67, "2026-06": 66,
+    "2020-01": 64,
+    "2020-02": 55,
+    "2020-03": 32,
+    "2020-04": 19,
+    "2020-05": 30,
+    "2020-06": 40,
+    "2020-07": 43,
+    "2020-08": 45,
+    "2020-09": 41,
+    "2020-10": 41,
+    "2020-11": 43,
+    "2020-12": 50,
+    "2021-01": 55,
+    "2021-02": 62,
+    "2021-03": 65,
+    "2021-04": 65,
+    "2021-05": 68,
+    "2021-06": 73,
+    "2021-07": 75,
+    "2021-08": 71,
+    "2021-09": 74,
+    "2021-10": 84,
+    "2021-11": 81,
+    "2021-12": 75,
+    "2022-01": 86,
+    "2022-02": 97,
+    "2022-03": 117,
+    "2022-04": 105,
+    "2022-05": 113,
+    "2022-06": 123,
+    "2022-07": 105,
+    "2022-08": 100,
+    "2022-09": 91,
+    "2022-10": 93,
+    "2022-11": 91,
+    "2022-12": 81,
+    "2023-01": 83,
+    "2023-02": 83,
+    "2023-03": 78,
+    "2023-04": 84,
+    "2023-05": 75,
+    "2023-06": 75,
+    "2023-07": 80,
+    "2023-08": 86,
+    "2023-09": 94,
+    "2023-10": 91,
+    "2023-11": 83,
+    "2023-12": 78,
+    "2024-01": 80,
+    "2024-02": 83,
+    "2024-03": 84,
+    "2024-04": 89,
+    "2024-05": 83,
+    "2024-06": 82,
+    "2024-07": 85,
+    "2024-08": 79,
+    "2024-09": 74,
+    "2024-10": 76,
+    "2024-11": 74,
+    "2024-12": 74,
+    "2025-01": 78,
+    "2025-02": 75,
+    "2025-03": 72,
+    "2025-04": 68,
+    "2025-05": 65,
+    "2025-06": 67,
+    "2025-07": 70,
+    "2025-08": 72,
+    "2025-09": 73,
+    "2025-10": 72,
+    "2025-11": 71,
+    "2025-12": 70,
+    "2026-01": 70,
+    "2026-02": 70,
+    "2026-03": 69,
+    "2026-04": 68,
+    "2026-05": 67,
+    "2026-06": 66,
   };
   return data[month] ?? 75;
 }

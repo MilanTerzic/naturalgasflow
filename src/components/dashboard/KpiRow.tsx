@@ -29,10 +29,14 @@ export function KpiRow({ balance, selectedDate }: { balance: BalanceRow[]; selec
     return a - b;
   };
 
-  const estimatedHint =
-    cur.is_estimated && cur.estimated_from
+  const provisionalText = cur.provisional_sources?.length
+    ? cur.provisional_sources.join(" / ")
+    : "nominations";
+  const estimatedHint = !cur.is_estimated
+    ? undefined
+    : cur.estimated_from
       ? `Estimated using published allocation observations from ${cur.estimated_from}`
-      : undefined;
+      : `Estimated from ENTSOG ${provisionalText}; allocation not yet published`;
   const supplyAvailable = cur.supply_available;
   const rawBalance = cur.storage_imbalance_raw_mcm;
   const balanceTone = !supplyAvailable ? "warning" : rawBalance >= 0 ? "positive" : "negative";
@@ -55,9 +59,18 @@ export function KpiRow({ balance, selectedDate }: { balance: BalanceRow[]; selec
     <section aria-label={`${cur.date} at a glance`} className="space-y-3">
       {cur.is_estimated && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          <span className="font-medium">Estimated allocation inputs.</span> One or more ENTSOG points
-          for {cur.date} were unavailable, so published observations from {cur.estimated_from} are
-          used and clearly marked.
+          <span className="font-medium">Estimated allocation inputs.</span>{" "}
+          {cur.estimated_from ? (
+            <>
+              One or more ENTSOG points for {cur.date} were unavailable, so published observations
+              from {cur.estimated_from} are used and clearly marked.
+            </>
+          ) : (
+            <>
+              ENTSOG has not published allocations for {cur.date} yet, so {provisionalText} values
+              are used and clearly marked.
+            </>
+          )}
         </div>
       )}
 
@@ -77,7 +90,7 @@ export function KpiRow({ balance, selectedDate }: { balance: BalanceRow[]; selec
           unit="mcm/day"
           hint={
             supplyAvailable
-              ? estimatedHint ?? "Total supply available to Serbia"
+              ? (estimatedHint ?? "Total supply available to Serbia")
               : "Incomplete allocation inputs — supply not calculated"
           }
           delta={supplyAvailable ? delta("serbian_available_supply_mcm") : null}

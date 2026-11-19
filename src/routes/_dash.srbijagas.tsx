@@ -44,7 +44,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { fetchHistoricalFlows, fetchEcbFx, fetchEntsoeGasGeneration } from "@/lib/data/historical.functions";
-import { fetchBelgradeTemperatures } from "@/lib/data/openmeteo.functions";
+import { fetchBelgradeTemperaturesWithBrowserFallback } from "@/lib/data/temperatures.client";
 import {
   aggregateMonthly,
   buildAnalysis,
@@ -89,9 +89,11 @@ export const Route = createFileRoute("/_dash/srbijagas")({
 // ---------------------------------------------------------------------------
 type Preset = "1y" | "2y" | "3y" | "5y" | "10y" | "custom";
 
+// ENTSOG publishes all four Serbian points only from Dec 2023, so three years covers the
+// usable history; longer windows only add slow requests for days without data.
+const DEFAULT_PRESET = "3y" as const;
 function defaultRange(): { from: string; to: string } {
-  const to = new Date();
-  return { from: "2021-01-01", to: to.toISOString().slice(0, 10) };
+  return presetRange(DEFAULT_PRESET)!;
 }
 
 function presetRange(p: Preset): { from: string; to: string } | null {
@@ -108,7 +110,7 @@ function presetRange(p: Preset): { from: string; to: string } | null {
 function SrbijagasPage() {
   const { domesticProduction } = useDashboard();
   const { overrides, update, reset } = useSrbijagasOverrides();
-  const [preset, setPreset] = useState<Preset>("5y");
+  const [preset, setPreset] = useState<Preset>(DEFAULT_PRESET);
   const initial = defaultRange();
   const [fromISO, setFromISO] = useState(initial.from);
   const [toISO, setToISO] = useState(initial.to);
@@ -137,7 +139,7 @@ function SrbijagasPage() {
   });
   const tempsQ = useQuery({
     queryKey: ["srbijagas-temps", effFromISO, toISO],
-    queryFn: () => fetchBelgradeTemperatures({ data: { from: effFromISO, to: toISO } }),
+    queryFn: () => fetchBelgradeTemperaturesWithBrowserFallback({ from: effFromISO, to: toISO }),
     staleTime: 60 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
@@ -363,7 +365,8 @@ function SrbijagasPage() {
           <h2 className="text-sm font-semibold">Srbijagas Full Supply Analysis</h2>
           <p className="text-xs text-muted-foreground">
             Historical volume / weather / power / price analytics for a potential Srbijagas full-supply offer.
-            Default window is 5 years — ENTSOG public history typically covers ~2 years, extend earlier periods via CSV upload.
+            Default window is 3 years: ENTSOG publishes all four Serbian points only from Dec 2023, so
+            earlier months show no flow-derived volume. Extend earlier periods via CSV upload.
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-2">

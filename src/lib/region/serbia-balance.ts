@@ -78,7 +78,10 @@ export function serbiaBalance(args: {
   const { mode, date, rows, balance } = args;
   const bosniaByDate = new Map(balance.map((b) => [b.date, b.bosnia_consumption_mcm]));
   const forRow = (r: FlowRow) => serbiaBalanceForRow(r, bosniaByDate.get(r.date) ?? null);
-  if (mode === "day") return forRow(rows.find((r) => r.date === date) as FlowRow);
+  if (mode === "day") {
+    const row = rows.find((r) => r.date === date);
+    return row ? forRow(row) : EMPTY;
+  }
 
   const complete = rows.map(forRow).filter((x) => x.net !== null);
   if (!complete.length) return EMPTY;

@@ -165,3 +165,26 @@ test("Serbia balance: net row equals entry − Horgoš − Bosnia, day and avera
   const day = serbiaBalance({ mode: "day", date: "2026-11-02", rows, balance });
   near(day.net, 0.2 + 32 + 0 - 22 - 0.6);
 });
+
+test("Serbia balance: no row for the day (data still loading) gives empty, not a crash", async () => {
+  const { serbiaBalance } = await import("../src/lib/region/serbia-balance.ts");
+  for (const [mode, date, rows] of [
+    ["day", null, []],
+    ["day", "2026-11-19", []],
+    ["average", null, []],
+  ]) {
+    const s = serbiaBalance({ mode, date, rows, balance: [] });
+    assert.equal(s.net, null);
+    assert.equal(s.gross, null);
+  }
+  const rs = buildNetRows({
+    mode: "day",
+    date: null,
+    days: [],
+    entsog: null,
+    values: {},
+    balance: [],
+    serbia: serbiaBalance({ mode: "day", date: null, rows: [], balance: [] }),
+  }).find((r) => r.code === "RS");
+  assert.equal(rs.c, null);
+});

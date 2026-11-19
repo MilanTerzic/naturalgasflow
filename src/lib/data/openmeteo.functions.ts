@@ -77,14 +77,23 @@ async function fetchOpenMeteo(from: string, to: string): Promise<TempRow[]> {
   const out = new Map<string, number>();
 
   if (from <= archiveEnd) {
-    const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${from}&end_date=${archiveEnd}&daily=temperature_2m_mean&timezone=Europe%2FBelgrade`;
-    const json = (await fetchJson(url)) as {
-      daily?: { time?: string[]; temperature_2m_mean?: (number | null)[] };
-    };
-    const t = json.daily?.time ?? [];
-    const v = json.daily?.temperature_2m_mean ?? [];
-    for (let i = 0; i < t.length; i++) {
-      if (v[i] != null) out.set(t[i], v[i] as number);
+    // Multi-year windows time out as one request; fetch one calendar year at a time.
+    const chunks: Array<[string, string]> = [];
+    for (let y = Number(from.slice(0, 4)); y <= Number(archiveEnd.slice(0, 4)); y++) {
+      const s = y === Number(from.slice(0, 4)) ? from : `${y}-01-01`;
+      const e = y === Number(archiveEnd.slice(0, 4)) ? archiveEnd : `${y}-12-31`;
+      chunks.push([s, e]);
+    }
+    for (const [s, e] of chunks) {
+      const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${s}&end_date=${e}&daily=temperature_2m_mean&timezone=Europe%2FBelgrade`;
+      const json = (await fetchJson(url, 20_000)) as {
+        daily?: { time?: string[]; temperature_2m_mean?: (number | null)[] };
+      };
+      const t = json.daily?.time ?? [];
+      const v = json.daily?.temperature_2m_mean ?? [];
+      for (let i = 0; i < t.length; i++) {
+        if (v[i] != null) out.set(t[i], v[i] as number);
+      }
     }
   }
   if (to >= todayStr) {
@@ -240,4 +249,3 @@ export const fetchBelgradeTemperatures = createServerFn({ method: "POST" })
       fetchedAt: latestFetchedAt || new Date().toISOString(),
     };
   });
-

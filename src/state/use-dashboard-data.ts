@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { buildBalance, dateRangeIso, todayIso } from "@/lib/gas/demand";
 import { dummyFlows, dummyTemperatures, dummyCapacity } from "@/lib/gas/dummy";
-import { fetchBelgradeTemperatures } from "@/lib/data/openmeteo.functions";
+import { fetchBelgradeTemperaturesWithBrowserFallback } from "@/lib/data/temperatures.client";
 import { fetchEntsogAllocations, fetchEntsogFlows } from "@/lib/data/entsog.functions";
 import type { BalanceRow, CapacityRow, FlowRow, TempRow } from "@/lib/gas/types";
 import { gastransAfterHungaryMcm, isGastransResidualOutlier } from "@/lib/gas/flow-metrics";
@@ -39,7 +39,7 @@ export function useDashboardData(): DashboardData {
 
   const tempQuery = useQuery({
     queryKey: ["temps", from, to],
-    queryFn: () => fetchBelgradeTemperatures({ data: { from, to } }),
+    queryFn: () => fetchBelgradeTemperaturesWithBrowserFallback({ from, to }),
     enabled: s.mode === "live",
     staleTime: 60 * 60 * 1000,
     refetchOnWindowFocus: false,
@@ -86,7 +86,9 @@ export function useDashboardData(): DashboardData {
     // Serbian balance uses ENTSOG Allocation actuals. Current-day gaps may still
     // use ENTSOG renomination/nomination as explicitly provisional substitutes.
     if (allocationQuery.data?.error) {
-      warnings.push(`ENTSOG Allocation: ${allocationQuery.data.error}. Allocation data unavailable.`);
+      warnings.push(
+        `ENTSOG Allocation: ${allocationQuery.data.error}. Allocation data unavailable.`,
+      );
       balanceFlows = allocationQuery.data.data ?? [];
     } else if (allocationQuery.isError) {
       warnings.push("ENTSOG Allocation unreachable. Allocation data unavailable.");
@@ -123,9 +125,9 @@ export function useDashboardData(): DashboardData {
       if (row.point_source) {
         return Boolean(
           row.point_source.kiskundorozsma_hu &&
-            row.point_source.kireevo &&
-            row.point_source.kiskundorozsma_2 &&
-            row.point_source.kalotina,
+          row.point_source.kireevo &&
+          row.point_source.kiskundorozsma_2 &&
+          row.point_source.kalotina,
         );
       }
       return !row.published_points || row.published_points.length === 4;
@@ -144,13 +146,11 @@ export function useDashboardData(): DashboardData {
   }, [balanceFlows, today, dates]);
 
   const dataThrough = useMemo(() => {
-    return [...balanceFlows]
-      .filter(
-        (f) =>
-          f.date <= today &&
-          (!f.published_points || f.published_points.length === 4),
-      )
-      .sort((a, b) => b.date.localeCompare(a.date))[0]?.date ?? "";
+    return (
+      [...balanceFlows]
+        .filter((f) => f.date <= today && (!f.published_points || f.published_points.length === 4))
+        .sort((a, b) => b.date.localeCompare(a.date))[0]?.date ?? ""
+    );
   }, [balanceFlows, today]);
 
   const balance = useMemo(
