@@ -44,7 +44,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { fetchHistoricalFlows, fetchEcbFx, fetchEntsoeGasGeneration } from "@/lib/data/historical.functions";
-import { fetchBelgradeTemperaturesWithBrowserFallback } from "@/lib/data/temperatures.client";
+import { fetchBelgradeTemperaturesWithBrowserFallback } from "@/lib/data/temperatures-browser";
 import {
   aggregateMonthly,
   buildAnalysis,

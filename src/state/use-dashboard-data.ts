@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { buildBalance, dateRangeIso, todayIso } from "@/lib/gas/demand";
 import { dummyFlows, dummyTemperatures, dummyCapacity } from "@/lib/gas/dummy";
-import { fetchBelgradeTemperaturesWithBrowserFallback } from "@/lib/data/temperatures.client";
+import { fetchBelgradeTemperaturesWithBrowserFallback } from "@/lib/data/temperatures-browser";
 import { fetchEntsogAllocations, fetchEntsogFlows } from "@/lib/data/entsog.functions";
 import type { BalanceRow, CapacityRow, FlowRow, TempRow } from "@/lib/gas/types";
 import { gastransAfterHungaryMcm, isGastransResidualOutlier } from "@/lib/gas/flow-metrics";
