@@ -40,6 +40,7 @@ import { fetchAgsiStorage } from "@/lib/data/agsi.functions";
 import { ChartCard } from "@/components/dashboard/ChartCard";
 import { FlowsChart } from "@/components/dashboard/FlowsChart";
 import { gastransResidualStats, serbiaBalance } from "@/lib/region/serbia-balance";
+import { fetchRbpBookings } from "@/lib/data/rbp-bookings.functions";
 import type { FlowPointName, FlowRow } from "@/lib/gas/types";
 import {
   buildLinkValues,
@@ -318,6 +319,39 @@ function RegionPage() {
   const fmtShort = (mcm: number) =>
     unit === "gwh" ? toUnit(mcm).toFixed(0) : toUnit(mcm).toFixed(1);
 
+  // Capacity booked via RBP auctions (Gastrans, Transportgas) per corridor, for the map view.
+  const rbpTo = new Date(Date.parse(`${today}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+  const rbpQuery = useQuery({
+    queryKey: ["rbp-bookings", dates[0], rbpTo, 0],
+    queryFn: () => fetchRbpBookings({ data: { from: dates[0], to: rbpTo } }),
+    enabled: s.mode === "live" && Boolean(dates[0]),
+    staleTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+  const rbpByCorridor = useMemo(() => {
+    const out: Record<string, { total: number; byProduct: Record<string, number>; label: string }> =
+      {};
+    for (const p of rbpQuery.data?.points ?? []) {
+      if (!p.corridor) continue;
+      const pool =
+        mode === "day"
+          ? p.days.filter((d) => d.date === date)
+          : p.days.filter((d) => days.includes(d.date));
+      if (!pool.length) continue;
+      const n = pool.length;
+      const byProduct: Record<string, number> = {};
+      for (const d of pool)
+        for (const [k, v] of Object.entries(d.byProduct))
+          byProduct[k] = (byProduct[k] ?? 0) + v / n;
+      out[p.corridor] = {
+        total: pool.reduce((a, d) => a + d.total, 0) / n,
+        byProduct,
+        label: p.label,
+      };
+    }
+    return out;
+  }, [rbpQuery.data, mode, date, days]);
+
   // Moved from the former Flow Details page: Gastrans residual and Serbian storage.
   const selectedRow = useMemo(() => rows.find((r) => r.date === date), [rows, date]);
   const residualOutlier = mode === "day" && isGastransResidualOutlier(selectedRow);
@@ -405,6 +439,26 @@ function RegionPage() {
         {v?.value != null && v.status !== "model" && v.technical == null && (
           <div className="text-[10px] text-muted-foreground">
             No firm technical / booked capacity published by ENTSOG for this day
+          </div>
+        )}
+        {rbpByCorridor[c.id] && (
+          <div className="text-[11px] leading-snug">
+            <span className="font-medium text-foreground">
+              Booked via RBP: {fmt(rbpByCorridor[c.id].total)} {unitLabel}
+            </span>
+            {Object.keys(rbpByCorridor[c.id].byProduct).length > 0 && (
+              <span className="text-muted-foreground">
+                {" "}
+                (
+                {Object.entries(rbpByCorridor[c.id].byProduct)
+                  .map(([k, v]) => `${k} ${fmt(v)}`)
+                  .join(" · ")}
+                )
+              </span>
+            )}
+            <div className="text-[10px] text-muted-foreground">
+              RBP auction allocations only; long-term contracts outside RBP not included
+            </div>
           </div>
         )}
         {c.note && <div className="text-[11px] leading-snug text-muted-foreground">{c.note}</div>}

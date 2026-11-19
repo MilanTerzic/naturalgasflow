@@ -3,17 +3,10 @@ export interface TempRow {
   temperature_c: number | null;
 }
 
-export type FlowPointName =
-  | "kiskundorozsma_hu"
-  | "kireevo"
-  | "kiskundorozsma_2"
-  | "kalotina";
+export type FlowPointName = "kiskundorozsma_hu" | "kireevo" | "kiskundorozsma_2" | "kalotina";
 
 export type FlowPointOperationalSource =
-  | "physical_flow"
-  | "allocation"
-  | "renomination"
-  | "nomination";
+  "physical_flow" | "allocation" | "renomination" | "nomination";
 
 export interface FlowRow {
   date: string;
@@ -33,11 +26,7 @@ export interface FlowRow {
 }
 
 export type FlowSourceType =
-  | "actual"
-  | "provisional"
-  | "historical_fallback"
-  | "future_fallback"
-  | "none";
+  "actual" | "provisional" | "historical_fallback" | "future_fallback" | "none";
 
 export interface BalanceRow {
   date: string; // ISO date
@@ -108,7 +97,10 @@ export interface CapacityAuctionRow {
   status: string;
   valid_from: string;
   valid_to: string;
+  /** MWh/d, converted from RBP's kWh/h or kWh/d. */
   offered_mwh: number;
+  /** MWh/d allocated on a closed auction; null when RBP published none. */
+  allocated_mwh?: number | null;
   entry_tso?: string;
   exit_tso?: string;
   source: "RBP";

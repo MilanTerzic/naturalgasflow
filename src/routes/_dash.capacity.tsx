@@ -4,6 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
 import { CapacityCharts } from "@/components/dashboard/CapacityCharts";
 import { CapacityTable } from "@/components/dashboard/CapacityTable";
+import { RbpBookingsCard } from "@/components/dashboard/RbpBookingsCard";
+import { fetchRbpBookings } from "@/lib/data/rbp-bookings.functions";
 import { Button } from "@/components/ui/button";
 import { dummyCapacity, dummyFlows } from "@/lib/gas/dummy";
 import { fetchLiveCapacityBookings } from "@/lib/data/capacity.functions";
@@ -103,6 +105,19 @@ function CapacityPage() {
     placeholderData: (previous) => previous,
     enabled: mode === "live",
   });
+
+  const rbpBookingsQuery = useQuery({
+    queryKey: ["rbp-bookings", selected.fromISO, selected.toISO, refreshNonce],
+    queryFn: () =>
+      fetchRbpBookings({
+        data: { from: selected.fromISO, to: selected.toISO, force: refreshNonce },
+      }),
+    staleTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    placeholderData: (previous) => previous,
+    enabled: mode === "live",
+  });
+  const todayIso = new Date().toISOString().slice(0, 10);
 
   const calendar2026CapacityQuery = useQuery({
     queryKey: [
@@ -331,6 +346,11 @@ function CapacityPage() {
         heatmapToISO={selected.toISO}
         calendarYear={calendarYear}
       />
+      <RbpBookingsCard
+        data={mode === "live" ? rbpBookingsQuery.data : undefined}
+        loading={rbpBookingsQuery.isFetching}
+        today={todayIso}
+      />
       <RbpAuctionTable auctions={rbpAuctions} isLoading={liveCapacityQuery.isFetching} />
       <CapacityTable capacity={capacity} flows={flows} />
     </div>
@@ -388,12 +408,13 @@ function RbpAuctionTable({
             <TableHead>Validity</TableHead>
             <TableHead>Status</TableHead>
             <TableHead className="text-right">Offered (MWh/d)</TableHead>
+            <TableHead className="text-right">Allocated (MWh/d)</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {groups.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={5} className="py-6 text-center text-xs text-muted-foreground">
+              <TableCell colSpan={6} className="py-6 text-center text-xs text-muted-foreground">
                 {isLoading
                   ? "Loading RBP auction offers..."
                   : "No RBP auction offers returned for this period."}
@@ -402,7 +423,7 @@ function RbpAuctionTable({
           ) : (
             groups.flatMap((g) => [
               <TableRow key={`h-${g.point}`} className="bg-muted/40 hover:bg-muted/40">
-                <TableCell colSpan={5} className="py-1.5 text-xs font-medium">
+                <TableCell colSpan={6} className="py-1.5 text-xs font-medium">
                   {g.point}
                   <span className="ml-2 font-normal text-muted-foreground">
                     {g.total > g.rows.length ? `next ${g.rows.length} of ${g.total}` : `${g.total}`}
@@ -421,6 +442,9 @@ function RbpAuctionTable({
                   <TableCell className="text-xs">{r.status}</TableCell>
                   <TableCell className="text-right text-xs tabular-nums">
                     {fmtMwh(r.offered_mwh)}
+                  </TableCell>
+                  <TableCell className="text-right text-xs tabular-nums">
+                    {r.allocated_mwh == null ? "—" : fmtMwh(r.allocated_mwh)}
                   </TableCell>
                 </TableRow>
               )),

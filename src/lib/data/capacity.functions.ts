@@ -6,6 +6,7 @@ import {
 } from "@/lib/gas/capacity-routes";
 import { capacityUnitToMwhDay, type CapacityValue } from "@/lib/gas/capacity-utils";
 import type { CapacityAuctionRow, CapacityRow } from "@/lib/gas/types";
+import { RBP_SERBIAN_POINTS, rbpUnit } from "@/lib/rbp/bookings";
 
 interface FetchCapacityArgs {
   from: string;
@@ -40,6 +41,9 @@ interface RbpAuctionApiRow {
   offeredCapacity?: number | null;
   entryTSOName?: string;
   exitTSOName?: string;
+  unitsAllocated?: number | null;
+  reservePriceUnitExitTSO?: string;
+  reservePriceUnitEntryTSO?: string;
 }
 
 const ENTSOG_TECHNICAL = "Firm Technical";
@@ -47,11 +51,7 @@ const ENTSOG_BOOKED = "Firm Booked";
 const REQUEST_TIMEOUT_MS = 12_000;
 const CAPACITY_CACHE_TTL_MS = 30 * 60 * 1000;
 
-const RBP_POINT_NAMES = [
-  "Kiskundorozsma (HU) / Kiskundorozsma (RS)",
-  "Kireevo (BG) / Zaychar (RS)",
-  "Kalotina (BG)/Dimitrovgrad (RS)",
-] as const;
+const RBP_POINT_NAMES = RBP_SERBIAN_POINTS.map((p) => p.name);
 
 function parseDate(iso: string): Date {
   return new Date(`${iso}T00:00:00Z`);
@@ -351,8 +351,13 @@ class EntsogCapacityProvider implements CapacityDataProvider {
   }
 }
 
-function rbpToMwh(offeredCapacity: number | null | undefined): number {
-  return offeredCapacity == null ? 0 : offeredCapacity / 1000;
+// RBP quantities are kWh/h (Gastrans, FGSZ) or kWh/d (Transportgas, Bulgartransgaz), as
+// stated in the row's reserve-price unit. Rows with an unknown unit return null.
+function rbpToMwhPerDay(value: number | null | undefined, row: RbpAuctionApiRow): number | null {
+  if (value == null) return null;
+  const unit = rbpUnit(row);
+  if (!unit) return null;
+  return (unit === "kWh/h" ? value * 24 : value) / 1000;
 }
 
 async function fetchRbpPointAuctions(
@@ -387,7 +392,11 @@ async function fetchRbpPointAuctions(
     status: r.status ?? "",
     valid_from: (r.capacityValidFromUTC ?? "").slice(0, 10),
     valid_to: (r.capacityValidToUTC ?? "").slice(0, 10),
-    offered_mwh: Math.round(rbpToMwh(r.offeredCapacity)),
+    offered_mwh: Math.round(rbpToMwhPerDay(r.offeredCapacity, r) ?? 0),
+    allocated_mwh:
+      r.unitsAllocated == null
+        ? null
+        : Math.round(rbpToMwhPerDay(Number(r.unitsAllocated), r) ?? 0),
     entry_tso: r.entryTSOName,
     exit_tso: r.exitTSOName,
     source: "RBP" as const,
