@@ -5,7 +5,7 @@ import {
   capacityRouteLabel,
   type CapacityRouteDefinition,
 } from "./capacity-routes.ts";
-import type { CapacityRow, FlowRow } from "./types.ts";
+import type { CapacityRow, FlowPointName, FlowRow } from "./types.ts";
 
 export interface CapacityValue {
   value_mwh: number;
@@ -65,15 +65,32 @@ export function mwhDayToMcmDay(value: number | null | undefined): number | null 
   return value == null || !Number.isFinite(value) ? null : value / CONVERSION_MCM_TO_MWH;
 }
 
+const FLOW_POINTS: FlowPointName[] = [
+  "kiskundorozsma_hu",
+  "kireevo",
+  "kalotina",
+  "kiskundorozsma_2",
+];
+
+/**
+ * Measured physical flow at a point, or null. Today's gas day is filled with
+ * renomination/nomination substitutes upstream; those are not measured flow.
+ * Legacy rows without point-level provenance count as measured.
+ */
+export function measuredFlowMcm(flow: FlowRow | undefined, key: FlowPointName): number | null {
+  if (!flow) return null;
+  if (!flow.point_source) return flow[key] ?? null;
+  return flow.point_source[key] === "physical_flow" ? flow[key] : null;
+}
+
+/** Latest gas day where at least one point has measured physical flow. */
 export function latestMeasuredFlowRow(flows: FlowRow[]): FlowRow | undefined {
   return [...flows]
     .sort((a, b) => b.date.localeCompare(a.date))
-    .find(
-      (flow) =>
-        flow.kiskundorozsma_hu > 0 ||
-        flow.kireevo > 0 ||
-        flow.kalotina > 0 ||
-        flow.kiskundorozsma_2 > 0,
+    .find((flow) =>
+      flow.point_source
+        ? FLOW_POINTS.some((k) => flow.point_source![k] === "physical_flow")
+        : FLOW_POINTS.some((k) => flow[k] > 0),
     );
 }
 
@@ -125,7 +142,7 @@ export function buildCapacityRouteSummaries(
     const bookedMwh = row?.booked_mwh ?? null;
     const technicalMcm = mwhDayToMcmDay(technicalMwh);
     const bookedMcm = mwhDayToMcmDay(bookedMwh);
-    const usedMcm = flowRow ? (flowRow[route.physicalFlowKey] ?? null) : null;
+    const usedMcm = measuredFlowMcm(flowRow, route.physicalFlowKey);
     const capacitySourceDate = row?.source_date ?? row?.capacity_source_date ?? row?.period;
     const capacityReferenceDate = row?.period;
 
@@ -160,10 +177,9 @@ export function buildCapacityRouteSummaries(
       warning: row?.warning,
       row,
       perDate: flows.map((flow) => {
-        const used = flow[route.physicalFlowKey] ?? null;
+        const used = measuredFlowMcm(flow, route.physicalFlowKey);
         const dateRow = selectCapacityForReferenceDate(capacity, route.id, flow.date);
-        const dateTechnicalMwh =
-          dateRow?.technical_mwh ?? (dateRow ? dateRow.offered_mwh : null);
+        const dateTechnicalMwh = dateRow?.technical_mwh ?? (dateRow ? dateRow.offered_mwh : null);
         const dateTechnicalMcm = mwhDayToMcmDay(dateTechnicalMwh);
         return {
           date: flow.date,

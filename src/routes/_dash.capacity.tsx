@@ -54,7 +54,7 @@ function gasYearOptions() {
     const y = start + offset;
     return {
       value: String(y),
-      label: `Gas year ${y}/${String(y + 1).slice(-2)} (1 Oct ${y} -> 1 Oct ${y + 1})`,
+      label: `Gas year ${y}/${String(y + 1).slice(-2)} (1 Oct ${y} → 1 Oct ${y + 1})`,
       fromISO: `${y}-10-01`,
       toISO: `${y + 1}-10-01`,
     };
@@ -84,8 +84,9 @@ function CapacityPage() {
   const [gasYear, setGasYear] = useState(String(currentGasYearStart()));
   const [refreshNonce, setRefreshNonce] = useState(0);
   const selected = options.find((o) => o.value === gasYear) ?? options[1];
-  const calendar2026FromISO = "2026-01-01";
-  const calendar2026ToISO = "2027-01-01";
+  const calendarYear = new Date().getUTCFullYear();
+  const calendar2026FromISO = `${calendarYear}-01-01`;
+  const calendar2026ToISO = `${calendarYear + 1}-01-01`;
 
   const liveCapacityQuery = useQuery({
     queryKey: ["live-capacity-bookings", selected.fromISO, selected.toISO, refreshNonce],
@@ -221,7 +222,7 @@ function CapacityPage() {
       return {
         capacity: dummyCapacity({
           fromISO: calendar2026FromISO,
-          toISO: "2026-12-31",
+          toISO: `${calendarYear}-12-31`,
         }).rows,
         flows: dummyFlows(dates),
       };
@@ -242,12 +243,23 @@ function CapacityPage() {
       capacity: fallback.capacity,
       flows: fallback.flows,
     };
-  }, [mode, calendar2026CapacityQuery.data, calendar2026FlowsQuery.data]);
+  }, [
+    mode,
+    calendar2026CapacityQuery.data,
+    calendar2026FlowsQuery.data,
+    calendarYear,
+    calendar2026FromISO,
+    calendar2026ToISO,
+  ]);
   const warnings = [
     ...(liveCapacityQuery.data?.warnings ?? []),
-    ...(calendar2026CapacityQuery.data?.warnings ?? []).map((warning) => `2026 stacks: ${warning}`),
+    ...(calendar2026CapacityQuery.data?.warnings ?? []).map(
+      (warning) => `${calendarYear} stacks: ${warning}`,
+    ),
     ...(calendar2026FlowsQuery.data?.error
-      ? [`2026 stacks: ENTSOG flow data unavailable: ${calendar2026FlowsQuery.data.error}`]
+      ? [
+          `${calendarYear} stacks: ENTSOG flow data unavailable: ${calendar2026FlowsQuery.data.error}`,
+        ]
       : []),
     ...(selectedPeriodFlowsQuery.data?.error
       ? [
@@ -265,7 +277,7 @@ function CapacityPage() {
           <p className="text-xs text-muted-foreground">
             Period shown:{" "}
             <span className="font-medium tabular-nums text-foreground">
-              {fmtShortDate(selected.fromISO)} {"->"} {fmtShortDate(selected.toISO)}
+              {fmtShortDateYear(selected.fromISO)} → {fmtShortDateYear(selected.toISO)}
             </span>{" "}
             - {sourceLabel}
             {liveCapacityQuery.isFetching ? " Refreshing ENTSOG/RBP..." : ""}
@@ -317,12 +329,15 @@ function CapacityPage() {
         calendarFlows={calendar2026.flows}
         heatmapFromISO={selected.fromISO}
         heatmapToISO={selected.toISO}
+        calendarYear={calendarYear}
       />
       <RbpAuctionTable auctions={rbpAuctions} isLoading={liveCapacityQuery.isFetching} />
       <CapacityTable capacity={capacity} flows={flows} />
     </div>
   );
 }
+
+const RBP_PER_POINT = 6;
 
 function RbpAuctionTable({
   auctions,
@@ -331,25 +346,44 @@ function RbpAuctionTable({
   auctions: CapacityAuctionRow[];
   isLoading: boolean;
 }) {
-  const rows = auctions.slice(0, 12);
+  // Next auctions per point (the server already starts the list at yesterday's gas day).
+  const byPoint = new Map<string, CapacityAuctionRow[]>();
+  for (const a of auctions) {
+    const list = byPoint.get(a.network_point) ?? [];
+    list.push(a);
+    byPoint.set(a.network_point, list);
+  }
+  const groups = [...byPoint.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([point, list]) => ({
+      point,
+      total: list.length,
+      rows: [...list]
+        .sort(
+          (x, y) =>
+            x.valid_from.localeCompare(y.valid_from) ||
+            x.product_type.localeCompare(y.product_type),
+        )
+        .slice(0, RBP_PER_POINT),
+    }));
   return (
     <div className="rounded-md border bg-card p-3 shadow-sm">
       <div className="mb-2 flex items-baseline justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold">RBP auction offers</h3>
           <p className="text-xs text-muted-foreground">
-            Public RBP auction list for the selected period. Offered capacity is auction offer
-            volume, not booked allocation.
+            Next auctions on RBP per Serbian border point, from yesterday&apos;s gas day within the
+            selected gas year. Offered capacity is auction offer volume, not booked allocation.
           </p>
         </div>
         <span className="text-xs text-muted-foreground">
-          {isLoading ? "Refreshing..." : `${auctions.length} rows`}
+          {isLoading ? "Refreshing..." : `${auctions.length} auctions`}
         </span>
       </div>
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Point</TableHead>
+            <TableHead>Auction</TableHead>
             <TableHead>Product</TableHead>
             <TableHead>Validity</TableHead>
             <TableHead>Status</TableHead>
@@ -357,7 +391,7 @@ function RbpAuctionTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.length === 0 ? (
+          {groups.length === 0 ? (
             <TableRow>
               <TableCell colSpan={5} className="py-6 text-center text-xs text-muted-foreground">
                 {isLoading
@@ -366,24 +400,31 @@ function RbpAuctionTable({
               </TableCell>
             </TableRow>
           ) : (
-            rows.map((r) => (
-              <TableRow
-                key={`${r.auction_code}-${r.network_point}-${r.valid_from}-${r.offered_mwh}`}
-              >
-                <TableCell className="text-xs">
-                  <div className="font-medium">{r.network_point}</div>
-                  <div className="text-muted-foreground">{r.auction_code}</div>
+            groups.flatMap((g) => [
+              <TableRow key={`h-${g.point}`} className="bg-muted/40 hover:bg-muted/40">
+                <TableCell colSpan={5} className="py-1.5 text-xs font-medium">
+                  {g.point}
+                  <span className="ml-2 font-normal text-muted-foreground">
+                    {g.total > g.rows.length ? `next ${g.rows.length} of ${g.total}` : `${g.total}`}
+                  </span>
                 </TableCell>
-                <TableCell className="text-xs">{r.product_type}</TableCell>
-                <TableCell className="text-xs tabular-nums">
-                  {r.valid_from} {"->"} {r.valid_to}
-                </TableCell>
-                <TableCell className="text-xs">{r.status}</TableCell>
-                <TableCell className="text-right text-xs tabular-nums">
-                  {fmtMwh(r.offered_mwh)}
-                </TableCell>
-              </TableRow>
-            ))
+              </TableRow>,
+              ...g.rows.map((r) => (
+                <TableRow
+                  key={`${r.auction_code}-${r.network_point}-${r.valid_from}-${r.offered_mwh}`}
+                >
+                  <TableCell className="text-xs text-muted-foreground">{r.auction_code}</TableCell>
+                  <TableCell className="text-xs">{r.product_type}</TableCell>
+                  <TableCell className="text-xs tabular-nums">
+                    {r.valid_from} → {r.valid_to}
+                  </TableCell>
+                  <TableCell className="text-xs">{r.status}</TableCell>
+                  <TableCell className="text-right text-xs tabular-nums">
+                    {fmtMwh(r.offered_mwh)}
+                  </TableCell>
+                </TableRow>
+              )),
+            ])
           )}
         </TableBody>
       </Table>

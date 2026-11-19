@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildCapacityRouteSummaries,
+  latestMeasuredFlowRow,
+  measuredFlowMcm,
   capacityUnitToMwhDay,
   deduplicateCapacityAggregate,
   selectCapacityForReferenceDate,
@@ -193,4 +195,43 @@ test("historical utilization uses the capacity valid on each flow date", () => {
   const route = summaries.find((summary) => summary.route.id === "fgsz-kiskundorozsma-hu-exit");
   assert.equal(route?.perDate[0].util_pct, 50);
   assert.equal(route?.perDate[1].util_pct, 25);
+});
+
+test("used flow ignores today's nomination substitutes", () => {
+  const flows = [
+    {
+      date: "2026-11-18",
+      kiskundorozsma_hu: 1.1,
+      kireevo: 30,
+      kalotina: 0.1,
+      kiskundorozsma_2: 22,
+      point_source: {
+        kiskundorozsma_hu: "physical_flow",
+        kireevo: "physical_flow",
+        kalotina: "physical_flow",
+        kiskundorozsma_2: "physical_flow",
+      },
+    },
+    {
+      date: "2026-11-19",
+      kiskundorozsma_hu: 0,
+      kireevo: 28,
+      kalotina: 0.1,
+      kiskundorozsma_2: 22,
+      point_source: {
+        kiskundorozsma_hu: "renomination",
+        kireevo: "renomination",
+        kalotina: "nomination",
+        kiskundorozsma_2: "renomination",
+      },
+    },
+  ];
+  assert.equal(latestMeasuredFlowRow(flows)?.date, "2026-11-18");
+  assert.equal(measuredFlowMcm(flows[1], "kireevo"), null);
+  assert.equal(measuredFlowMcm(flows[0], "kiskundorozsma_hu"), 1.1);
+  const hu = buildCapacityRouteSummaries([], flows).find(
+    (s) => s.route.id === "fgsz-kiskundorozsma-hu-exit",
+  );
+  assert.equal(hu?.used_mcm, 1.1);
+  assert.equal(hu?.flow_reference_date, "2026-11-18");
 });

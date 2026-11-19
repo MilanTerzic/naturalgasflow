@@ -472,9 +472,14 @@ export const fetchLiveCapacityBookings = createServerFn({ method: "POST" })
     const capacityProvider = new EntsogCapacityProvider();
     const auctionProvider = new RbpPublicAuctionProvider();
 
+    // RBP returns at most 40 auctions per point from the start date, so a list starting on
+    // 1 Oct only ever shows early-October auctions. Start at yesterday's gas day instead.
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+    const rbpFrom = yesterday > data.from && yesterday < data.to ? yesterday : data.from;
+
     const [capacityResult, rbpResult] = await Promise.allSettled([
       capacityProvider.fetchCapacity(data.from, data.to),
-      auctionProvider.fetchAuctions(data.from, data.to),
+      auctionProvider.fetchAuctions(rbpFrom, data.to),
     ]);
 
     const warnings: string[] = [];

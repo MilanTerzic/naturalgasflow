@@ -15,6 +15,7 @@ import { CAPACITY_ROUTE_BY_ID } from "@/lib/gas/capacity-routes";
 import {
   buildCapacityRouteSummaries,
   deduplicateCapacityAggregate,
+  measuredFlowMcm,
   mwhDayToMcmDay,
   type CapacityRouteSummary,
 } from "@/lib/gas/capacity-utils";
@@ -102,7 +103,7 @@ function dailyCapacitySeries(capacity: CapacityRow[], flows: FlowRow[]): Calenda
           c?.booked_mwh == null
             ? null
             : Math.min(c.booked_mwh / CONVERSION_MCM_TO_MWH, technical ?? Number.POSITIVE_INFINITY);
-        const flow = flowByDate.get(date)?.[flowKey] ?? null;
+        const flow = measuredFlowMcm(flowByDate.get(date), flowKey);
         return {
           date,
           technical_mcm: technical,
@@ -169,6 +170,7 @@ export function CapacityCharts({
   calendarFlows,
   heatmapFromISO,
   heatmapToISO,
+  calendarYear,
 }: {
   capacity: CapacityRow[];
   flows: FlowRow[];
@@ -177,13 +179,17 @@ export function CapacityCharts({
   calendarFlows?: FlowRow[];
   heatmapFromISO?: string;
   heatmapToISO?: string;
+  /** Calendar year of the daily capacity stacks. */
+  calendarYear?: number;
 }) {
-  const routes = useMemo(() => buildCapacityRouteSummaries(capacity, flows), [capacity, flows]);
+  const allRoutes = useMemo(() => buildCapacityRouteSummaries(capacity, flows), [capacity, flows]);
+  // Counterparty-proxy routes repeat the paired operator side's numbers; show each border once.
+  const routes = useMemo(() => allRoutes.filter((r) => !r.is_proxy), [allRoutes]);
   const heatmapRoutes = useMemo(
-    () => buildCapacityRouteSummaries(capacity, heatmapFlows ?? flows),
+    () => buildCapacityRouteSummaries(capacity, heatmapFlows ?? flows).filter((r) => !r.is_proxy),
     [capacity, flows, heatmapFlows],
   );
-  const aggregate = useMemo(() => deduplicateCapacityAggregate(routes), [routes]);
+  const aggregate = useMemo(() => deduplicateCapacityAggregate(allRoutes), [allRoutes]);
   const referenceDate = routes.find((route) => route.flow_reference_date)?.flow_reference_date;
   const capacityReferenceDate = routes.find(
     (route) => route.capacity_reference_date,
@@ -194,11 +200,17 @@ export function CapacityCharts({
     [calendarCapacity, calendarFlows],
   );
 
+  // Months up to the current one only: future months can have no measured flow.
   const heatMonths = useMemo(() => {
-    if (heatmapFromISO && heatmapToISO) return monthBucketsBetween(heatmapFromISO, heatmapToISO);
     const today = new Date();
-    const y = today.getUTCMonth() >= 9 ? today.getUTCFullYear() : today.getUTCFullYear() - 1;
-    return monthBucketsBetween(`${y}-10-01`, `${y + 1}-10-01`);
+    const currentMonth = `${today.toISOString().slice(0, 7)}`;
+    let months;
+    if (heatmapFromISO && heatmapToISO) months = monthBucketsBetween(heatmapFromISO, heatmapToISO);
+    else {
+      const y = today.getUTCMonth() >= 9 ? today.getUTCFullYear() : today.getUTCFullYear() - 1;
+      months = monthBucketsBetween(`${y}-10-01`, `${y + 1}-10-01`);
+    }
+    return months.filter((m) => m.key <= currentMonth);
   }, [heatmapFromISO, heatmapToISO]);
 
   const todayISO = new Date().toISOString().slice(0, 10);
@@ -297,10 +309,13 @@ export function CapacityCharts({
       {calendarRoutes.length > 0 && (
         <div className="space-y-3">
           <div className="rounded-md border bg-card p-3 shadow-sm">
-            <h3 className="text-sm font-semibold">2026 interconnection capacity stacks</h3>
+            <h3 className="text-sm font-semibold">
+              {calendarYear ?? ""} interconnection capacity stacks
+            </h3>
             <p className="mt-1 text-xs text-muted-foreground">
-              Daily ENTSOG capacity, Jan 01-Dec 31 2026. Bars stack booked plus available capacity
-              to technical capacity; the green line is physical flow where measured data exists.
+              Daily ENTSOG capacity, 1 Jan – 31 Dec {calendarYear ?? ""}. Bars stack booked plus
+              available capacity to technical capacity; the green line is measured physical flow
+              (today&apos;s nominations are not shown).
             </p>
           </div>
           <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
@@ -323,27 +338,33 @@ export function CapacityCharts({
           </div>
           <HeatLegend />
         </div>
-        <div className="overflow-x-auto">
-          <div
-            className="grid gap-[2px]"
-            style={{
-              gridTemplateColumns: `260px repeat(${heatMonths.length}, minmax(40px, 1fr))`,
-            }}
-          >
-            <div />
-            {heatMonths.map((m) => (
-              <div
-                key={m.key}
-                className="pb-1 text-center text-[10px] tabular-nums text-muted-foreground"
-              >
-                {m.label}
-              </div>
-            ))}
-            {heatmapRoutes.map((r) => (
-              <RouteHeatRow key={r.key} route={r} months={heatMonths} todayISO={todayISO} />
-            ))}
+        {heatMonths.length === 0 ? (
+          <p className="py-6 text-center text-xs text-muted-foreground">
+            This gas year has not started yet, so there is no measured flow to show.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <div
+              className="grid gap-[2px]"
+              style={{
+                gridTemplateColumns: `260px repeat(${heatMonths.length}, minmax(40px, 1fr))`,
+              }}
+            >
+              <div />
+              {heatMonths.map((m) => (
+                <div
+                  key={m.key}
+                  className="pb-1 text-center text-[10px] tabular-nums text-muted-foreground"
+                >
+                  {m.label}
+                </div>
+              ))}
+              {heatmapRoutes.map((r) => (
+                <RouteHeatRow key={r.key} route={r} months={heatMonths} todayISO={todayISO} />
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

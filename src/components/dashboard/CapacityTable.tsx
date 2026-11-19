@@ -28,15 +28,18 @@ function sourceLabel(row: ReturnType<typeof buildCapacityRouteSummaries>[number]
 }
 
 export function CapacityTable({ capacity, flows }: { capacity: CapacityRow[]; flows?: FlowRow[] }) {
-  const rows = buildCapacityRouteSummaries(capacity, flows ?? []);
+  // Counterparty-proxy routes repeat the paired operator side; show each border once.
+  const rows = buildCapacityRouteSummaries(capacity, flows ?? []).filter((r) => !r.is_proxy);
 
   return (
     <div className="rounded-md border bg-card p-3 shadow-sm">
       <div className="mb-2">
         <h3 className="text-sm font-semibold">Capacity overview</h3>
         <p className="text-xs text-muted-foreground">
-          One row per operator-side route. Booked means aggregate firm booked capacity. Used is
-          measured physical flow. Proxy rows are labelled explicitly.
+          One row per Serbian border route, from the publishing operator&apos;s side (Gastrans
+          publishes nothing on ENTSOG; its sides mirror these). Booked means aggregate firm booked
+          capacity. Used is the latest measured physical flow; today&apos;s nominations are not
+          counted.
         </p>
       </div>
       <Table>
