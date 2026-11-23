@@ -1,0 +1,10 @@
+{
+  "name": "gas-newsletter",
+  "private": true,
+  "type": "module",
+  "description": "Screenshots the gas newsletter page and emails it (SMTP or Resend). Run by .github/workflows/newsletter.yml.",
+  "dependencies": {
+    "nodemailer": "6.9.16",
+    "playwright": "1.49.1"
+  }
+}

@@ -1,0 +1,92 @@
+name: Daily gas newsletter
+
+# ~17:00 Belgrade time. Both entries run; the script only sends inside 16:50-19:30
+# Belgrade time and skips once today's issue is recorded as sent (CET and CEST).
+# The record is an artifact named gas-newsletter-sent-YYYY-MM-DD.
+on:
+  schedule:
+    - cron: "52 14 * * *"
+    - cron: "52 15 * * *"
+  workflow_dispatch:
+    inputs:
+      test_to:
+        description: "Send only to this address (test run, not recorded as sent)"
+        required: false
+        type: string
+      force:
+        description: "Send now even outside 16:50-19:30 or if already sent"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: gas-newsletter
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  send:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # Fail in seconds, before the browser install, when a required setting is missing.
+      - name: Check configuration
+        env:
+          APP_URL: ${{ vars.NEWSLETTER_APP_URL }}
+          NEWSLETTER_TOKEN: ${{ secrets.NEWSLETTER_TOKEN }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          SMTP_HOST: ${{ vars.SMTP_HOST }}
+          SMTP_USER: ${{ vars.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          NEWSLETTER_TO: ${{ vars.NEWSLETTER_TO || secrets.NEWSLETTER_TO }}
+          TEST_TO: ${{ inputs.test_to }}
+        run: |
+          missing=""
+          [ -n "$APP_URL" ] || missing="$missing NEWSLETTER_APP_URL(variable)"
+          [ -n "$NEWSLETTER_TOKEN" ] || missing="$missing NEWSLETTER_TOKEN(secret)"
+          if [ -z "$SMTP_HOST" ] || [ -z "$SMTP_USER" ] || [ -z "$SMTP_PASSWORD" ]; then
+            [ -n "$RESEND_API_KEY" ] || missing="$missing SMTP_HOST+SMTP_USER+SMTP_PASSWORD(or RESEND_API_KEY)"
+          fi
+          [ -n "$TEST_TO" ] || [ -n "$NEWSLETTER_TO" ] || missing="$missing NEWSLETTER_TO(variable or secret)"
+          if [ -n "$missing" ]; then
+            echo "::error title=Newsletter not configured::Missing:$missing. Add them under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+      - name: Install Playwright
+        working-directory: scripts/newsletter
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: Send newsletter
+        id: send
+        working-directory: scripts/newsletter
+        env:
+          APP_URL: ${{ vars.NEWSLETTER_APP_URL }}
+          NEWSLETTER_TOKEN: ${{ secrets.NEWSLETTER_TOKEN }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          SMTP_HOST: ${{ vars.SMTP_HOST }}
+          SMTP_PORT: ${{ vars.SMTP_PORT }}
+          SMTP_USER: ${{ vars.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          NEWSLETTER_FROM: ${{ vars.NEWSLETTER_FROM || 'Serbia Gas Daily <onboarding@resend.dev>' }}
+          NEWSLETTER_TO: ${{ vars.NEWSLETTER_TO || secrets.NEWSLETTER_TO }}
+          TEST_TO: ${{ inputs.test_to }}
+          FORCE: ${{ inputs.force }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node send.mjs
+      - name: Record today's issue as sent
+        if: steps.send.outputs.sent == 'true'
+        run: echo "${{ steps.send.outputs.recipients }} recipients" > sent.txt
+      - uses: actions/upload-artifact@v4
+        if: steps.send.outputs.sent == 'true'
+        with:
+          name: gas-newsletter-sent-${{ steps.send.outputs.day }}
+          path: sent.txt
+          retention-days: 7
