@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DashRouteImport } from './routes/_dash'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as NewsletterRouteImport } from './routes/newsletter'
 import { Route as DashBalanceRouteImport } from './routes/_dash.balance'
 import { Route as DashCapacityRouteImport } from './routes/_dash.capacity'
 import { Route as DashFlowsRouteImport } from './routes/_dash.flows'
@@ -33,6 +34,11 @@ const DashRoute = DashRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NewsletterRoute = NewsletterRouteImport.update({
+  id: '/newsletter',
+  path: '/newsletter',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashBalanceRoute = DashBalanceRouteImport.update({
@@ -79,6 +85,7 @@ const ApiChatRoute = ApiChatRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/newsletter': typeof NewsletterRoute
   '/balance': typeof DashBalanceRoute
   '/capacity': typeof DashCapacityRoute
   '/flows': typeof DashFlowsRoute
@@ -91,6 +98,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/newsletter': typeof NewsletterRoute
   '/balance': typeof DashBalanceRoute
   '/capacity': typeof DashCapacityRoute
   '/flows': typeof DashFlowsRoute
@@ -105,6 +113,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_dash': typeof DashRouteWithChildren
   '/login': typeof LoginRoute
+  '/newsletter': typeof NewsletterRoute
   '/_dash/balance': typeof DashBalanceRoute
   '/_dash/capacity': typeof DashCapacityRoute
   '/_dash/flows': typeof DashFlowsRoute
@@ -119,6 +128,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/newsletter'
     | '/balance'
     | '/capacity'
     | '/flows'
@@ -131,6 +141,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/login'
+    | '/newsletter'
     | '/balance'
     | '/capacity'
     | '/flows'
@@ -144,6 +155,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_dash'
     | '/login'
+    | '/newsletter'
     | '/_dash/balance'
     | '/_dash/capacity'
     | '/_dash/flows'
@@ -158,6 +170,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DashRoute: typeof DashRouteWithChildren
   LoginRoute: typeof LoginRoute
+  NewsletterRoute: typeof NewsletterRoute
   ApiChatRoute: typeof ApiChatRoute
 }
 
@@ -182,6 +195,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/newsletter': {
+      id: '/newsletter'
+      path: '/newsletter'
+      fullPath: '/newsletter'
+      preLoaderRoute: typeof NewsletterRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_dash/balance': {
@@ -269,6 +289,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DashRoute: DashRouteWithChildren,
   LoginRoute: LoginRoute,
+  NewsletterRoute: NewsletterRoute,
   ApiChatRoute: ApiChatRoute,
 }
 export const routeTree = rootRouteImport
