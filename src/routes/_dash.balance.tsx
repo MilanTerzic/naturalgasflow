@@ -6,6 +6,8 @@ import { useQuery } from "@tanstack/react-query";
 import { ChartCard } from "@/components/dashboard/ChartCard";
 import { CompositionChart } from "@/components/dashboard/CompositionChart";
 import { MetHuNominationsTable } from "@/components/dashboard/MetHuNominationsTable";
+import { HuStorageChart, HuStorageSummary } from "@/components/dashboard/HuStorageChart";
+import { HU_STORAGE_NOTE, useHuStorage } from "@/lib/gas/use-hu-storage";
 import { listMetHuNominations } from "@/lib/met-hu-nominations.functions";
 import { KpiRow } from "@/components/dashboard/KpiRow";
 import { MobileControlsSheet } from "@/components/dashboard/Sidebar";
@@ -24,7 +26,10 @@ import { useDashboardData } from "@/state/use-dashboard-data";
 
 export const Route = createFileRoute("/_dash/balance")({
   head: () => ({
-    meta: pageMetadata("Serbian Gas Balance - Serbia Gas Dashboard", "Daily Serbian gas balance: supply composition, temperature and storage requirement."),
+    meta: pageMetadata(
+      "Serbian Gas Balance - Serbia Gas Dashboard",
+      "Daily Serbian gas balance: supply composition, temperature and storage requirement.",
+    ),
   }),
   component: BalancePage,
 });
@@ -96,17 +101,18 @@ function BalancePage() {
               <CompositionChart
                 data={balance}
                 today={today}
-                nominations={mode === "live" ? nominationQuery.data ?? [] : []}
+                nominations={mode === "live" ? (nominationQuery.data ?? []) : []}
               />
             </ChartCard>
             <MetHuNominationsTable
               balance={balance}
               today={today}
-              nominations={mode === "live" ? nominationQuery.data ?? [] : []}
+              nominations={mode === "live" ? (nominationQuery.data ?? []) : []}
               loading={mode === "live" && nominationQuery.isFetching && !nominationQuery.data}
               loadError={nominationError}
               disabled={mode !== "live"}
             />
+            <SrbijagasHuStorageCard today={today} />
             <div className="grid gap-4 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
               <ChartCard
                 title="Belgrade temperature and demand driver"
@@ -155,7 +161,8 @@ function BalancePageHeader({
             Serbian Gas Balance
           </h2>
           <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-            Daily supply and demand with explicit source quality, storage response limits and residual balance gap.
+            Daily supply and demand with explicit source quality, storage response limits and
+            residual balance gap.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 lg:justify-end">
@@ -324,4 +331,22 @@ function getFreshnessLabel({
   if (refreshedAt) return `Data through ${fmtShortDateYear(refreshedAt)}`;
   if (selectedDate) return `Selected ${fmtShortDateYear(selectedDate)}`;
   return "Awaiting live data";
+}
+
+const loadSessionNominations = (from: string, to: string) =>
+  listMetHuNominations({ data: { from, to } });
+
+function SrbijagasHuStorageCard({ today }: { today: string }) {
+  const { rows, isLoading, error } = useHuStorage(today, loadSessionNominations, "session");
+  return (
+    <ChartCard
+      title="Srbijagas storage balance in Hungary"
+      description={`End-of-gas-day stock, mcm. ${HU_STORAGE_NOTE}`}
+      height={300}
+      status={error ? <Badge variant="destructive">{error}</Badge> : undefined}
+      legend={!isLoading && rows.length > 0 ? <HuStorageSummary rows={rows} /> : undefined}
+    >
+      {isLoading ? <Skeleton className="h-full w-full" /> : <HuStorageChart rows={rows} />}
+    </ChartCard>
+  );
 }

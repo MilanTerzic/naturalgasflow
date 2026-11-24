@@ -39,7 +39,16 @@ const RECIPIENTS = (TEST_TO || env("NEWSLETTER_TO"))
 const WINDOW_FROM = 16 * 60 + 50; // 17:00 Belgrade, minus a little schedule jitter
 const WINDOW_TO = 19 * 60 + 30; // a late GitHub schedule still sends, once
 const WAIT_UNTIL = 17 * 60 + 45; // wait for next-day exchange prices until 17:45 on weekdays
-const SECTIONS = ["glance", "map-flows", "flows", "prices", "capacity", "balance", "storage"];
+const SECTIONS = [
+  "glance",
+  "map-flows",
+  "flows",
+  "prices",
+  "capacity",
+  "balance",
+  "hu-storage",
+  "storage",
+];
 const TITLES = {
   glance: "At a glance",
   "map-flows": "Balkan physical flows map",
@@ -47,6 +56,7 @@ const TITLES = {
   prices: "Day-ahead hub prices",
   capacity: "Capacity and bookings",
   balance: "Serbian demand, temperature and supply",
+  "hu-storage": "Srbijagas storage balance in Hungary",
   storage: "Gas storage",
 };
 const SENT_ARTIFACT = (day) => `gas-newsletter-sent-${day}`;
@@ -103,7 +113,7 @@ async function render(page, url) {
   for (let attempt = 1; ; attempt++) {
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
     try {
-      await page.waitForSelector('[data-newsletter-ready="true"]', { timeout: 240_000 });
+      await page.waitForSelector('[data-newsletter-ready="true"]', { timeout: 12 * 60_000 });
       const raw = await page
         .locator("[data-newsletter-metadata]")
         .getAttribute("data-newsletter-metadata");
@@ -148,6 +158,12 @@ async function main() {
     const pageUrl = `${APP_URL}/newsletter?token=${encodeURIComponent(TOKEN)}&today=${today}`;
     console.log("Opening newsletter view for rendering.");
     info = await render(page, pageUrl);
+    // ENTSOG reads on the hosted app are slow on a cold cache; a second load is warm.
+    if (info.missing?.length) {
+      console.log(`Missing after first load: ${info.missing.join(", ")}; loading once more.`);
+      const second = await render(page, pageUrl);
+      if ((second.missing?.length ?? 0) <= info.missing.length) info = second;
+    }
     while (
       info.awaiting?.length &&
       !FORCE &&
