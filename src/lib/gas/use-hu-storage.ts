@@ -21,7 +21,15 @@ export function useHuStorage(
     HU_STORAGE_ANCHORS.others.date < HU_STORAGE_ANCHORS.met.date
       ? HU_STORAGE_ANCHORS.others.date
       : HU_STORAGE_ANCHORS.met.date;
-  const alloc = useQuery({
+  // Saved observations render immediately; the live query then fills missing days.
+  const saved = useQuery({
+    queryKey: ["hu-storage-alloc-saved", from, today],
+    queryFn: () => fetchEntsogAllocations({ data: { from, to: today, savedOnly: true } }),
+    staleTime: 10 * 60_000,
+    retry: 1,
+    refetchOnWindowFocus: false,
+  });
+  const live = useQuery({
     queryKey: ["hu-storage-alloc", from, today],
     queryFn: () => fetchEntsogAllocations({ data: { from, to: today } }),
     staleTime: 10 * 60_000,
@@ -29,6 +37,7 @@ export function useHuStorage(
     retryDelay: 20_000,
     refetchOnWindowFocus: false,
   });
+  const alloc = live.data ? live : saved.data?.data?.length ? saved : live;
   const noms = useQuery({
     // Shares the "met-hu-nominations" prefix so saving a nomination refreshes this chart.
     queryKey: ["met-hu-nominations", "hu-storage", key, from, today],
@@ -52,10 +61,10 @@ export function useHuStorage(
   }, [alloc.data, noms.data, today]);
   return {
     rows,
-    isLoading: alloc.isLoading || noms.isLoading,
-    settled: (alloc.isSuccess || alloc.isError) && (noms.isSuccess || noms.isError),
-    error: alloc.isError
-      ? `ENTSOG allocation: ${(alloc.error as Error).message}`
+    isLoading: (!alloc.data && live.isLoading) || noms.isLoading,
+    settled: (live.isSuccess || live.isError) && (noms.isSuccess || noms.isError),
+    error: live.isError && !alloc.data
+      ? `ENTSOG allocation: ${(live.error as Error).message}`
       : noms.isError
         ? `MET nominations: ${(noms.error as Error).message}`
         : null,
