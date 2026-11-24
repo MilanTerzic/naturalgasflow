@@ -19,7 +19,7 @@ import {
   type CountryBadge,
   type MapLayers,
 } from "@/components/region/BalkanFlowMap";
-import { HuStorageChart, HuStorageSummary } from "@/components/dashboard/HuStorageChart";
+import { HuStoragePanel } from "@/components/dashboard/HuStorageChart";
 import { HU_STORAGE_NOTE, useHuStorage } from "@/lib/gas/use-hu-storage";
 import { fetchAgsiStorage } from "@/lib/data/agsi.functions";
 import { fetchEntsogAllocations, fetchEntsogFlows } from "@/lib/data/entsog.functions";
@@ -768,16 +768,7 @@ function Newsletter({ today, token }: { today: string; token: string }) {
         subtitle={`End-of-gas-day stock, mcm · ${HU_STORAGE_NOTE}`}
       >
         {huStorage.error && <Unavailable>{huStorage.error}</Unavailable>}
-        {huStorage.rows.length > 0 && (
-          <>
-            <div className="h-[240px]">
-              <HuStorageChart rows={huStorage.rows} compact />
-            </div>
-            <div className="mt-3">
-              <HuStorageSummary rows={huStorage.rows} />
-            </div>
-          </>
-        )}
+        {huStorage.rows.length > 0 && <HuStoragePanel rows={huStorage.rows} compact height={240} />}
       </Section>
 
       <Section

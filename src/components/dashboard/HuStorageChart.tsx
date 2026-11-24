@@ -1,6 +1,9 @@
 import {
   Area,
   AreaChart,
+  Cell,
+  Pie,
+  PieChart,
   CartesianGrid,
   Legend,
   ResponsiveContainer,
@@ -32,7 +35,10 @@ export function HuStorageChart({
   rows: HuStorageRow[];
   compact?: boolean;
 }) {
-  const data = rows.map((r) => ({ date: r.date, MET: r.met, Others: r.others }));
+  // Stacked areas only where both stocks are known; a MET-only tail would read as a cliff.
+  const data = rows
+    .filter((r) => r.met !== null && r.others !== null)
+    .map((r) => ({ date: r.date, MET: r.met, Others: r.others }));
   return (
     <ResponsiveContainer width="100%" height="100%">
       <AreaChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
@@ -123,4 +129,80 @@ function addDaysIso(iso: string, days: number) {
   const d = new Date(`${iso}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
+}
+
+/** MET vs Others share of the latest day on which both stocks are known. */
+export function HuStoragePie({ rows }: { rows: HuStorageRow[] }) {
+  const last = [...rows].reverse().find((r) => r.met !== null && r.others !== null && r.total);
+  if (!last) {
+    return (
+      <div className="flex h-full items-center justify-center text-[12px] text-muted-foreground">
+        No day with both stocks yet
+      </div>
+    );
+  }
+  const total = last.total!;
+  const data = [
+    { name: "MET", value: Math.max(0, last.met!), color: PALETTE.huMet },
+    { name: "Others", value: Math.max(0, last.others!), color: PALETTE.huOthers },
+  ];
+  const pct = (v: number) => (total > 0 ? `${((v / total) * 100).toFixed(1)}%` : "—");
+  return (
+    <div className="flex h-full flex-col">
+      <div className="text-center text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+        Share · end of {shortDay(last.date)}
+      </div>
+      <div className="min-h-0 flex-1">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={data}
+              dataKey="value"
+              nameKey="name"
+              innerRadius="45%"
+              outerRadius="80%"
+              startAngle={90}
+              endAngle={-270}
+              stroke="var(--card)"
+              strokeWidth={2}
+              isAnimationActive={false}
+              labelLine={false}
+              label={({ name, value }: { name: string; value: number }) => `${name} ${pct(value)}`}
+            >
+              {data.map((d) => (
+                <Cell key={d.name} fill={d.color} />
+              ))}
+            </Pie>
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+/** Stock over time on one half, MET/Others share on the other; quantities underneath. */
+export function HuStoragePanel({
+  rows,
+  compact = false,
+  height = 260,
+}: {
+  rows: HuStorageRow[];
+  compact?: boolean;
+  height?: number;
+}) {
+  return (
+    <div>
+      <div className="grid gap-4 md:grid-cols-2" style={{ minHeight: height }}>
+        <div style={{ height }}>
+          <HuStorageChart rows={rows} compact={compact} />
+        </div>
+        <div style={{ height }}>
+          <HuStoragePie rows={rows} />
+        </div>
+      </div>
+      <div className="mt-3">
+        <HuStorageSummary rows={rows} />
+      </div>
+    </div>
+  );
 }
