@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ChartCard } from "@/components/dashboard/ChartCard";
 import { CompositionChart } from "@/components/dashboard/CompositionChart";
 import { MetHuNominationsTable } from "@/components/dashboard/MetHuNominationsTable";
-import { HuStorageChart, HuStorageSummary } from "@/components/dashboard/HuStorageChart";
+import { HuStoragePanel } from "@/components/dashboard/HuStorageChart";
 import { HU_STORAGE_NOTE, useHuStorage } from "@/lib/gas/use-hu-storage";
 import { listMetHuNominations } from "@/lib/met-hu-nominations.functions";
 import { KpiRow } from "@/components/dashboard/KpiRow";
@@ -339,14 +339,21 @@ const loadSessionNominations = (from: string, to: string) =>
 function SrbijagasHuStorageCard({ today }: { today: string }) {
   const { rows, isLoading, error } = useHuStorage(today, loadSessionNominations, "session");
   return (
-    <ChartCard
-      title="Srbijagas storage balance in Hungary"
-      description={`End-of-gas-day stock, mcm. ${HU_STORAGE_NOTE}`}
-      height={300}
-      status={error ? <Badge variant="destructive">{error}</Badge> : undefined}
-      legend={!isLoading && rows.length > 0 ? <HuStorageSummary rows={rows} /> : undefined}
-    >
-      {isLoading ? <Skeleton className="h-full w-full" /> : <HuStorageChart rows={rows} />}
-    </ChartCard>
+    <section className="rounded-lg border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <h3 className="text-sm font-semibold tracking-tight text-foreground">
+          Srbijagas storage balance in Hungary
+        </h3>
+        {error && <Badge variant="destructive">{error}</Badge>}
+      </div>
+      <p className="mb-3 max-w-3xl text-xs leading-relaxed text-muted-foreground">
+        End-of-gas-day stock, mcm. {HU_STORAGE_NOTE}
+      </p>
+      {isLoading ? (
+        <Skeleton className="h-[300px] w-full" />
+      ) : (
+        <HuStoragePanel rows={rows} height={300} />
+      )}
+    </section>
   );
 }
