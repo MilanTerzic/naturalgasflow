@@ -138,6 +138,44 @@ export function priceRows(hubs: Record<string, PriceInputPoint[] | undefined>): 
   });
 }
 
+export interface PriceDayRow {
+  hub: string;
+  /** Price for delivery on dayA / dayB exactly; null when the hub has not published it. */
+  a: PriceInputPoint | null;
+  b: PriceInputPoint | null;
+  /** b − a, only when both delivery days are published. */
+  change: number | null;
+  /** Spread vs TTF on the same delivery day: dayB when both have it, else dayA. */
+  spreadTtf: number | null;
+  spreadDay: string | null;
+}
+
+/**
+ * Every hub priced for the same two delivery days (today and tomorrow), so the table never
+ * mixes delivery days. A hub that has not published a day shows that day as pending.
+ */
+export function priceDayRows(
+  hubs: Record<string, PriceInputPoint[] | undefined>,
+  dayA: string,
+  dayB: string,
+): PriceDayRow[] {
+  const on = (points: PriceInputPoint[] | undefined, day: string) =>
+    dated(points ?? []).find((p) => p.date === day) ?? null;
+  const ttfA = on(hubs.TTF, dayA);
+  const ttfB = on(hubs.TTF, dayB);
+  return Object.entries(hubs).map(([hub, points]) => {
+    const a = on(points, dayA);
+    const b = on(points, dayB);
+    let spreadTtf: number | null = null;
+    let spreadDay: string | null = null;
+    if (hub !== "TTF") {
+      if (b && ttfB) [spreadTtf, spreadDay] = [b.price - ttfB.price, dayB];
+      else if (a && ttfA) [spreadTtf, spreadDay] = [a.price - ttfA.price, dayA];
+    }
+    return { hub, a, b, change: a && b ? b.price - a.price : null, spreadTtf, spreadDay };
+  });
+}
+
 /** Rows for a multi-hub price chart: one row per delivery day, null where a hub is missing. */
 export function priceChartRows(
   hubs: Record<string, PriceInputPoint[] | undefined>,
@@ -211,7 +249,8 @@ export interface SummaryInput {
   points: PointRow[];
   deliveryDay: string;
   demandD1: { demand: number | null; temperature: number | null } | null;
-  prices: PriceRow[];
+  today: string;
+  priceDays: PriceDayRow[];
   storageRs: StorageRow | null;
 }
 
@@ -256,19 +295,20 @@ export function summarySentences(s: SummaryInput): string[] {
           : "."),
     );
   }
-  const by = Object.fromEntries(s.prices.map((p) => [p.hub, p]));
-  const hubText = (hub: string, name = hub) => {
-    const p = by[hub];
-    if (!p?.latest) return null;
-    return (
-      `${name} €${f2(p.latest.price)}` +
-      (p.change !== null ? ` (${signed(p.change, 2)})` : "") +
-      (p.spreadTtf !== null ? `, ${signed(p.spreadTtf, 2)} vs TTF` : "")
-    );
+  const dayText = (day: string, pick: (r: PriceDayRow) => PriceInputPoint | null) => {
+    const parts = s.priceDays
+      .filter((r) => ["TTF", "CEGH", "BGH", "CEEGEX", "BRM"].includes(r.hub))
+      .map((r) => {
+        const p = pick(r);
+        return p ? `${r.hub} €${f2(p.price)}${p.final ? "" : " (prov.)"}` : null;
+      })
+      .filter(Boolean);
+    return parts.length ? `Day-ahead for delivery ${day} (€/MWh): ${parts.join("; ")}.` : null;
   };
-  const priceParts = ["TTF", "CEGH", "BGH", "CEEGEX"].map((h) => hubText(h)).filter(Boolean);
-  if (priceParts.length)
-    out.push(`Day-ahead prices (€/MWh, latest published): ${priceParts.join("; ")}.`);
+  const tomorrow = dayText(s.deliveryDay, (r) => r.b);
+  const todayLine = dayText(s.today, (r) => r.a);
+  if (tomorrow) out.push(tomorrow);
+  else if (todayLine) out.push(todayLine);
   if (s.storageRs?.full != null) {
     out.push(
       `Serbian storage (AGSI, ${s.storageRs.date}): ${f1(s.storageRs.full)}% full` +

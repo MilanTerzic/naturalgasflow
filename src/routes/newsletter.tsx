@@ -42,10 +42,10 @@ import {
   pickFlowDay,
   pointRows,
   priceChartRows,
-  priceRows,
+  priceDayRows,
   storageRow,
   summarySentences,
-  type PriceRow,
+  type PriceDayRow,
   type StorageRow,
 } from "@/lib/newsletter/compute";
 import { COUNTRY_PRICING, HUBS, type HubId } from "@/lib/prices/hubs";
@@ -261,6 +261,36 @@ function Unavailable({ children }: { children: ReactNode }) {
 }
 
 const QUERY = { retry: 1, staleTime: 10 * 60_000, refetchOnWindowFocus: false } as const;
+/** ENTSOG reads on the hosted app can take minutes; retry once more after a pause. */
+const ENTSOG_QUERY = { ...QUERY, retry: 2, retryDelay: 20_000 } as const;
+const MIN = 60_000;
+
+/** Rejects after `ms` so one slow source can never hold the whole newsletter. */
+function deadline<T>(work: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out`)), ms);
+    work.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
+}
+
+/** An ENTSOG answer with an error and no rows counts as a failure, so it is retried. */
+async function entsogRows<T extends { data?: unknown[]; error?: string | null }>(
+  work: Promise<T>,
+  label: string,
+): Promise<T> {
+  const result = await deadline(work, 8 * MIN, label);
+  if (!result.data?.length) throw new Error(result.error || `${label}: no data returned`);
+  return result;
+}
 
 function Newsletter({ today }: { today: string }) {
   const deliveryDay = addDaysISO(today, 1);
@@ -272,40 +302,54 @@ function Newsletter({ today }: { today: string }) {
   );
 
   const flowsQ = useQuery({
-    ...QUERY,
+    ...ENTSOG_QUERY,
     queryKey: ["nl-flows", from, today],
-    queryFn: () => fetchEntsogFlows({ data: { from, to: today } }),
+    queryFn: () =>
+      entsogRows(fetchEntsogFlows({ data: { from, to: today } }), "ENTSOG physical flow"),
   });
   const allocQ = useQuery({
-    ...QUERY,
+    ...ENTSOG_QUERY,
     queryKey: ["nl-alloc", from, today],
-    queryFn: () => fetchEntsogAllocations({ data: { from, to: today } }),
+    queryFn: () =>
+      entsogRows(fetchEntsogAllocations({ data: { from, to: today } }), "ENTSOG allocation"),
   });
   const tempsQ = useQuery({
     ...QUERY,
     queryKey: ["nl-temps", from, to],
-    queryFn: () => fetchBelgradeTemperaturesWithBrowserFallback({ from, to }),
+    queryFn: () =>
+      deadline(fetchBelgradeTemperaturesWithBrowserFallback({ from, to }), 2 * MIN, "Temperature"),
   });
   const regionalQ = useQuery({
-    ...QUERY,
+    ...ENTSOG_QUERY,
     queryKey: ["nl-regional", from, today],
-    queryFn: () =>
-      fetchEntsogRegionalFlows({ data: { from, to: today, indicator: "Physical Flow" } }),
+    queryFn: async () => {
+      const result = await deadline(
+        fetchEntsogRegionalFlows({ data: { from, to: today, indicator: "Physical Flow" } }),
+        8 * MIN,
+        "Regional ENTSOG",
+      );
+      if (result.status === "error") throw new Error(result.reason);
+      return result;
+    },
   });
+  // Country net positions only label the map; the slowest read, so it gets a short leash.
   const netQ = useQuery({
     ...QUERY,
+    retry: 0,
     queryKey: ["nl-net", from, today],
-    queryFn: () => fetchEntsogNetPositions({ data: { from, to: today } }),
+    queryFn: () =>
+      deadline(fetchEntsogNetPositions({ data: { from, to: today } }), 4 * MIN, "Net positions"),
   });
   const pricesQ = useQuery({
     ...QUERY,
     queryKey: ["nl-prices", today],
-    queryFn: () => fetchGasPrices({ data: {} }),
+    queryFn: () => deadline(fetchGasPrices({ data: {} }), 3 * MIN, "Prices"),
   });
   const rbpQ = useQuery({
     ...QUERY,
     queryKey: ["nl-rbp", from, today],
-    queryFn: () => fetchRbpBookings({ data: { from, to: addDaysISO(today, 2) } }),
+    queryFn: () =>
+      deadline(fetchRbpBookings({ data: { from, to: addDaysISO(today, 2) } }), 3 * MIN, "RBP"),
   });
   const storageQ = useQuery({
     ...QUERY,
@@ -404,10 +448,17 @@ function Newsletter({ today }: { today: string }) {
 
   const hubs = pricesQ.data?.hubs ?? null;
   const countryBadges = useMemo(() => buildCountryBadges(hubs), [hubs]);
-  const prices = useMemo(
-    () => priceRows(Object.fromEntries(HUB_ORDER.map((h) => [h, hubs?.[h]?.points ?? []]))),
-    [hubs],
+  const priceDays = useMemo(
+    () =>
+      priceDayRows(
+        Object.fromEntries(HUB_ORDER.map((h) => [h, hubs?.[h]?.points ?? []])),
+        today,
+        deliveryDay,
+      ),
+    [hubs, today, deliveryDay],
   );
+  const ttfRow = priceDays.find((p) => p.hub === "TTF");
+  const ttfHeadline = ttfRow?.b ?? ttfRow?.a ?? null;
   const priceChart = useMemo(
     () =>
       priceChartRows(
@@ -423,6 +474,8 @@ function Newsletter({ today }: { today: string }) {
 
   const storage = storageQ.data ?? [];
   const storageRs = storage.find((s) => s.code === "rs")?.row ?? null;
+  // Serbia is usually absent from AGSI+; the EU aggregate is the fallback headline.
+  const storageEu = storage.find((s) => s.code === "eu")?.row ?? null;
   const d1 = balance.find((b) => b.date === deliveryDay) ?? null;
   // The demand model needs a temperature; without one there is no forecast.
   const d1Temp = d1 ? (d1.avg_temperature_c ?? d1.temperature_c) : null;
@@ -434,14 +487,15 @@ function Newsletter({ today }: { today: string }) {
     points,
     deliveryDay,
     demandD1: d1 && ok(d1Temp) ? { demand: d1.demand_mcm, temperature: d1Temp } : null,
-    prices,
-    storageRs,
+    today,
+    priceDays,
+    storageRs: storageRs ?? storageEu,
   });
   const missing = [
-    flowsQ.isError || flowsQ.data?.error ? "ENTSOG physical flow" : null,
-    allocQ.isError || allocQ.data?.error ? "ENTSOG allocation" : null,
+    flowsQ.isError ? "ENTSOG physical flow" : null,
+    allocQ.isError ? "ENTSOG allocation" : null,
     tempsQ.isError || tempsQ.data?.error ? "temperature" : null,
-    regionalQ.isError || regionalQ.data?.status === "error" ? "regional ENTSOG" : null,
+    regionalQ.isError ? "regional ENTSOG" : null,
     pricesQ.isError ? "prices" : null,
     rbpQ.isError ? "RBP bookings" : null,
     storageQ.isError ? "AGSI storage" : null,
@@ -466,7 +520,7 @@ function Newsletter({ today }: { today: string }) {
     awaiting,
     missing,
     netIntoSerbia: net.net,
-    ttf: prices.find((p) => p.hub === "TTF")?.latest?.price ?? null,
+    ttf: ttfHeadline?.price ?? null,
   };
 
   return (
@@ -498,17 +552,17 @@ function Newsletter({ today }: { today: string }) {
             foot={ok(d1Temp) ? `${n1(d1Temp)} °C Belgrade` : "no temperature"}
           />
           <Kpi
-            label="TTF DA"
-            value={n2(prices.find((p) => p.hub === "TTF")?.latest?.price)}
+            label={`TTF DA ${ttfHeadline?.date ? shortDay(ttfHeadline.date) : ""}`}
+            value={n2(ttfHeadline?.price)}
             unit="€/MWh"
-            delta={prices.find((p) => p.hub === "TTF")?.change ?? null}
+            delta={ttfRow?.change ?? null}
             deltaDigits={2}
           />
           <Kpi
-            label="RS storage"
-            value={storageRs?.full != null ? n1(storageRs.full) : "—"}
+            label={storageRs ? "RS storage" : "EU storage"}
+            value={n1((storageRs ?? storageEu)?.full)}
             unit="% full"
-            delta={storageRs?.changeWeek ?? null}
+            delta={(storageRs ?? storageEu)?.changeWeek ?? null}
             deltaLabel="pp w/w"
           />
         </div>
@@ -538,9 +592,13 @@ function Newsletter({ today }: { today: string }) {
             and country net position · grey dashed = nothing published
           </p>
         </div>
-        {regionalQ.data?.status === "error" && (
+        {(regionalQ.isError || netQ.isError) && (
           <div className="px-4 pt-2">
-            <Unavailable>Regional ENTSOG flows unavailable: {regionalQ.data.reason}</Unavailable>
+            <Unavailable>
+              {regionalQ.isError
+                ? `Regional ENTSOG flows unavailable at send time (${(regionalQ.error as Error).message}); only Serbian points are drawn.`
+                : "Country net positions were not ready at send time; net tags are left off."}
+            </Unavailable>
           </div>
         )}
         <div className="pointer-events-none">
@@ -564,7 +622,7 @@ function Newsletter({ today }: { today: string }) {
         subtitle={`ENTSOG physical flow, mcm/d · gas day ${flowDay ?? "—"} against the 7 days before`}
       >
         <table className="w-full text-[13px]">
-          <thead className="text-left text-[11px] tracking-wide text-muted-foreground uppercase">
+          <thead className="text-left text-[11px] tracking-wide whitespace-nowrap text-muted-foreground uppercase">
             <tr>
               <th className="py-1">Point</th>
               <th className="py-1 text-right">Flow</th>
@@ -617,12 +675,12 @@ function Newsletter({ today }: { today: string }) {
       <Section
         shot="prices"
         title="Day-ahead hub prices"
-        subtitle="€/MWh, latest published delivery day per hub · Δ vs previous day · spread vs TTF on the same day"
+        subtitle={`€/MWh by delivery day · every hub on the same days · Δ = ${shortDay(deliveryDay)} − ${shortDay(today)} · spread vs TTF on the same delivery day`}
       >
         {pricesQ.isError ? (
           <Unavailable>Prices unavailable: {String(pricesQ.error)}</Unavailable>
         ) : (
-          <PriceTable rows={prices} hubs={hubs} />
+          <PriceTable rows={priceDays} hubs={hubs} today={today} deliveryDay={deliveryDay} />
         )}
         {priceChart.length > 1 && (
           <div className="mt-3 h-[240px]">
@@ -861,52 +919,78 @@ function buildCountryBadges(hubs: Record<HubId, HubPrices> | null): Record<strin
   return out;
 }
 
-function PriceTable({ rows, hubs }: { rows: PriceRow[]; hubs: Record<HubId, HubPrices> | null }) {
+function PriceTable({
+  rows,
+  hubs,
+  today,
+  deliveryDay,
+}: {
+  rows: PriceDayRow[];
+  hubs: Record<HubId, HubPrices> | null;
+  today: string;
+  deliveryDay: string;
+}) {
+  const cell = (p: PriceDayRow["a"], h: HubPrices | undefined) => {
+    if (p)
+      return (
+        <>
+          {n2(p.price)}
+          {!p.final && (
+            <span className="ml-1 text-[10px] font-normal text-muted-foreground">prov.</span>
+          )}
+        </>
+      );
+    const label = h?.status === "unavailable" || h?.status === "error" ? "no feed" : "pending";
+    return <span className="text-[11px] font-normal text-muted-foreground">{label}</span>;
+  };
+  const notes = rows
+    .map((r) => ({ r, h: hubs?.[r.hub as HubId] }))
+    .filter(({ r, h }) => !r.a && !r.b && h?.reason)
+    .map(({ r, h }) => `${r.hub}: ${h!.reason}`);
   return (
-    <table className="w-full text-[13px]">
-      <thead className="text-left text-[11px] tracking-wide text-muted-foreground uppercase">
-        <tr>
-          <th className="py-1">Hub</th>
-          <th className="py-1">Delivery</th>
-          <th className="py-1 text-right">Price</th>
-          <th className="py-1 text-right">Δ</th>
-          <th className="py-1 text-right">vs TTF</th>
-        </tr>
-      </thead>
-      <tbody className="num">
-        {rows.map((r) => {
-          const h = hubs?.[r.hub as HubId];
-          const status = h?.status;
-          return (
-            <tr key={r.hub} className="border-t">
-              <td className="py-1.5">
-                <span
-                  className="mr-2 inline-block h-2 w-2 rounded-full"
-                  style={{ background: HUB_COLORS[r.hub] }}
-                />
-                {HUBS[r.hub as HubId]?.name ?? r.hub}
-              </td>
-              <td className="py-1.5 text-muted-foreground">
-                {r.latest?.date ? shortDay(r.latest.date) : "—"}
-                {r.latest && !r.latest.final ? " · prov." : ""}
-                {status === "stale" ? " · stale" : ""}
-              </td>
-              <td className="py-1.5 text-right font-semibold">
-                {r.latest ? (
-                  n2(r.latest.price)
-                ) : (
-                  <span className="text-[11px] font-normal text-muted-foreground">
-                    {status === "unavailable" ? "no feed" : "n/a"}
-                  </span>
-                )}
-              </td>
-              <td className={`py-1.5 text-right ${tone(r.change)}`}>{signed(r.change, 2)}</td>
-              <td className="py-1.5 text-right">{signed(r.spreadTtf, 2)}</td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+    <>
+      <table className="w-full text-[13px]">
+        <thead className="text-left text-[11px] tracking-wide whitespace-nowrap text-muted-foreground uppercase">
+          <tr>
+            <th className="py-1">Hub</th>
+            <th className="py-1 text-right">{shortDay(today)}</th>
+            <th className="py-1 text-right">{shortDay(deliveryDay)}</th>
+            <th className="py-1 text-right">Δ</th>
+            <th className="py-1 text-right">vs TTF</th>
+          </tr>
+        </thead>
+        <tbody className="num">
+          {rows.map((r) => {
+            const h = hubs?.[r.hub as HubId];
+            return (
+              <tr key={r.hub} className="border-t">
+                <td className="py-1.5">
+                  <span
+                    className="mr-2 inline-block h-2 w-2 rounded-full"
+                    style={{ background: HUB_COLORS[r.hub] }}
+                  />
+                  {HUBS[r.hub as HubId]?.name ?? r.hub}
+                </td>
+                <td className="py-1.5 text-right">{cell(r.a, h)}</td>
+                <td className="py-1.5 text-right font-semibold">{cell(r.b, h)}</td>
+                <td className={`py-1.5 text-right ${tone(r.change)}`}>{signed(r.change, 2)}</td>
+                <td className="py-1.5 text-right">
+                  {signed(r.spreadTtf, 2)}
+                  {r.spreadDay && r.spreadDay !== deliveryDay && (
+                    <span className="ml-1 text-[10px] text-muted-foreground">
+                      ({shortDay(r.spreadDay)})
+                    </span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {notes.length > 0 && (
+        <p className="mt-2 text-[11px] text-muted-foreground">{notes.join(" · ")}</p>
+      )}
+    </>
   );
 }
 
@@ -944,7 +1028,7 @@ function CapacityTable({
     .filter((r) => r.c && (r.v?.technical != null || r.c.group === "serbia"));
   return (
     <table className="w-full text-[13px]">
-      <thead className="text-left text-[11px] tracking-wide text-muted-foreground uppercase">
+      <thead className="text-left text-[11px] tracking-wide whitespace-nowrap text-muted-foreground uppercase">
         <tr>
           <th className="py-1">Corridor</th>
           <th className="py-1 text-right">Flow</th>
@@ -1067,7 +1151,7 @@ function ForecastTable({
   if (!rows.length) return null;
   return (
     <table className="mt-3 w-full text-[13px]">
-      <thead className="text-left text-[11px] tracking-wide text-muted-foreground uppercase">
+      <thead className="text-left text-[11px] tracking-wide whitespace-nowrap text-muted-foreground uppercase">
         <tr>
           <th className="py-1">Gas day</th>
           {rows.map((b) => (
@@ -1109,7 +1193,7 @@ function StorageTable({
   if (keyMissing) return <Unavailable>AGSI storage needs AGSI_API_KEY on the server.</Unavailable>;
   return (
     <table className="w-full text-[13px]">
-      <thead className="text-left text-[11px] tracking-wide text-muted-foreground uppercase">
+      <thead className="text-left text-[11px] tracking-wide whitespace-nowrap text-muted-foreground uppercase">
         <tr>
           <th className="py-1">Country</th>
           <th className="py-1">Gas day</th>
@@ -1123,7 +1207,9 @@ function StorageTable({
         {rows.map(({ code, label, row }) => (
           <tr key={code} className={`border-t ${code === "rs" ? "font-semibold" : ""}`}>
             <td className="py-1.5">{label}</td>
-            <td className="py-1.5 text-muted-foreground">{row?.date ? shortDay(row.date) : "—"}</td>
+            <td className="py-1.5 text-muted-foreground">
+              {row?.date ? shortDay(row.date) : code === "rs" ? "not on AGSI+" : "—"}
+            </td>
             <td className="py-1.5 text-right">
               {row?.full != null ? `${row.full.toFixed(1)}%` : "—"}
             </td>
