@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { pageMetadata } from "@/lib/page-metadata";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, type ReactNode } from "react";
 import {
   Area,
   CartesianGrid,
@@ -19,6 +19,8 @@ import {
   type CountryBadge,
   type MapLayers,
 } from "@/components/region/BalkanFlowMap";
+import { HuStorageChart, HuStorageSummary } from "@/components/dashboard/HuStorageChart";
+import { HU_STORAGE_NOTE, useHuStorage } from "@/lib/gas/use-hu-storage";
 import { fetchAgsiStorage } from "@/lib/data/agsi.functions";
 import { fetchEntsogAllocations, fetchEntsogFlows } from "@/lib/data/entsog.functions";
 import {
@@ -36,7 +38,10 @@ import {
 } from "@/lib/gas/config";
 import { buildBalance, dateRangeIso } from "@/lib/gas/demand";
 import type { FlowPointName } from "@/lib/gas/types";
-import { checkNewsletterToken } from "@/lib/newsletter/newsletter.functions";
+import {
+  checkNewsletterToken,
+  listNewsletterMetNominations,
+} from "@/lib/newsletter/newsletter.functions";
 import {
   addDaysISO,
   netIntoSerbia,
@@ -71,7 +76,13 @@ export const Route = createFileRoute("/newsletter")({
         : undefined,
   }),
   head: () => ({
-    meta: [...pageMetadata("Gas daily · Serbia", "Daily Serbian gas balance, regional flows, storage levels and gas price report."), { name: "robots", content: "noindex" }],
+    meta: [
+      ...pageMetadata(
+        "Gas daily · Serbia",
+        "Daily Serbian gas balance, regional flows, storage levels and gas price report.",
+      ),
+      { name: "robots", content: "noindex" },
+    ],
   }),
   component: NewsletterPage,
 });
@@ -211,7 +222,7 @@ function NewsletterPage() {
         <Note error>{access.data.reason}</Note>
       </Shell>
     );
-  return <Newsletter today={todayParam ?? belgradeToday()} />;
+  return <Newsletter today={todayParam ?? belgradeToday()} token={token} />;
 }
 
 function Shell({ children, ready }: { children: ReactNode; ready?: boolean }) {
@@ -293,7 +304,7 @@ async function entsogRows<T extends { data?: unknown[]; error?: string | null }>
   return result;
 }
 
-function Newsletter({ today }: { today: string }) {
+function Newsletter({ today, token }: { today: string; token: string }) {
   const deliveryDay = addDaysISO(today, 1);
   const from = addDaysISO(today, -PAST_DAYS);
   const to = addDaysISO(today, FUTURE_DAYS);
@@ -373,8 +384,14 @@ function Newsletter({ today }: { today: string }) {
     },
   });
 
+  const loadNominations = useCallback(
+    (from: string, to: string) => listNewsletterMetNominations({ data: { token, from, to } }),
+    [token],
+  );
+  const huStorage = useHuStorage(today, loadNominations, "newsletter");
+
   const all = [flowsQ, allocQ, tempsQ, regionalQ, netQ, pricesQ, rbpQ, storageQ];
-  const settled = all.every((q) => q.isSuccess || q.isError);
+  const settled = all.every((q) => q.isSuccess || q.isError) && huStorage.settled;
 
   // ---------------------------------------------------------------- derived data
   const flows = useMemo(
@@ -500,6 +517,7 @@ function Newsletter({ today }: { today: string }) {
     pricesQ.isError ? "prices" : null,
     rbpQ.isError ? "RBP bookings" : null,
     storageQ.isError ? "AGSI storage" : null,
+    huStorage.error ? "Srbijagas HU storage" : null,
   ].filter((x): x is string => !!x);
 
   if (!settled) {
@@ -742,6 +760,24 @@ function Newsletter({ today }: { today: string }) {
           <BalanceChart balance={balance} today={today} />
         </div>
         <ForecastTable balance={balance} today={today} />
+      </Section>
+
+      <Section
+        shot="hu-storage"
+        title="Srbijagas storage balance in Hungary"
+        subtitle={`End-of-gas-day stock, mcm · ${HU_STORAGE_NOTE}`}
+      >
+        {huStorage.error && <Unavailable>{huStorage.error}</Unavailable>}
+        {huStorage.rows.length > 0 && (
+          <>
+            <div className="h-[240px]">
+              <HuStorageChart rows={huStorage.rows} compact />
+            </div>
+            <div className="mt-3">
+              <HuStorageSummary rows={huStorage.rows} />
+            </div>
+          </>
+        )}
       </Section>
 
       <Section

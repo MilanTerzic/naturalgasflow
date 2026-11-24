@@ -39,7 +39,16 @@ const RECIPIENTS = (TEST_TO || env("NEWSLETTER_TO"))
 const WINDOW_FROM = 16 * 60 + 50; // 17:00 Belgrade, minus a little schedule jitter
 const WINDOW_TO = 19 * 60 + 30; // a late GitHub schedule still sends, once
 const WAIT_UNTIL = 17 * 60 + 45; // wait for next-day exchange prices until 17:45 on weekdays
-const SECTIONS = ["glance", "map-flows", "flows", "prices", "capacity", "balance", "storage"];
+const SECTIONS = [
+  "glance",
+  "map-flows",
+  "flows",
+  "prices",
+  "capacity",
+  "balance",
+  "hu-storage",
+  "storage",
+];
 const TITLES = {
   glance: "At a glance",
   "map-flows": "Balkan physical flows map",
@@ -47,6 +56,7 @@ const TITLES = {
   prices: "Day-ahead hub prices",
   capacity: "Capacity and bookings",
   balance: "Serbian demand, temperature and supply",
+  "hu-storage": "Srbijagas storage balance in Hungary",
   storage: "Gas storage",
 };
 const SENT_ARTIFACT = (day) => `gas-newsletter-sent-${day}`;
