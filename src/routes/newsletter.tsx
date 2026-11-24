@@ -229,7 +229,7 @@ function Shell({ children, ready }: { children: ReactNode; ready?: boolean }) {
   return (
     <main
       data-newsletter-ready={ready ? "true" : undefined}
-      className="mx-auto min-h-screen w-[760px] space-y-4 bg-background px-5 py-6 text-foreground [&_[data-shot]_button]:hidden"
+      className="mx-auto min-h-screen w-full max-w-[760px] space-y-4 bg-background px-3 py-4 sm:px-5 sm:py-6 text-foreground [&_[data-shot]_button]:hidden"
     >
       {children}
     </main>
@@ -259,7 +259,7 @@ function Section({
     <section data-shot={shot} className="rounded-lg border bg-card p-4">
       <h2 className="text-[17px] font-semibold text-foreground">{title}</h2>
       {subtitle && <p className="mt-0.5 text-[13px] text-muted-foreground">{subtitle}</p>}
-      <div className="mt-3">{children}</div>
+      <div className="mt-3 overflow-x-auto">{children}</div>
     </section>
   );
 }
@@ -556,7 +556,7 @@ function Newsletter({ today, token }: { today: string; token: string }) {
           {!flowPick.complete && flowDay ? " (incomplete)" : ""} · demand forecast for{" "}
           {longDay(deliveryDay)}
         </p>
-        <div className="mt-3 grid grid-cols-4 gap-2">
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
           <Kpi
             label="Net into Serbia"
             value={n1(net.net)}
