@@ -115,13 +115,15 @@ test("summary drops sentences whose data is missing", () => {
     points: [{ point: "kireevo", value: 35, avg7: 30, change: 5 }],
     deliveryDay: "2026-11-24",
     demandD1: { demand: 14.2, temperature: 2.1 },
-    prices: [
+    today: "2026-11-23",
+    priceDays: [
       {
         hub: "TTF",
-        latest: { date: "2026-11-23", label: "", price: 31, final: true },
-        previous: null,
+        a: { date: "2026-11-23", label: "", price: 31, final: true },
+        b: null,
         change: null,
         spreadTtf: null,
+        spreadDay: null,
       },
     ],
     storageRs: null,
@@ -129,5 +131,29 @@ test("summary drops sentences whose data is missing", () => {
   assert.equal(lines.length, 4);
   assert.match(lines[0], /12\.3 mcm\/d \(\+1\.3 vs 7-day average\)/);
   assert.match(lines[1], /Kireevo\/Zaječar 35\.0 mcm\/d \(\+5\.0\)/);
-  assert.match(lines[3], /TTF €31\.00/);
+  assert.match(lines[3], /delivery 2026-11-23 .*TTF €31\.00/);
+});
+
+test("price day rows put every hub on the same delivery days", async () => {
+  const { priceDayRows } = await import("../src/lib/newsletter/compute.ts");
+  const p = (date, price, final = true) => ({ date, label: date, price, final });
+  const rows = Object.fromEntries(
+    priceDayRows(
+      {
+        TTF: [p("2026-11-24", 91), p("2026-11-25", 90, false)],
+        CEGH: [p("2026-11-23", 93), p("2026-11-24", 92)],
+        BGH: [p("2026-11-24", 79), p("2026-11-25", 80)],
+      },
+      "2026-11-24",
+      "2026-11-25",
+    ).map((r) => [r.hub, r]),
+  );
+  assert.equal(rows.CEGH.a.price, 92);
+  assert.equal(rows.CEGH.b, null, "a hub without tomorrow stays pending");
+  assert.equal(rows.CEGH.change, null);
+  assert.equal(rows.CEGH.spreadDay, "2026-11-24");
+  assert.equal(rows.CEGH.spreadTtf, 1);
+  assert.equal(rows.BGH.change, 1);
+  assert.equal(rows.BGH.spreadDay, "2026-11-25");
+  assert.equal(rows.BGH.spreadTtf, -10);
 });

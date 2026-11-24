@@ -103,7 +103,7 @@ async function render(page, url) {
   for (let attempt = 1; ; attempt++) {
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
     try {
-      await page.waitForSelector('[data-newsletter-ready="true"]', { timeout: 240_000 });
+      await page.waitForSelector('[data-newsletter-ready="true"]', { timeout: 12 * 60_000 });
       const raw = await page
         .locator("[data-newsletter-metadata]")
         .getAttribute("data-newsletter-metadata");
@@ -148,6 +148,12 @@ async function main() {
     const pageUrl = `${APP_URL}/newsletter?token=${encodeURIComponent(TOKEN)}&today=${today}`;
     console.log("Opening newsletter view for rendering.");
     info = await render(page, pageUrl);
+    // ENTSOG reads on the hosted app are slow on a cold cache; a second load is warm.
+    if (info.missing?.length) {
+      console.log(`Missing after first load: ${info.missing.join(", ")}; loading once more.`);
+      const second = await render(page, pageUrl);
+      if ((second.missing?.length ?? 0) <= info.missing.length) info = second;
+    }
     while (
       info.awaiting?.length &&
       !FORCE &&
