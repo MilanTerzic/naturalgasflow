@@ -85,7 +85,9 @@ async function fetchJsonWithRetry<T>(url: string, init?: RequestInit): Promise<T
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
-      const res = await fetch(url, {
+      const { cachedEntsogFetch } = await import("./entsog-cache.server");
+      const request = url.startsWith("https://transparency.entsog.eu/") ? cachedEntsogFetch : fetch;
+      const res = await request(url, {
         ...init,
         headers: { accept: "application/json", ...(init?.headers ?? {}) },
         signal: controller.signal,

@@ -68,7 +68,8 @@ const dataCache = new Map<string, { at: number; res: RegionalFlowsResponse }>();
 async function getJson(url: string, attempts = 2): Promise<unknown> {
   for (let attempt = 1; ; attempt++) {
     try {
-      const res = await fetch(url, {
+      const { cachedEntsogFetch } = await import("./entsog-cache.server");
+      const res = await cachedEntsogFetch(url, {
         headers: { accept: "application/json" },
         signal: AbortSignal.timeout(45_000),
       });

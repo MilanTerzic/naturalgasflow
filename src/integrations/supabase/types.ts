@@ -83,6 +83,45 @@ export type Database = {
         }
         Relationships: []
       }
+      entsog_daily_cache: {
+        Row: {
+          fetched_at: string
+          gas_day: string
+          records: Json
+          series_key: string
+        }
+        Insert: {
+          fetched_at?: string
+          gas_day: string
+          records: Json
+          series_key: string
+        }
+        Update: {
+          fetched_at?: string
+          gas_day?: string
+          records?: Json
+          series_key?: string
+        }
+        Relationships: []
+      }
+      entsog_reference_cache: {
+        Row: {
+          cache_key: string
+          fetched_at: string
+          payload: Json
+        }
+        Insert: {
+          cache_key: string
+          fetched_at?: string
+          payload: Json
+        }
+        Update: {
+          cache_key?: string
+          fetched_at?: string
+          payload?: Json
+        }
+        Relationships: []
+      }
       met_hu_nominations: {
         Row: {
           created_at: string

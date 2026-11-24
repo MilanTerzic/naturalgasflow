@@ -89,7 +89,8 @@ async function fetchPointChunk(
     `?pointDirection=${encodeURIComponent(pd)}` +
     `&from=${from}&to=${to}` +
     `&indicator=${encodeURIComponent(indicator)}&periodType=day&limit=-1`;
-  const res = await fetch(url, { headers: { accept: "application/json" } });
+  const { cachedEntsogFetch } = await import("./entsog-cache.server");
+  const res = await cachedEntsogFetch(url, { headers: { accept: "application/json" } });
   if (!res.ok) throw new Error(`ENTSOG ${pd} ${indicator} [${from}→${to}]: HTTP ${res.status}`);
   const json = (await res.json()) as {
     operationaldata?: EntsogOperationalRow[];
@@ -358,10 +359,10 @@ async function fetchEntsogOperationalSeries({
           if (!chosenSource) continue;
 
           combined[key] = chosenRow[key];
-          combined.point_source![key] = chosenSource;
-          combined.point_last_update![key] = chosenUpdate;
-          if (chosenSource === primarySource) combined.published_points!.push(key);
-          else combined.provisional_points!.push(key);
+          if (combined.point_source) combined.point_source[key] = chosenSource;
+          if (combined.point_last_update) combined.point_last_update[key] = chosenUpdate;
+          if (chosenSource === primarySource) combined.published_points?.push(key);
+          else combined.provisional_points?.push(key);
           if (chosenUpdate > sourceUpdatedAt) sourceUpdatedAt = chosenUpdate;
         }
 

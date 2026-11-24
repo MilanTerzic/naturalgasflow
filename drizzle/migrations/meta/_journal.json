@@ -15,6 +15,13 @@
       "when": 1794491005884,
       "tag": "0001_lock_dashboard_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795522084133,
+      "tag": "0002_persist_entsog_daily_cache",
+      "breakpoints": true
     }
   ]
 }
