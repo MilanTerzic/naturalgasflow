@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { pageMetadata } from "@/lib/page-metadata";
 import { useQuery } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
 import { CapacityCharts } from "@/components/dashboard/CapacityCharts";
@@ -33,13 +34,7 @@ import {
 
 export const Route = createFileRoute("/_dash/capacity")({
   head: () => ({
-    meta: [
-      { title: "Capacity Bookings - Serbia Gas Dashboard" },
-      {
-        name: "description",
-        content: "Cross-border capacity bookings for FGSZ, Bulgartransgaz and Gastrans.",
-      },
-    ],
+    meta: pageMetadata("Capacity Bookings - Serbia Gas Dashboard", "Cross-border capacity bookings for FGSZ, Bulgartransgaz and Gastrans."),
   }),
   component: CapacityPage,
 });

@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { pageMetadata } from "@/lib/page-metadata";
 import { AlertTriangle, CalendarDays, ChevronDown, Clock3, Database } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -23,14 +24,7 @@ import { useDashboardData } from "@/state/use-dashboard-data";
 
 export const Route = createFileRoute("/_dash/balance")({
   head: () => ({
-    meta: [
-      { title: "Serbian Gas Balance - Serbia Gas Dashboard" },
-      {
-        name: "description",
-        content:
-          "Daily Serbian gas balance: supply composition, temperature and storage requirement.",
-      },
-    ],
+    meta: pageMetadata("Serbian Gas Balance - Serbia Gas Dashboard", "Daily Serbian gas balance: supply composition, temperature and storage requirement."),
   }),
   component: BalancePage,
 });

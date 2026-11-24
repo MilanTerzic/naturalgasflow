@@ -10,6 +10,7 @@ import type { FlowPointOperationalSource, FlowRow } from "@/lib/gas/types";
 interface FetchFlowArgs {
   from: string;
   to: string;
+  savedOnly?: boolean;
 }
 
 interface EntsogOperationalRow {
@@ -58,7 +59,6 @@ interface CacheEntry {
   sourceUpdatedAt: string;
 }
 
-const OPERATIONAL_CACHE_TTL_MS = 30 * 60 * 1000;
 const physicalFlowCache = new Map<string, CacheEntry>();
 const allocationCache = new Map<string, CacheEntry>();
 
@@ -83,6 +83,7 @@ async function fetchPointChunk(
   from: string,
   to: string,
   indicator: OperationalIndicator,
+  savedOnly = false,
 ): Promise<EntsogOperationalRow[]> {
   const url =
     `https://transparency.entsog.eu/api/v1/operationaldata.json` +
@@ -90,7 +91,7 @@ async function fetchPointChunk(
     `&from=${from}&to=${to}` +
     `&indicator=${encodeURIComponent(indicator)}&periodType=day&limit=-1`;
   const { cachedEntsogFetch } = await import("./entsog-cache.server");
-  const res = await cachedEntsogFetch(url, { headers: { accept: "application/json" } });
+  const res = await cachedEntsogFetch(url, { headers: { accept: "application/json" } }, savedOnly);
   if (!res.ok) throw new Error(`ENTSOG ${pd} ${indicator} [${from}→${to}]: HTTP ${res.status}`);
   const json = (await res.json()) as {
     operationaldata?: EntsogOperationalRow[];
@@ -104,12 +105,13 @@ async function fetchPoint(
   from: string,
   to: string,
   indicator: OperationalIndicator,
+  savedOnly = false,
 ): Promise<Map<string, DailyPick>> {
   const chunks = isoChunks(from, to, 365);
   const results = await Promise.all(
     chunks.map(async ([f, t]) => {
       try {
-        return await fetchPointChunk(pd, f, t, indicator);
+        return await fetchPointChunk(pd, f, t, indicator, savedOnly);
       } catch (err) {
         console.warn(`[ENTSOG] chunk failed ${pd} ${indicator} ${f}→${t}:`, err);
         return [] as EntsogOperationalRow[];
@@ -223,16 +225,6 @@ async function fetchEntsogOperationalSeries({
   const cached = cache.get(cacheKey);
   const now = Date.now();
 
-  if (cached && now - cached.at < OPERATIONAL_CACHE_TTL_MS) {
-    console.log(`[ENTSOG ${primaryIndicator}] cache hit for ${cacheKey}`);
-    return {
-      data: cached.rows,
-      error: null,
-      fetchedAt: cached.fetchedAt,
-      sourceUpdatedAt: cached.sourceUpdatedAt,
-    };
-  }
-
   try {
     const today = belgradeDateIso();
     const includesToday = data.from <= today && today <= data.to;
@@ -241,12 +233,12 @@ async function fetchEntsogOperationalSeries({
       POINT_KEYS.map(async (key) => {
         const pd = ENTSOG_POINT_DIRECTIONS[key];
         const [actual, renomination, nomination] = await Promise.all([
-          fetchPoint(pd, data.from, data.to, primaryIndicator),
+          fetchPoint(pd, data.from, data.to, primaryIndicator, data.savedOnly),
           includesToday
-            ? fetchPoint(pd, today, today, "Renomination")
+            ? fetchPoint(pd, today, today, "Renomination", data.savedOnly)
             : Promise.resolve(new Map<string, DailyPick>()),
           includesToday
-            ? fetchPoint(pd, today, today, "Nomination")
+            ? fetchPoint(pd, today, today, "Nomination", data.savedOnly)
             : Promise.resolve(new Map<string, DailyPick>()),
         ]);
 

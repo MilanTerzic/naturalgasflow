@@ -50,6 +50,7 @@ export async function readThroughEntsog(
   store: EntsogStore,
   request: (url: string) => Promise<unknown>,
   today: string,
+  savedOnly = false,
 ): Promise<EntsogRecord[]> {
   const url = new URL(input);
   if (url.origin !== "https://transparency.entsog.eu") throw new Error("Invalid ENTSOG host");
@@ -82,7 +83,7 @@ export async function readThroughEntsog(
   let firstError: unknown;
   let succeeded = false;
   const transient: EntsogRecord[] = [];
-  for (const job of jobs.values()) {
+  for (const job of savedOnly ? [] : jobs.values()) {
     const query = new URL(url);
     query.searchParams.set("from", job.from);
     query.searchParams.set("to", job.to);
@@ -93,20 +94,31 @@ export async function readThroughEntsog(
       const fresh = new Map<string, SavedEntsogDay>();
       for (const row of rows) {
         const day = typeof row['periodFrom'] === "string" ? row['periodFrom'].slice(0, 10) : "";
-        const entity = String(row[entityField] ?? (job.entities.length === 1 ? job.entities[0] : "")).toLowerCase();
+        const derivedPoint = `${row['operatorKey'] ?? ""}${row['pointKey'] ?? ""}${row['directionKey'] ?? ""}`;
+        const entity = String(row[entityField] ?? (entityField === "pointDirection" && derivedPoint ? derivedPoint : job.entities.length === 1 ? job.entities[0] : "")).toLowerCase().replace(/\s+/g, "");
         const key = keyByEntity.get(entity);
         const value = row['value'];
-        if (!key || !job.entities.includes(entity) || day < job.from || day > job.to || value == null || value === "" || !Number.isFinite(Number(value))) continue;
-        // Today's physical flow is an unfinished running total, not a saved daily observation.
-        if (day >= today && url.searchParams.get("indicator") === "Physical Flow") {
-          transient.push(row);
-          continue;
+        if (!key || !job.entities.includes(entity) || !day || value == null || String(value).trim() === "" || !Number.isFinite(Number(value))) continue;
+        // Capacity publications can cover years; cache every covered date in the query,
+        // including when the validity period starts before the requested window.
+        const periodEnd = typeof row['periodTo'] === "string" ? row['periodTo'].slice(0, 10) : "";
+        const startMs = Date.parse(`${day}T00:00:00Z`);
+        const endMs = Date.parse(`${periodEnd}T00:00:00Z`);
+        const lo = Math.max(startMs, Date.parse(`${job.from}T00:00:00Z`));
+        const hi = Math.min(endMs > startMs ? endMs - 86400000 : startMs, Date.parse(`${job.to}T00:00:00Z`));
+        for (let time = lo; time <= hi; time += 86400000) {
+          const coveredDay = new Date(time).toISOString().slice(0, 10);
+          // Today's physical flow is an unfinished running total, not a saved daily observation.
+          if (coveredDay >= today && url.searchParams.get("indicator") === "Physical Flow") {
+            transient.push(row);
+            continue;
+          }
+          const id = `${key}|${coveredDay}`;
+          if (days.has(id)) continue;
+          const entry = fresh.get(id) ?? { series_key: key, gas_day: coveredDay, records: [] };
+          entry.records.push(row);
+          fresh.set(id, entry);
         }
-        const id = `${key}|${day}`;
-        if (days.has(id)) continue;
-        const entry = fresh.get(id) ?? { series_key: key, gas_day: day, records: [] };
-        entry.records.push(row);
-        fresh.set(id, entry);
       }
       if (fresh.size) {
         await store.save([...fresh.values()]);
@@ -118,5 +130,7 @@ export async function readThroughEntsog(
     }
   }
   if (!days.size && !transient.length && firstError && !succeeded) throw firstError;
-  return [...days.values()].sort((a, b) => a.gas_day.localeCompare(b.gas_day)).flatMap((day) => day.records).concat(transient);
+  const result = [...days.values()].sort((a, b) => a.gas_day.localeCompare(b.gas_day)).flatMap((day) => day.records).concat(transient);
+  // One validity-period publication may be referenced by many saved gas days.
+  return [...new Map(result.map((row) => [JSON.stringify(row), row])).values()];
 }

@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { pageMetadata } from "@/lib/page-metadata";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, type ReactNode } from "react";
 import {
@@ -70,7 +71,7 @@ export const Route = createFileRoute("/newsletter")({
         : undefined,
   }),
   head: () => ({
-    meta: [{ title: "Gas daily · Serbia" }, { name: "robots", content: "noindex" }],
+    meta: [...pageMetadata("Gas daily · Serbia", "Daily Serbian gas balance, regional flows, storage levels and gas price report."), { name: "robots", content: "noindex" }],
   }),
   component: NewsletterPage,
 });

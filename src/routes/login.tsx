@@ -1,4 +1,5 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
+import { pageMetadata } from "@/lib/page-metadata";
 import { useEffect, useState } from "react";
 import { Fuel } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,13 +17,7 @@ export const Route = createFileRoute("/login")({
     }
   },
   head: () => ({
-    meta: [
-      { title: "Sign in — Serbia Gas Dashboard" },
-      {
-        name: "description",
-        content: "Secure account access for the Serbia Gas Balance & Capacity Dashboard.",
-      },
-    ],
+    meta: pageMetadata("Sign in — Serbia Gas Dashboard", "Secure account access for the Serbia Gas Balance & Capacity Dashboard."),
   }),
   component: LoginPage,
 });

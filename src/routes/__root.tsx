@@ -98,16 +98,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         content:
           "Natural gas flows, Serbian demand forecasts, cross-border capacity and gas balance analytics.",
       },
-      {
-        property: "og:image",
-        content:
-          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/88b39ede-5a09-4a1d-9d06-f1377f4e4eca/id-preview-ccbbc16e--c67867c7-35ce-4c34-8aaf-7270e5540dc7.lovable.app-1780177914886.png",
-      },
-      {
-        name: "twitter:image",
-        content:
-          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/88b39ede-5a09-4a1d-9d06-f1377f4e4eca/id-preview-ccbbc16e--c67867c7-35ce-4c34-8aaf-7270e5540dc7.lovable.app-1780177914886.png",
-      },
     ],
     links: [
       { rel: "preconnect", href: "https://fonts.googleapis.com" },

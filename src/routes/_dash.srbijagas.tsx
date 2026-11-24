@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { pageMetadata } from "@/lib/page-metadata";
 import { useQuery } from "@tanstack/react-query";
 import {
   Area,
@@ -72,14 +73,7 @@ import { useDashboard } from "@/state/dashboard-context";
 
 export const Route = createFileRoute("/_dash/srbijagas")({
   head: () => ({
-    meta: [
-      { title: "Srbijagas Full Supply Analysis" },
-      {
-        name: "description",
-        content:
-          "Historical implied Serbian gas offtake, Bosnia assumptions, power generation, weather and Srbijagas pricing.",
-      },
-    ],
+    meta: pageMetadata("Srbijagas Full Supply Analysis", "Historical implied Serbian gas offtake, Bosnia assumptions, power generation, weather and Srbijagas pricing."),
   }),
   component: SrbijagasPage,
 });

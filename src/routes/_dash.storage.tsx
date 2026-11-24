@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { pageMetadata } from "@/lib/page-metadata";
 import { useQuery } from "@tanstack/react-query";
 import {
   Area,
@@ -20,10 +21,7 @@ import { CONVERSION_MCM_TO_GWH } from "@/lib/gas/config";
 
 export const Route = createFileRoute("/_dash/storage")({
   head: () => ({
-    meta: [
-      { title: "Gas Storage — Serbia Gas Dashboard" },
-      { name: "description", content: "European gas storage levels (AGSI+/GIE)." },
-    ],
+    meta: pageMetadata("Gas Storage — Serbia Gas Dashboard", "European gas storage levels (AGSI+/GIE)."),
   }),
   component: StoragePage,
 });

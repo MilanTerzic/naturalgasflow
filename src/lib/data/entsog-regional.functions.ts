@@ -30,7 +30,6 @@ import {
 
 const BASE = "https://transparency.entsog.eu/api/v1";
 const REFERENTIAL_TTL_MS = 24 * 60 * 60 * 1000;
-const DATA_TTL_MS = 30 * 60 * 1000;
 /** Point directions per operationaldata request; keeps us well under worker subrequest limits. */
 const BATCH = 25;
 /** Longest window served, in days (ENTSOG answers faster and the map only needs recent history). */
@@ -212,7 +211,6 @@ async function fetchRegional(
   const { from, to } = clampRange(fromIn, toIn);
   const key = `${indicator}|${from}|${to}`;
   const cached = dataCache.get(key);
-  if (cached && Date.now() - cached.at < DATA_TTL_MS) return { ...cached.res, status: "cache" };
 
   const diagnostics: RegionalFlowsResponse["diagnostics"] = {
     referentialRecords: 0,
@@ -378,7 +376,6 @@ const netCache = new Map<string, { at: number; res: NetPositionsResponse }>();
 async function fetchNetPositions(from: string, to: string): Promise<NetPositionsResponse> {
   const key = `${from}|${to}`;
   const cached = netCache.get(key);
-  if (cached && Date.now() - cached.at < DATA_TTL_MS) return cached.res;
 
   const failedCountries: string[] = [];
   const rows: Array<Record<string, unknown>> = [];

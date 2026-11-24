@@ -95,3 +95,28 @@ test("missing ranges exclude saved dates and validate range bounds", () => {
   assert.deepEqual(missingDateRanges("2026-11-20", "2026-11-24", new Set(["2026-11-21", "2026-11-23"])), [["2026-11-20", "2026-11-20"], ["2026-11-22", "2026-11-22"], ["2026-11-24", "2026-11-24"]]);
   assert.throws(() => missingDateRanges("invalid", "2026-11-24", new Set()));
 });
+
+test("capacity validity periods save each covered day and reuse them for a new range", async () => {
+  const store = storage();
+  const query = url("2026-11-20", "2026-11-22").replace("indicator=Allocation", "indicator=Firm%20Technical");
+  await readThroughEntsog(query, store, async () => ({ operationaldata: [{ ...row("2026-10-01", 42), periodTo: "2041-10-01T06:00:00+01:00" }] }), today);
+  assert.equal(store.rows.size, 3);
+  const result = await readThroughEntsog(query.replace("from=2026-11-20", "from=2026-11-21"), store, async () => { throw new Error("Must not fetch"); }, today);
+  assert.equal(result.length, 1);
+  assert.equal(result[0]?.value, 42);
+});
+
+test("batched rows without pointDirection are matched by operator, point and direction", async () => {
+  const store = storage();
+  const query = url("2026-11-20", "2026-11-20").replace("BG-TSO-0001testexit", "BG-TSO-0001testexit,HU-otherentry");
+  await readThroughEntsog(query, store, async () => ({ operationaldata: [{ ...row("2026-11-20", 9), operatorKey: "BG-TSO-0001", pointKey: "test", directionKey: "exit" }] }), today);
+  assert.equal(store.rows.size, 1);
+  assert.equal([...store.rows.values()][0]?.records[0]?.value, 9);
+});
+
+test("saved-only reads return existing observations immediately without requesting any gaps", async () => {
+  const store = storage();
+  await readThroughEntsog(url("2026-11-20", "2026-11-20"), store, async () => ({ operationaldata: [row("2026-11-20", 77)] }), today);
+  const result = await readThroughEntsog(url("2026-11-19", "2026-11-21"), store, async () => { throw new Error("Must not request missing dates yet"); }, today, true);
+  assert.deepEqual(result.map((r) => r.value), [77]);
+});

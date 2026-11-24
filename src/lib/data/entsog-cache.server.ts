@@ -33,14 +33,14 @@ function publicClient() {
 
 async function upstream(url: string, init?: RequestInit): Promise<unknown> {
   return limited(async () => {
-    const response = await fetch(url, { ...init, signal: AbortSignal.timeout(12_000) });
+    const response = await fetch(url, { ...init, signal: AbortSignal.timeout(45_000) });
     if (response.status === 404) return {};
     if (!response.ok) throw new Error(`ENTSOG HTTP ${response.status}`);
     return response.json();
   });
 }
 
-export async function cachedEntsogFetch(input: string, init?: RequestInit): Promise<Response> {
+export async function cachedEntsogFetch(input: string, init?: RequestInit, savedOnly = false): Promise<Response> {
   const url = new URL(input);
   if (url.origin !== "https://transparency.entsog.eu" || !url.pathname.startsWith("/api/v1/"))
     throw new Error("Invalid ENTSOG endpoint");
@@ -85,7 +85,7 @@ export async function cachedEntsogFetch(input: string, init?: RequestInit): Prom
     },
   };
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Belgrade", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-  const rows = await readThroughEntsog(input, store, (query) => upstream(query, init), today);
+  const rows = await readThroughEntsog(input, store, (query) => upstream(query, init), today, savedOnly);
   const field = url.pathname.toLowerCase().includes("aggregated") ? "aggregatedData" : "operationaldata";
   return Response.json({ [field]: rows });
 }

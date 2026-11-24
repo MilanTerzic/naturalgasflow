@@ -1,14 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { pageMetadata } from "@/lib/page-metadata";
 import { ModelPanel } from "@/components/dashboard/ModelPanel";
 import { useDashboard } from "@/state/dashboard-context";
 import { useDashboardData } from "@/state/use-dashboard-data";
 
 export const Route = createFileRoute("/_dash/model")({
   head: () => ({
-    meta: [
-      { title: "Model & Assumptions — Serbia Gas Dashboard" },
-      { name: "description", content: "Demand regression coefficients and operational assumptions used in the balance." },
-    ],
+    meta: pageMetadata("Model & Assumptions — Serbia Gas Dashboard", "Demand regression coefficients and operational assumptions used in the balance."),
   }),
   component: ModelPage,
 });

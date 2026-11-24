@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { buildBalance, dateRangeIso, todayIso } from "@/lib/gas/demand";
 import { dummyFlows, dummyTemperatures, dummyCapacity } from "@/lib/gas/dummy";
@@ -24,6 +24,7 @@ export interface DashboardData {
 
 export function useDashboardData(): DashboardData {
   const s = useDashboard();
+  const queryClient = useQueryClient();
   const today = todayIso();
 
   const dates = useMemo(() => {
@@ -47,14 +48,22 @@ export function useDashboardData(): DashboardData {
 
   const flowQuery = useQuery({
     queryKey: ["flows", from, to],
-    queryFn: () => fetchEntsogFlows({ data: { from, to } }),
+    queryFn: async () => {
+      const saved = await fetchEntsogFlows({ data: { from, to, savedOnly: true } });
+      if (saved.data.length) queryClient.setQueryData(["flows", from, to], saved);
+      return fetchEntsogFlows({ data: { from, to } });
+    },
     enabled: s.mode === "live",
     staleTime: 30 * 60 * 1000,
   });
 
   const allocationQuery = useQuery({
     queryKey: ["allocations", from, to],
-    queryFn: () => fetchEntsogAllocations({ data: { from, to } }),
+    queryFn: async () => {
+      const saved = await fetchEntsogAllocations({ data: { from, to, savedOnly: true } });
+      if (saved.data.length) queryClient.setQueryData(["allocations", from, to], saved);
+      return fetchEntsogAllocations({ data: { from, to } });
+    },
     enabled: s.mode === "live",
     staleTime: 30 * 60 * 1000,
   });

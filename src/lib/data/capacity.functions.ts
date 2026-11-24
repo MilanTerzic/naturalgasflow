@@ -49,7 +49,6 @@ interface RbpAuctionApiRow {
 const ENTSOG_TECHNICAL = "Firm Technical";
 const ENTSOG_BOOKED = "Firm Booked";
 const REQUEST_TIMEOUT_MS = 12_000;
-const CAPACITY_CACHE_TTL_MS = 30 * 60 * 1000;
 
 const RBP_POINT_NAMES = RBP_SERBIAN_POINTS.map((p) => p.name);
 
@@ -475,10 +474,6 @@ export const fetchLiveCapacityBookings = createServerFn({ method: "POST" })
     const cacheKey = `${data.from}|${data.to}`;
     const cached = capacityCache.get(cacheKey);
     const now = Date.now();
-    const force = !!data.force;
-    if (!force && cached && now - cached.at < CAPACITY_CACHE_TTL_MS) {
-      return markCached(cached.response, false, null);
-    }
 
     const capacityProvider = new EntsogCapacityProvider();
     const auctionProvider = new RbpPublicAuctionProvider();
