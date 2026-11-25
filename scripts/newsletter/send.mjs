@@ -207,6 +207,14 @@ async function main() {
 <tr><td style="padding:24px 16px 8px;">
 <div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#5fd4cf;font-weight:600;">Serbia gas daily</div>
 <div style="font-size:24px;line-height:1.25;font-weight:600;margin-top:4px;">${escapeHtml(today)}${info.flowDay ? ` · flows for gas day ${escapeHtml(info.flowDay)}` : ""}</div>
+${
+  Array.isArray(info.alerts) && info.alerts.length
+    ? `<div style="margin:14px 0 0;padding:10px 12px;border:1px solid #b7791f;border-radius:6px;background:#1f1a10;">
+<div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#f6ad55;font-weight:600;">Alerts</div>
+${info.alerts.map((a) => `<div style="font-size:15px;line-height:1.5;margin-top:4px;">${escapeHtml(a)}</div>`).join("\n")}
+</div>`
+    : ""
+}
 <ul style="font-size:16px;line-height:1.55;padding-left:20px;margin:14px 0 0;">
 ${info.summary.map((line) => `<li style="margin-bottom:8px;">${escapeHtml(line)}</li>`).join("\n")}
 </ul>
@@ -220,7 +228,16 @@ ${images
   .join("\n")}
 <tr><td style="padding:16px;font-size:13px;color:#8b98a5;">Sources: ENTSOG, RBP, GIE AGSI+, EEX, CEGH, Balkan Gas Hub, CEEGEX, HEnEx, BRM, Open-Meteo. Automated daily summary from the Serbia gas dashboard.</td></tr>
 </table></td></tr></table></body></html>`;
-  const text = [`Serbia gas daily · ${today}`, "", ...info.summary, "", ...notes].join("\n");
+  const alertLines =
+    Array.isArray(info.alerts) && info.alerts.length ? ["ALERTS", ...info.alerts, ""] : [];
+  const text = [
+    `Serbia gas daily · ${today}`,
+    "",
+    ...alertLines,
+    ...info.summary,
+    "",
+    ...notes,
+  ].join("\n");
 
   const port = Number(env("SMTP_PORT", false) || 465);
   const transport = USE_SMTP
