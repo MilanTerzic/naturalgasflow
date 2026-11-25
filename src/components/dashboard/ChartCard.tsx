@@ -27,7 +27,7 @@ export function ChartCard({
   return (
     <section
       className={cn(
-        "rounded-lg border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]",
+        "min-w-0 rounded-lg border bg-card p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-4",
         className,
       )}
     >

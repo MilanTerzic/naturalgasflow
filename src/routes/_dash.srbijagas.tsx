@@ -481,7 +481,7 @@ function SrbijagasPage() {
 
       {/* Sub-tabs */}
       <Tabs defaultValue="volume" className="w-full">
-        <TabsList>
+        <TabsList className="h-auto max-w-full justify-start overflow-x-auto">
           <TabsTrigger value="volume">Volume History</TabsTrigger>
           <TabsTrigger value="breakdown">Modeled Sector Split</TabsTrigger>
           <TabsTrigger value="weather">Weather &amp; Demand</TabsTrigger>

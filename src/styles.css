@@ -181,6 +181,25 @@
   * {
     border-color: var(--color-border);
   }
+  /* Grid/flex children default to min-width:auto, so charts and wide tables push cards past
+     a phone screen. Let them shrink; wide content scrolls inside its own container. */
+  .grid > * {
+    min-width: 0;
+  }
+  /* iPhone: Safari zooms into any focused field under 16px; keep phone fields at 16px. */
+  @media (max-width: 640px) {
+    input,
+    select,
+    textarea {
+      font-size: 16px;
+    }
+  }
+  /* Respect the notch and home indicator when opened full-screen from the home screen. */
+  body {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
