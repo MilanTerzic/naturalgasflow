@@ -3,7 +3,8 @@
 // 1. Checks Belgrade time and whether today's issue already went out (a GitHub
 //    artifact named gas-newsletter-sent-YYYY-MM-DD is the record; no database needed).
 // 2. Opens /newsletter in Chromium. While exchanges have not published the next-day
-//    price yet (weekdays, until WAIT_UNTIL), reloads every five minutes.
+//    RBP day-ahead auction results for D+1 (published ~17:30 CET), until WAIT_UNTIL,
+//    reloads every five minutes.
 // 3. Screenshots each [data-shot] section and emails summary text + inline images,
 //    one message per recipient (SMTP when configured, otherwise Resend).
 // 4. Writes sent=true to GITHUB_OUTPUT so the workflow uploads the "sent" artifact.
@@ -36,9 +37,9 @@ const RECIPIENTS = (TEST_TO || env("NEWSLETTER_TO"))
   .map((s) => s.trim())
   .filter(Boolean);
 
-const WINDOW_FROM = 16 * 60 + 50; // 17:00 Belgrade, minus a little schedule jitter
-const WINDOW_TO = 19 * 60 + 30; // a late GitHub schedule still sends, once
-const WAIT_UNTIL = 17 * 60 + 45; // wait for next-day exchange prices until 17:45 on weekdays
+const WINDOW_FROM = 17 * 60 + 50; // 18:00 Belgrade, minus a little schedule jitter
+const WINDOW_TO = 20 * 60 + 30; // a late GitHub schedule still sends, once
+const WAIT_UNTIL = 18 * 60 + 30; // wait for RBP D+1 auction results until 18:30
 const SECTIONS = [
   "glance",
   "map-flows",
@@ -166,14 +167,8 @@ async function main() {
       const second = await render(page, pageUrl);
       if ((second.missing?.length ?? 0) <= info.missing.length) info = second;
     }
-    while (
-      info.awaiting?.length &&
-      !FORCE &&
-      !TEST_TO &&
-      !now.weekend &&
-      belgradeNow().minutes < WAIT_UNTIL
-    ) {
-      console.log(`Waiting for next-day prices: ${info.awaiting.join(", ")}`);
+    while (info.waitFor?.length && !FORCE && !TEST_TO && belgradeNow().minutes < WAIT_UNTIL) {
+      console.log(`Waiting for: ${info.waitFor.join(", ")}`);
       await sleep(5 * 60_000);
       info = await render(page, pageUrl);
     }
@@ -201,6 +196,7 @@ async function main() {
   const notes = [
     info.missing?.length ? `Unavailable at send time: ${info.missing.join(", ")}.` : "",
     info.awaiting?.length ? `No next-day price yet: ${info.awaiting.join(", ")}.` : "",
+    info.waitFor?.length ? `Not published at send time: ${info.waitFor.join(", ")}.` : "",
   ].filter(Boolean);
   const html = `<!doctype html><html><body style="margin:0;background:#0d1216;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0d1216;"><tr><td align="center">

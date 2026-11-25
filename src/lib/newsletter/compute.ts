@@ -300,7 +300,10 @@ export function summarySentences(s: SummaryInput): string[] {
       .filter((r) => ["TTF", "CEGH", "BGH", "CEEGEX", "BRM"].includes(r.hub))
       .map((r) => {
         const p = pick(r);
-        return p ? `${r.hub} €${f2(p.price)}${p.final ? "" : " (prov.)"}` : null;
+        // BGH trades the day-ahead continuously until ~02:00 CET on the delivery day.
+        if (!p) return null;
+        const tag = r.hub === "BGH" ? " (running VWAP)" : p.final ? "" : " (prov.)";
+        return `${r.hub} €${f2(p.price)}${tag}`;
       })
       .filter(Boolean);
     return parts.length ? `Day-ahead for delivery ${day} (€/MWh): ${parts.join("; ")}.` : null;
