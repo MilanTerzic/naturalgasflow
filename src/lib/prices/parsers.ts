@@ -117,6 +117,16 @@ export function htmlToCells(html: string): string {
  * Weekend) | VWAP / CEGHIX €/MWh. The delivery day is not stated unambiguously, so the
  * point keeps the trading day as `date` and the contract name exactly as published.
  */
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+/**
+ * CEGH homepage "Day Ahead Market" table: Trading Day | Contract | VWAP/CEGHIX. The date is
+ * the TRADING day; the contract names the DELIVERY day ("25.11. | Thursday" = delivery
+ * Thursday 26.11.). Delivery = first day after the trading day with that weekday; a contract
+ * for the trading day itself is a same-day trade and is not a day-ahead price. "Weekend"
+ * covers the following Saturday and Sunday (days after the trading day only). For one
+ * delivery day the newest trading day wins, and a single-day contract beats the weekend.
+ */
 export function parseCeghDayAhead(html: string, today: string): PricePoint[] {
   const text = htmlToCells(html);
   const start = text.search(/DAY\s+AHEAD\s+MARKET/i);
@@ -125,7 +135,12 @@ export function parseCeghDayAhead(html: string, today: string): PricePoint[] {
   const re =
     /(\d{1,2})\.(\d{1,2})\.\s*\|\s*(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|Weekend)\s*\|\s*(\d+[.,]\d+)/gi;
   const ref = new Date(`${today}T00:00:00Z`);
-  const out: PricePoint[] = [];
+  const best = new Map<string, { trading: string; weekend: boolean; p: PricePoint }>();
+  const plus = (iso: string, n: number) => {
+    const d = new Date(`${iso}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  };
   for (const m of section.matchAll(re)) {
     const day = Number(m[1]);
     const month = Number(m[2]);
@@ -134,12 +149,29 @@ export function parseCeghDayAhead(html: string, today: string): PricePoint[] {
     if (month > ref.getUTCMonth() + 2) year -= 1;
     const price = parseNumber(m[4]);
     if (price === null || price <= MIN_PRICE || price >= MAX_PRICE) continue;
-    out.push({
-      date: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
-      label: `${m[3]} contract`,
-      price,
-      final: true,
-    });
+    const trading = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const contract = m[3][0].toUpperCase() + m[3].slice(1).toLowerCase();
+    const weekend = contract === "Weekend";
+    const targets: string[] = [];
+    // Six days ahead at most: the trading day's own weekday (a same-day trade) never matches.
+    for (let i = 1; i <= 6; i++) {
+      const d = plus(trading, i);
+      const wd = WEEKDAYS[new Date(`${d}T00:00:00Z`).getUTCDay()];
+      if (weekend ? wd === "Saturday" || wd === "Sunday" : wd === contract) targets.push(d);
+      if (targets.length === (weekend ? 2 : 1)) break;
+      if (weekend && targets.length === 1 && wd === "Sunday") break; // traded Saturday
+    }
+    for (const date of targets) {
+      const cur = best.get(date);
+      const better =
+        !cur || trading > cur.trading || (trading === cur.trading && cur.weekend && !weekend);
+      if (better)
+        best.set(date, {
+          trading,
+          weekend,
+          p: { date, label: `${contract} contract, traded ${trading}`, price, final: true },
+        });
+    }
   }
-  return out;
+  return [...best.values()].map((v) => v.p).sort((x, y) => y.date!.localeCompare(x.date!));
 }

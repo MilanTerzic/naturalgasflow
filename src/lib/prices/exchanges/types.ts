@@ -39,6 +39,8 @@ export interface GasPriceObservation {
   status: ObservationStatus;
   /** Publication version (HEnEx v01, v02 …) where the source has one. */
   sourceVersion?: string | null;
+  /** Price of a delivery day still being traded (BGH running VWAP); replaced once final. */
+  provisional?: boolean;
 }
 
 export interface ProviderResult {
@@ -81,7 +83,7 @@ export const MARKET_META: Record<ExchangeMarket, MarketMeta> = {
     sourcePage: "https://www.balkangashub.bg/public",
     timeZone: "Europe/Sofia",
     publishAfter: "18:00",
-    retryMinutes: 60,
+    retryMinutes: 30,
     licence:
       "Read from BGH's public page. BGH terms restrict commercial reuse without written consent; confirm with BGH before using beyond internal viewing.",
   },
@@ -288,6 +290,8 @@ export interface BenchmarkPoint {
   fxRate?: number | null;
   /** True when this day is covered by a multi-day contract (weekend etc.). */
   multiDay: boolean;
+  /** Still being traded (running VWAP); not a final price. */
+  provisional?: boolean;
 }
 
 /**
@@ -327,6 +331,7 @@ export function benchmarkSeries(
             originalCurrency: o.originalCurrency,
             fxRate: o.fxRate,
             multiDay: span > 0,
+            provisional: o.provisional === true,
           },
         });
       }

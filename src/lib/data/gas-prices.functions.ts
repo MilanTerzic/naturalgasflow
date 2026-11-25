@@ -215,9 +215,11 @@ async function loadExchanges(force: boolean): Promise<{
     storage = { mode: "memory", note: "Not signed in: prices kept in server memory only." };
   }
 
+  // A provisional (still-trading) price does not count as "today's data is in", so BGH keeps
+  // refreshing its running VWAP every retry interval instead of waiting six hours.
   const newestTrading = (m: ExchangeMarket) =>
     stored
-      .filter((o) => o.market === m)
+      .filter((o) => o.market === m && !o.provisional)
       .map((o) => o.tradingDate)
       .sort()
       .at(-1) ?? null;
@@ -296,7 +298,9 @@ function exchangeToHub(hub: HubId, s: ExchangeSummary): HubPrices {
       date: p.deliveryDate,
       label: `${p.metric}${p.product !== "DA" && p.product !== "GLOBAL" ? ` ${p.product}` : ""}`,
       price: p.price,
-      final: true,
+      // BGH trades a delivery day until ~02:00 CET; also treat a stored future day as
+      // provisional in case the flag was not persisted.
+      final: !(p.provisional || (hub === "BGH" && p.deliveryDate > belgradeToday())),
     })),
     fetchedAt: s.lastAttemptAt ?? new Date().toISOString(),
     sourceUrl: s.sourceUrl ?? s.sourcePage,

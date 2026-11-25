@@ -183,21 +183,32 @@ export function parseHenexDol(
 /** Highest published version per trading date from the official list page (if reachable). */
 export function parseHenexListing(html: string): Map<string, { version: number; url: string }> {
   const out = new Map<string, { version: number; url: string }>();
-  const re = /href="([^"]*get_file\?uuid=[^"]+)"[^>]*>[\s\S]{0,400}?(\d{8})_NGAS_DOL_EN_v(\d{2})/gi;
-  for (const m of html.matchAll(re)) {
-    const d = `${m[2].slice(0, 4)}-${m[2].slice(4, 6)}-${m[2].slice(6, 8)}`;
-    const version = Number(m[3]);
-    const url = m[1].replace(/&amp;/g, "&");
-    const abs = url.startsWith("http") ? url : `https://www.enexgroup.gr${url}`;
+  const set = (d: string, version: number, url: string, prefer: boolean) => {
     const prev = out.get(d);
-    if (!prev || version > prev.version) out.set(d, { version, url: abs });
-  }
-  // Also accept the documented direct pattern if the page links it.
-  for (const m of html.matchAll(/(\d{8})_NGAS_DOL_EN_v(\d{2})\.xlsx/gi)) {
+    if (!prev || version > prev.version || (version === prev.version && prefer))
+      out.set(d, { version, url });
+  };
+  // Every document link on the page, with its position (quotes of either kind, &amp; decoded).
+  const links = [...html.matchAll(/href=["']([^"']*get_file\?uuid=[^"']+)["']/gi)].map((m) => {
+    const url = m[1].replace(/&amp;/g, "&");
+    return {
+      at: m.index ?? 0,
+      url: url.startsWith("http") ? url : `https://www.enexgroup.gr${url}`,
+    };
+  });
+  // Pair each NGAS DOL file name with the nearest get_file link (before or after it): Liferay
+  // renders the name and the download link in either order inside one entry.
+  for (const m of html.matchAll(/(\d{8})_NGAS_DOL_EN_v(\d{2})/gi)) {
     const d = `${m[1].slice(0, 4)}-${m[1].slice(4, 6)}-${m[1].slice(6, 8)}`;
     const version = Number(m[2]);
-    const prev = out.get(d);
-    if (!prev || version > prev.version) out.set(d, { version, url: henexFileUrl(d, version) });
+    const at = m.index ?? 0;
+    const near = links
+      .map((l) => ({ ...l, dist: Math.abs(l.at - at) }))
+      .filter((l) => l.dist <= 800)
+      .sort((x, y) => x.dist - y.dist)[0];
+    if (near) set(d, version, near.url, true);
+    else if (/\.xlsx/i.test(html.slice(at, at + 24)))
+      set(d, version, henexFileUrl(d, version), false);
   }
   return out;
 }
@@ -222,18 +233,33 @@ export async function fetchHenex(tradingDates: string[]): Promise<ProviderResult
   for (const date of tradingDates) {
     const listed = listing.get(date);
     const version = listed?.version ?? 1;
-    const candidates = [henexFileUrl(date, version), ...(listed ? [listed.url] : [])];
+    // The listing's own get_file?uuid=… link first (HEnEx now serves files that way), then
+    // the documented direct pattern. A response that is not an XLSX (zip, "PK") — e.g. an
+    // HTML page answered with 200 — is skipped instead of being read as the file.
+    const candidates = [...(listed ? [listed.url] : []), henexFileUrl(date, version)];
     let bytes: Uint8Array | null = null;
     let used = "";
-    try {
-      for (const url of candidates) {
-        bytes = await fetchBytes(url, { attempts: 3, timeoutMs: 20_000, referer: HENEX_LIST_URL });
-        used = url;
-        if (bytes) break;
+    let lastError: unknown = null;
+    for (const url of candidates) {
+      try {
+        const got = await fetchBytes(url, {
+          attempts: 2,
+          timeoutMs: 20_000,
+          referer: HENEX_LIST_URL,
+        });
+        if (got && got.length > 4 && got[0] === 0x50 && got[1] === 0x4b) {
+          bytes = got;
+          used = url;
+          break;
+        }
+        tried.push({ date, url, result: got ? "not an XLSX file" : "404" });
+      } catch (err) {
+        lastError = err;
+        tried.push({ date, url, result: err instanceof Error ? err.message : "failed" });
       }
-    } catch (err) {
+    }
+    if (!bytes && lastError && candidates.length) {
       unreachable++;
-      tried.push({ date, result: err instanceof Error ? err.message : "failed" });
       if (latestStatus === null) {
         latestStatus = "SOURCE_UNAVAILABLE";
         latestMessage = "HEnEx file server did not answer";
@@ -241,7 +267,6 @@ export async function fetchHenex(tradingDates: string[]): Promise<ProviderResult
       continue;
     }
     if (!bytes) {
-      tried.push({ date, url: candidates[0], result: "404 not published" });
       if (latestStatus === null) {
         latestStatus = "NOT_PUBLISHED";
         latestMessage = `DOL for ${date} not published yet`;
