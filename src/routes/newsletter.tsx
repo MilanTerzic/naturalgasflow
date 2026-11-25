@@ -4,7 +4,6 @@ import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, type ReactNode } from "react";
 import {
   Area,
-  Bar,
   CartesianGrid,
   ComposedChart,
   Legend,
@@ -841,7 +840,7 @@ function Newsletter({ today, token }: { today: string; token: string }) {
       <Section
         shot="balance"
         title="Serbian demand, temperature and supply"
-        subtitle="mcm/d · bars = supply by source (ENTSOG allocation; HU entry split by saved MET nominations; BD storage implied = model demand − other sources, within storage limits, no published data) · lines = demand from Belgrade temperature (workbook regression), dashed = forecast"
+        subtitle="mcm/d · stacked areas = supply by source (ENTSOG allocation; HU entry split by saved MET nominations; BD storage implied = model demand − other sources, within storage limits, no published data) · lines = demand from Belgrade temperature (workbook regression), dashed = forecast"
       >
         {tempsQ.data?.error && <Unavailable>{tempsQ.data.error}</Unavailable>}
         <div className="h-[260px]">
@@ -1249,14 +1248,17 @@ function BalanceChart({
         <Legend wrapperStyle={{ fontSize: 11 }} />
         <ReferenceLine yAxisId="m" x={today} stroke={PALETTE.today} strokeDasharray="3 3" />
         {SOURCE_SERIES.map((s) => (
-          <Bar
+          <Area
             key={s.key}
+            type="monotone"
             yAxisId="m"
             dataKey={s.key}
             name={s.name}
             stackId="supply"
+            stroke={s.color}
+            strokeWidth={1}
             fill={s.color}
-            fillOpacity={0.85}
+            fillOpacity={0.7}
             isAnimationActive={false}
           />
         ))}
