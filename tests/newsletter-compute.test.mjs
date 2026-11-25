@@ -157,3 +157,41 @@ test("price day rows put every hub on the same delivery days", async () => {
   assert.equal(rows.BGH.spreadDay, "2026-11-25");
   assert.equal(rows.BGH.spreadTtf, -10);
 });
+
+test("D+1 expectation: net from weather demand, BG route from RBP booking at KKD", async () => {
+  const { d1Expectation, d1Sentence } = await import("../src/lib/newsletter/compute.ts");
+  const e = d1Expectation({
+    day: "2026-11-26",
+    demand: 11.1,
+    temperature: 4.8,
+    domestic: 0.5,
+    kkdBooked: 2.5,
+    metNominated: 1,
+  });
+  assert.ok(Math.abs(e.net - 10.6) < 1e-9);
+  assert.ok(Math.abs(e.bgImplied - 8.1) < 1e-9);
+  assert.match(
+    d1Sentence(e, 0.5),
+    /net into Serbia ≈ 10\.6 mcm\/d.*booked on RBP: 2\.50 .*MET nominated 1\.00.*≈ 8\.1/,
+  );
+  const noRbp = d1Expectation({
+    day: "x",
+    demand: 11,
+    temperature: 4,
+    domestic: 0.5,
+    kkdBooked: null,
+    metNominated: null,
+  });
+  assert.equal(noRbp.bgImplied, null);
+  assert.match(d1Sentence(noRbp, 0.5), /not published yet/);
+  const noTemp = d1Expectation({
+    day: "x",
+    demand: 0,
+    temperature: null,
+    domestic: 0.5,
+    kkdBooked: 2,
+    metNominated: null,
+  });
+  assert.equal(noTemp.net, null);
+  assert.equal(d1Sentence(noTemp, 0.5), null);
+});

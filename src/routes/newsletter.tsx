@@ -33,6 +33,7 @@ import { fetchBelgradeTemperaturesWithBrowserFallback } from "@/lib/data/tempera
 import {
   BIH_SHARE,
   CONVERSION_MCM_TO_GWH,
+  CONVERSION_MCM_TO_MWH,
   DOMESTIC_PRODUCTION_MCM,
   PALETTE,
 } from "@/lib/gas/config";
@@ -45,6 +46,8 @@ import {
 } from "@/lib/newsletter/newsletter.functions";
 import {
   addDaysISO,
+  d1Expectation,
+  d1Sentence,
   netIntoSerbia,
   pickFlowDay,
   pointRows,
@@ -115,6 +118,13 @@ const POINT_LABEL: Record<FlowPointName, string> = {
   kireevo: "Kireevo / Zaječar (BG→RS)",
   kiskundorozsma_hu: "Kiskundorozsma (HU→RS)",
   kiskundorozsma_2: "Kiskundorozsma 2 / Horgoš (RS→HU)",
+};
+/** Compact labels for the wide border-point table. */
+const POINT_SHORT: Record<FlowPointName, string> = {
+  kalotina: "Kalotina BG→RS",
+  kireevo: "Kireevo BG→RS",
+  kiskundorozsma_hu: "KKD1 HU→RS",
+  kiskundorozsma_2: "KKD2 / Horgoš RS→HU",
 };
 const POINT_COLORS: Record<FlowPointName, string> = {
   kiskundorozsma_hu: PALETTE.huOthers,
@@ -551,14 +561,34 @@ function Newsletter({ today, token }: { today: string; token: string }) {
   });
 
   const storage = storageQ.data ?? [];
-  const storageRs = storage.find((s) => s.code === "rs")?.row ?? null;
+  const rsRow = storage.find((s) => s.code === "rs")?.row ?? null;
+  const storageRs = rsRow?.full != null ? rsRow : null;
   // Serbia is usually absent from AGSI+; the EU aggregate is the fallback headline.
   const storageEu = storage.find((s) => s.code === "eu")?.row ?? null;
   const d1 = balance.find((b) => b.date === deliveryDay) ?? null;
   // The demand model needs a temperature; without one there is no forecast.
   const d1Temp = d1 ? (d1.avg_temperature_c ?? d1.temperature_c) : null;
+  // D+1: firm capacity allocated on RBP at KKD1 (Kiskundorozsma HU→RS) for the delivery day.
+  const kkdBookedD1 = (() => {
+    const days = (rbpQ.data?.points ?? [])
+      .filter((p) => p.corridor === "hu_rs_1")
+      .flatMap((p) => p.days.filter((d) => d.date === deliveryDay))
+      .filter((d) => Object.keys(d.byProduct).length > 0);
+    return days.length ? days.reduce((sum, d) => sum + d.total, 0) : null;
+  })();
+  const metNomD1 = nomByDay.has(deliveryDay)
+    ? nomByDay.get(deliveryDay)! / CONVERSION_MCM_TO_MWH
+    : null;
+  const expectD1 = d1Expectation({
+    day: deliveryDay,
+    demand: d1?.demand_mcm ?? null,
+    temperature: ok(d1Temp) ? d1Temp : null,
+    domestic: DOMESTIC_PRODUCTION_MCM,
+    kkdBooked: kkdBookedD1,
+    metNominated: metNomD1,
+  });
 
-  const summary = summarySentences({
+  const baseSummary = summarySentences({
     flowDay,
     flowComplete: flowPick.complete,
     net,
@@ -569,6 +599,16 @@ function Newsletter({ today, token }: { today: string; token: string }) {
     priceDays,
     storageRs: storageRs ?? storageEu,
   });
+  const d1Line = d1Sentence(expectD1, DOMESTIC_PRODUCTION_MCM);
+  // The D+1 expectation follows the demand-forecast line.
+  const summary = d1Line
+    ? (() => {
+        const at = baseSummary.findIndex((l) => l.startsWith("Serbian demand forecast"));
+        const out = [...baseSummary];
+        out.splice(at >= 0 ? at + 1 : out.length, 0, d1Line);
+        return out;
+      })()
+    : baseSummary;
   const missing = [
     flowsQ.isError ? "ENTSOG physical flow" : null,
     allocQ.isError ? "ENTSOG allocation" : null,
@@ -600,6 +640,7 @@ function Newsletter({ today, token }: { today: string; token: string }) {
     awaiting,
     missing,
     netIntoSerbia: net.net,
+    netIntoSerbiaD1: expectD1.net,
     ttf: ttfHeadline?.price ?? null,
   };
 
@@ -617,7 +658,7 @@ function Newsletter({ today, token }: { today: string; token: string }) {
           {!flowPick.complete && flowDay ? " (incomplete)" : ""} · demand forecast for{" "}
           {longDay(deliveryDay)}
         </p>
-        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
           <Kpi
             label="Net into Serbia"
             value={n1(net.net)}
@@ -630,6 +671,16 @@ function Newsletter({ today, token }: { today: string; token: string }) {
             value={ok(d1Temp) ? n1(d1?.demand_mcm) : "—"}
             unit="mcm/d"
             foot={ok(d1Temp) ? `${n1(d1Temp)} °C Belgrade` : "no temperature"}
+          />
+          <Kpi
+            label="Net D+1 (est.)"
+            value={n1(expectD1.net)}
+            unit="mcm/d"
+            foot={
+              ok(expectD1.kkdBooked)
+                ? `KKD1 ${n2(expectD1.kkdBooked)} · BG ${n1(expectD1.bgImplied)}`
+                : "KKD1 RBP: not yet"
+            }
           />
           <Kpi
             label={`TTF DA ${ttfHeadline?.date ? shortDay(ttfHeadline.date) : ""}`}
@@ -699,22 +750,33 @@ function Newsletter({ today, token }: { today: string; token: string }) {
       <Section
         shot="flows"
         title="Serbian border points"
-        subtitle={`ENTSOG physical flow, mcm/d · gas day ${flowDay ?? "—"} against the 7 days before · booked = ENTSOG firm booked capacity · util. = flow ÷ technical · KKD1 split by saved MET nominations`}
+        subtitle={`ENTSOG physical flow, gas day ${flowDay ?? "—"} vs the 7 days before · Booked = ENTSOG firm booked · Booked % = booked ÷ technical · Util. = flow ÷ technical · KKD1 split by saved MET nominations`}
       >
-        <table className="w-full text-[13px]">
-          <thead className="text-left text-[11px] tracking-wide whitespace-nowrap text-muted-foreground uppercase">
-            <tr>
-              <th className="py-1">Point</th>
-              <th className="py-1 text-right">Flow</th>
-              <th className="py-1 text-right">7d avg</th>
-              <th className="py-1 text-right">Δ</th>
-              <th className="py-1 text-right">Tech. cap.</th>
-              <th className="py-1 text-right">Booked</th>
-              <th className="py-1 text-right">Booked %</th>
-              <th className="py-1 text-right">Util.</th>
+        <table className="w-full border-separate border-spacing-0 text-[13px] [&_td]:px-2 [&_th]:px-2 [&_td:first-child]:pl-0 [&_th:first-child]:pl-0">
+          <thead className="text-[11px] tracking-wide text-muted-foreground uppercase">
+            <tr className="text-[10px]">
+              <th />
+              <th colSpan={3} className="border-b pb-1 text-center font-medium">
+                Flow, mcm/d
+              </th>
+              <th className="w-3" />
+              <th colSpan={4} className="border-b pb-1 text-center font-medium">
+                Capacity, mcm/d
+              </th>
+            </tr>
+            <tr className="whitespace-nowrap">
+              <th className="py-1.5 text-left">Point</th>
+              <th className="py-1.5 text-right">Gas day</th>
+              <th className="py-1.5 text-right">7d avg</th>
+              <th className="py-1.5 text-right">Δ</th>
+              <th />
+              <th className="py-1.5 text-right">Technical</th>
+              <th className="py-1.5 text-right">Booked</th>
+              <th className="py-1.5 text-right">Booked %</th>
+              <th className="py-1.5 text-right">Util.</th>
             </tr>
           </thead>
-          <tbody className="num">
+          <tbody>
             {points.flatMap((p) => {
               const corridor = CORRIDORS.find((c) => c.point === p.point);
               const v = corridor ? values[corridor.id] : undefined;
@@ -726,35 +788,38 @@ function Newsletter({ today, token }: { today: string; token: string }) {
                 ok(v?.booked) && ok(v?.technical) && v!.technical! > 0
                   ? (v!.booked! / v!.technical!) * 100
                   : null;
+              const cell = "num border-t py-2 text-right";
               const rows = [
-                <tr key={p.point} className="border-t">
-                  <td className="py-1.5">
+                <tr key={p.point}>
+                  <td className="border-t py-2 whitespace-nowrap">
                     <span
                       className="mr-2 inline-block h-2 w-2 rounded-full"
                       style={{ background: POINT_COLORS[p.point] }}
                     />
-                    {POINT_LABEL[p.point]}
+                    {POINT_SHORT[p.point]}
                   </td>
-                  <td className="py-1.5 text-right font-semibold">{n2(p.value)}</td>
-                  <td className="py-1.5 text-right">{n2(p.avg7)}</td>
-                  <td className={`py-1.5 text-right ${tone(p.change)}`}>{signed(p.change, 2)}</td>
-                  <td className="py-1.5 text-right">{n2(v?.technical)}</td>
-                  <td className="py-1.5 text-right">{n2(v?.booked)}</td>
-                  <td className="py-1.5 text-right">{pct(bookedPct)}</td>
-                  <td className="py-1.5 text-right">{pct(util)}</td>
+                  <td className={`${cell} font-semibold`}>{n2(p.value)}</td>
+                  <td className={cell}>{n2(p.avg7)}</td>
+                  <td className={`${cell} ${tone(p.change)}`}>{signed(p.change, 2)}</td>
+                  <td className="border-t" />
+                  <td className={cell}>{n2(v?.technical)}</td>
+                  <td className={cell}>{n2(v?.booked)}</td>
+                  <td className={cell}>{pct(bookedPct)}</td>
+                  <td className={`${cell} font-semibold`}>{pct(util)}</td>
                 </tr>,
               ];
               if (p.point === "kiskundorozsma_hu") {
                 for (const part of kkd1Split) {
                   rows.push(
                     <tr key={`kkd1-${part.key}`} className="text-muted-foreground">
-                      <td className="py-1 pl-6 text-[12px]">↳ {part.label}</td>
-                      <td className="py-1 text-right text-foreground">{n2(part.value)}</td>
-                      <td className="py-1 text-right">{n2(part.avg7)}</td>
-                      <td className={`py-1 text-right ${tone(part.change)}`}>
+                      <td className="py-1 pl-5 text-[12px]">↳ {part.label}</td>
+                      <td className="num py-1 text-right text-foreground">{n2(part.value)}</td>
+                      <td className="num py-1 text-right">{n2(part.avg7)}</td>
+                      <td className={`num py-1 text-right ${tone(part.change)}`}>
                         {signed(part.change, 2)}
                       </td>
-                      <td colSpan={4} className="py-1 text-[11px]">
+                      <td />
+                      <td colSpan={4} className="py-1 text-[11px] italic">
                         {part.note}
                       </td>
                     </tr>,
@@ -763,12 +828,19 @@ function Newsletter({ today, token }: { today: string; token: string }) {
               }
               return rows;
             })}
-            <tr className="border-t font-semibold">
-              <td className="py-1.5">Net into Serbia (entry − Horgoš − Bosnia model)</td>
-              <td className="py-1.5 text-right">{n2(net.net)}</td>
-              <td className="py-1.5 text-right">{n2(net.avg7)}</td>
-              <td className={`py-1.5 text-right ${tone(net.change)}`}>{signed(net.change, 2)}</td>
-              <td colSpan={4} />
+            <tr className="font-semibold">
+              <td className="border-t-2 py-2">Net into Serbia</td>
+              <td className="num border-t-2 py-2 text-right">{n2(net.net)}</td>
+              <td className="num border-t-2 py-2 text-right">{n2(net.avg7)}</td>
+              <td className={`num border-t-2 py-2 text-right ${tone(net.change)}`}>
+                {signed(net.change, 2)}
+              </td>
+              <td
+                colSpan={5}
+                className="border-t-2 py-2 text-[11px] font-normal text-muted-foreground"
+              >
+                entry − Horgoš exit − Bosnia (model)
+              </td>
             </tr>
           </tbody>
         </table>

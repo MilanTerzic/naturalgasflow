@@ -319,3 +319,56 @@ export function summarySentences(s: SummaryInput): string[] {
   }
   return out;
 }
+
+export interface D1Expectation {
+  day: string;
+  demand: number | null;
+  temperature: number | null;
+  /** Expected net into Serbia: demand − domestic production, no Banatski Dvor storage action. */
+  net: number | null;
+  /** Firm capacity allocated on RBP at Kiskundorozsma HU→RS for the day, mcm/d. */
+  kkdBooked: number | null;
+  /** Saved MET nomination for the day, mcm/d (null = none saved). */
+  metNominated: number | null;
+  /** net − KKD booked: what the Bulgarian route (Kireevo net + Kalotina) has to bring. */
+  bgImplied: number | null;
+}
+
+export function d1Expectation(args: {
+  day: string;
+  demand: number | null;
+  temperature: number | null;
+  domestic: number;
+  kkdBooked: number | null;
+  metNominated: number | null;
+}): D1Expectation {
+  const net =
+    args.demand !== null && args.temperature !== null ? args.demand - args.domestic : null;
+  return {
+    day: args.day,
+    demand: args.temperature !== null ? args.demand : null,
+    temperature: args.temperature,
+    net,
+    kkdBooked: args.kkdBooked,
+    metNominated: args.metNominated,
+    bgImplied: net !== null && args.kkdBooked !== null ? net - args.kkdBooked : null,
+  };
+}
+
+export function d1Sentence(e: D1Expectation, domestic: number): string | null {
+  if (e.net === null) return null;
+  let text =
+    `D+1 expectation (${e.day}): net into Serbia ≈ ${f1(e.net)} mcm/d ` +
+    `(demand ${f1(e.demand!)} mcm/d at ${f1(e.temperature!)} °C − ${f1(domestic)} domestic production; no Banatski Dvor storage action assumed).`;
+  if (e.kkdBooked !== null) {
+    text +=
+      ` Kiskundorozsma HU→RS booked on RBP: ${f2(e.kkdBooked)} mcm/d` +
+      (e.metNominated !== null ? ` (MET nominated ${f2(e.metNominated)})` : "") +
+      (e.bgImplied !== null
+        ? ` → Bulgarian route (Kireevo net + Kalotina) ≈ ${f1(e.bgImplied)} mcm/d.`
+        : ".");
+  } else {
+    text += " Kiskundorozsma HU→RS booking on RBP for that day is not published yet.";
+  }
+  return text;
+}
