@@ -609,15 +609,17 @@ function Newsletter({ today, token }: { today: string; token: string }) {
   });
   const d1Line = d1Sentence(expectD1, DOMESTIC_PRODUCTION_MCM);
   // The D+1 expectation follows the demand-forecast line.
-  // Arbitrage: same delivery day for every price; D+1 when any of BGH/CEEGEX has it, else today.
+  // Arbitrage: same delivery day for every price.
   const hubPoints = (h: "BGH" | "CEEGEX") =>
     (hubs?.[h]?.points ?? [])
       .filter((x): x is typeof x & { date: string } => !!x.date)
       .map((x) => ({ date: x.date, price: x.price, final: x.final }));
   const arbPrices = { BGH: hubPoints("BGH"), CEEGEX: hubPoints("CEEGEX") };
-  const arbDay = [...arbPrices.BGH, ...arbPrices.CEEGEX].some((x) => x.date === deliveryDay)
-    ? deliveryDay
-    : today;
+  // Both hubs on the same day: D+1 when both published it, else today, so no route is left
+  // empty only because one exchange has not published tomorrow yet.
+  const bothOn = (d: string) =>
+    arbPrices.BGH.some((x) => x.date === d) && arbPrices.CEEGEX.some((x) => x.date === d);
+  const arbDay = bothOn(deliveryDay) ? deliveryDay : bothOn(today) ? today : deliveryDay;
   const arb = computeAll(arbDay, arbPrices, fxQ.data?.fx ?? null);
   const arbLines = arbitrageSentences(arb);
   const withD1 = d1Line
