@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, type ReactNode } from "react";
 import {
   Area,
+  Bar,
   CartesianGrid,
   ComposedChart,
   Legend,
@@ -37,6 +38,7 @@ import {
   PALETTE,
 } from "@/lib/gas/config";
 import { buildBalance, dateRangeIso } from "@/lib/gas/demand";
+import { splitHungaryEntry } from "@/lib/gas/met-nominations";
 import type { FlowPointName } from "@/lib/gas/types";
 import {
   checkNewsletterToken,
@@ -55,7 +57,7 @@ import {
   type StorageRow,
 } from "@/lib/newsletter/compute";
 import { COUNTRY_PRICING, HUBS, type HubId } from "@/lib/prices/hubs";
-import { buildLinkValues } from "@/lib/region/map-model";
+import { buildLinkValues, pointSource } from "@/lib/region/map-model";
 import { buildNetRows } from "@/lib/region/net-position-view";
 import { CORRIDOR_BY_ID, CORRIDORS, type Corridor } from "@/lib/region/registry";
 import { serbiaBalance } from "@/lib/region/serbia-balance";
@@ -389,8 +391,17 @@ function Newsletter({ today, token }: { today: string; token: string }) {
     [token],
   );
   const huStorage = useHuStorage(today, loadNominations, "newsletter");
+  const nomsQ = useQuery({
+    ...QUERY,
+    queryKey: ["nl-met-noms", from, deliveryDay],
+    queryFn: () => loadNominations(from, deliveryDay),
+  });
+  const nomByDay = useMemo(
+    () => new Map((nomsQ.data ?? []).map((n) => [n.gas_day, n.nominated_mwh])),
+    [nomsQ.data],
+  );
 
-  const all = [flowsQ, allocQ, tempsQ, regionalQ, netQ, pricesQ, rbpQ, storageQ];
+  const all = [flowsQ, allocQ, tempsQ, regionalQ, netQ, pricesQ, rbpQ, storageQ, nomsQ];
   const settled = all.every((q) => q.isSuccess || q.isError) && huStorage.settled;
 
   // ---------------------------------------------------------------- derived data
@@ -420,6 +431,56 @@ function Newsletter({ today, token }: { today: string; token: string }) {
   const flowDay = flowPick.date;
   const points = useMemo(() => pointRows(flows, flowDay), [flows, flowDay]);
   const net = useMemo(() => netIntoSerbia(flows, balance, flowDay), [flows, balance, flowDay]);
+  // KKD1 (Kiskundorozsma HU→RS) split into MET (saved nomination) and Others (the rest).
+  const kkd1Split = useMemo(() => {
+    const splitOn = (date: string) => {
+      const row = flows.find((r) => r.date === date);
+      if (!row || pointSource(row, "kiskundorozsma_hu", "physical_flow") !== "physical_flow")
+        return null;
+      return splitHungaryEntry(row.kiskundorozsma_hu, nomByDay.get(date) ?? null);
+    };
+    const window = flowDay
+      ? flows.filter((r) => r.date >= addDaysISO(flowDay, -7) && r.date < flowDay)
+      : [];
+    const avg = (pick: (x: ReturnType<typeof splitHungaryEntry>) => number | null) => {
+      const vals = window
+        .map((r) => splitOn(r.date))
+        .map((x) => (x ? pick(x) : null))
+        .filter((v): v is number => v !== null);
+      return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+    };
+    const day = flowDay ? splitOn(flowDay) : null;
+    const nominated = flowDay ? nomByDay.has(flowDay) : false;
+    const mk = (
+      key: string,
+      label: string,
+      value: number | null,
+      avg7: number | null,
+      note: string,
+    ) => ({ key, label, value, avg7, change: ok(value) && ok(avg7) ? value - avg7 : null, note });
+    return [
+      mk(
+        "met",
+        "MET",
+        day?.metMcm ?? null,
+        avg((x) => x.metMcm),
+        day?.status === "over_nomination"
+          ? `nomination exceeds flow by ${n2(day.mismatchMcm)}`
+          : nominated
+            ? "saved MET nomination"
+            : nomsQ.isError
+              ? "nominations unavailable"
+              : "no nomination saved (0)",
+      ),
+      mk(
+        "others",
+        "Others",
+        day?.othersMcm ?? null,
+        avg((x) => x.othersMcm),
+        "flow − MET",
+      ),
+    ];
+  }, [flows, flowDay, nomByDay, nomsQ.isError]);
 
   const pastFlows = useMemo(() => flows.filter((r) => r.date < today), [flows, today]);
   const regional = regionalQ.data?.corridors ?? null;
@@ -518,6 +579,7 @@ function Newsletter({ today, token }: { today: string; token: string }) {
     rbpQ.isError ? "RBP bookings" : null,
     storageQ.isError ? "AGSI storage" : null,
     huStorage.error ? "Srbijagas HU storage" : null,
+    nomsQ.isError ? "MET nominations" : null,
   ].filter((x): x is string => !!x);
 
   if (!settled) {
@@ -638,7 +700,7 @@ function Newsletter({ today, token }: { today: string; token: string }) {
       <Section
         shot="flows"
         title="Serbian border points"
-        subtitle={`ENTSOG physical flow, mcm/d · gas day ${flowDay ?? "—"} against the 7 days before`}
+        subtitle={`ENTSOG physical flow, mcm/d · gas day ${flowDay ?? "—"} against the 7 days before · booked = ENTSOG firm booked capacity · util. = flow ÷ technical · KKD1 split by saved MET nominations`}
       >
         <table className="w-full text-[13px]">
           <thead className="text-left text-[11px] tracking-wide whitespace-nowrap text-muted-foreground uppercase">
@@ -648,18 +710,24 @@ function Newsletter({ today, token }: { today: string; token: string }) {
               <th className="py-1 text-right">7d avg</th>
               <th className="py-1 text-right">Δ</th>
               <th className="py-1 text-right">Tech. cap.</th>
+              <th className="py-1 text-right">Booked</th>
+              <th className="py-1 text-right">Booked %</th>
               <th className="py-1 text-right">Util.</th>
             </tr>
           </thead>
           <tbody className="num">
-            {points.map((p) => {
+            {points.flatMap((p) => {
               const corridor = CORRIDORS.find((c) => c.point === p.point);
               const v = corridor ? values[corridor.id] : undefined;
               const util =
                 ok(p.value) && ok(v?.technical) && v!.technical! > 0
                   ? (Math.abs(p.value) / v!.technical!) * 100
                   : null;
-              return (
+              const bookedPct =
+                ok(v?.booked) && ok(v?.technical) && v!.technical! > 0
+                  ? (v!.booked! / v!.technical!) * 100
+                  : null;
+              const rows = [
                 <tr key={p.point} className="border-t">
                   <td className="py-1.5">
                     <span
@@ -672,16 +740,36 @@ function Newsletter({ today, token }: { today: string; token: string }) {
                   <td className="py-1.5 text-right">{n2(p.avg7)}</td>
                   <td className={`py-1.5 text-right ${tone(p.change)}`}>{signed(p.change, 2)}</td>
                   <td className="py-1.5 text-right">{n2(v?.technical)}</td>
+                  <td className="py-1.5 text-right">{n2(v?.booked)}</td>
+                  <td className="py-1.5 text-right">{pct(bookedPct)}</td>
                   <td className="py-1.5 text-right">{pct(util)}</td>
-                </tr>
-              );
+                </tr>,
+              ];
+              if (p.point === "kiskundorozsma_hu") {
+                for (const part of kkd1Split) {
+                  rows.push(
+                    <tr key={`kkd1-${part.key}`} className="text-muted-foreground">
+                      <td className="py-1 pl-6 text-[12px]">↳ {part.label}</td>
+                      <td className="py-1 text-right text-foreground">{n2(part.value)}</td>
+                      <td className="py-1 text-right">{n2(part.avg7)}</td>
+                      <td className={`py-1 text-right ${tone(part.change)}`}>
+                        {signed(part.change, 2)}
+                      </td>
+                      <td colSpan={4} className="py-1 text-[11px]">
+                        {part.note}
+                      </td>
+                    </tr>,
+                  );
+                }
+              }
+              return rows;
             })}
             <tr className="border-t font-semibold">
               <td className="py-1.5">Net into Serbia (entry − Horgoš − Bosnia model)</td>
               <td className="py-1.5 text-right">{n2(net.net)}</td>
               <td className="py-1.5 text-right">{n2(net.avg7)}</td>
               <td className={`py-1.5 text-right ${tone(net.change)}`}>{signed(net.change, 2)}</td>
-              <td colSpan={2} />
+              <td colSpan={4} />
             </tr>
           </tbody>
         </table>
@@ -753,12 +841,13 @@ function Newsletter({ today, token }: { today: string; token: string }) {
       <Section
         shot="balance"
         title="Serbian demand, temperature and supply"
-        subtitle="mcm/d · supply = ENTSOG allocation into Serbia + domestic production · demand from Belgrade temperature (workbook regression) · dashed = forecast"
+        subtitle="mcm/d · bars = supply by source (ENTSOG allocation; HU entry split by saved MET nominations; BD storage implied = model demand − other sources, within storage limits, no published data) · lines = demand from Belgrade temperature (workbook regression), dashed = forecast"
       >
         {tempsQ.data?.error && <Unavailable>{tempsQ.data.error}</Unavailable>}
         <div className="h-[260px]">
-          <BalanceChart balance={balance} today={today} />
+          <BalanceChart balance={balance} today={today} nominations={nomByDay} />
         </div>
+        <SourceMixTable balance={balance} nominations={nomByDay} />
         <ForecastTable balance={balance} today={today} />
       </Section>
 
@@ -1100,18 +1189,51 @@ function CapacityTable({
   );
 }
 
+type BalanceRows = ReturnType<typeof buildBalance>;
+
+const SOURCE_SERIES = [
+  { key: "domestic", name: "Domestic production", color: "#5f86a8" },
+  { key: "ru", name: "RU gas (BG route: Kireevo net + Kalotina)", color: PALETTE.bgImport },
+  { key: "huMet", name: "HU storage · MET", color: PALETTE.huMet },
+  { key: "huOthers", name: "HU storage · Others", color: PALETTE.huOthers },
+  { key: "bd", name: "BD storage (implied)", color: "#94a3b8" },
+] as const;
+
+/** Supply by source for one gas day; null when the day has no complete allocation supply. */
+function sourceMix(b: BalanceRows[number], nominations: Map<string, number>) {
+  if (!b.supply_available || b.is_forecast) return null;
+  const hu = splitHungaryEntry(b.kiskundorozsma_entry_mcm, nominations.get(b.date) ?? null);
+  return {
+    domestic: b.domestic_production_mcm,
+    ru: b.imports_from_bulgaria_available_mcm + b.kalotina_entry_mcm,
+    huMet: hu.metMcm ?? 0,
+    huOthers: hu.othersMcm ?? 0,
+    // Banatski Dvor has no published daily data: the model withdrawal that closes
+    // demand − supply within the storage limits.
+    bd: b.storage_withdrawal_mcm,
+    injection: b.storage_injection_mcm,
+  };
+}
+
 function BalanceChart({
   balance,
   today,
+  nominations,
 }: {
-  balance: ReturnType<typeof buildBalance>;
+  balance: BalanceRows;
   today: string;
+  nominations: Map<string, number>;
 }) {
   const data = balance.map((b) => {
     const hasTemp = ok(b.avg_temperature_c ?? b.temperature_c);
+    const mix = sourceMix(b, nominations);
     return {
       date: b.date,
-      supply: b.supply_available && !b.is_forecast ? b.serbian_available_supply_mcm : null,
+      domestic: mix?.domestic ?? null,
+      ru: mix?.ru ?? null,
+      huMet: mix?.huMet ?? null,
+      huOthers: mix?.huOthers ?? null,
+      bd: mix?.bd ?? null,
       demandActual: b.is_forecast || !hasTemp ? null : b.demand_mcm,
       demandForecast: hasTemp && (b.is_forecast || b.date === today) ? b.demand_mcm : null,
       temp: b.avg_temperature_c ?? b.temperature_c,
@@ -1124,21 +1246,24 @@ function BalanceChart({
         <XAxis dataKey="date" tick={AXIS} tickFormatter={shortDay} minTickGap={20} />
         <YAxis yAxisId="m" tick={AXIS} width={36} />
         <YAxis yAxisId="t" orientation="right" tick={AXIS} width={32} unit="°" />
-        <Legend wrapperStyle={{ fontSize: 12 }} />
+        <Legend wrapperStyle={{ fontSize: 11 }} />
         <ReferenceLine yAxisId="m" x={today} stroke={PALETTE.today} strokeDasharray="3 3" />
-        <Area
-          yAxisId="m"
-          dataKey="supply"
-          name="Supply (allocation)"
-          fill={PALETTE.bgImport}
-          fillOpacity={0.25}
-          stroke={PALETTE.bgImport}
-          isAnimationActive={false}
-        />
+        {SOURCE_SERIES.map((s) => (
+          <Bar
+            key={s.key}
+            yAxisId="m"
+            dataKey={s.key}
+            name={s.name}
+            stackId="supply"
+            fill={s.color}
+            fillOpacity={0.85}
+            isAnimationActive={false}
+          />
+        ))}
         <Line
           yAxisId="m"
           dataKey="demandActual"
-          name="Demand (model, actual temp.)"
+          name="Demand (model)"
           stroke={PALETTE.demand}
           strokeWidth={2.2}
           dot={false}
@@ -1165,6 +1290,58 @@ function BalanceChart({
         />
       </ComposedChart>
     </ResponsiveContainer>
+  );
+}
+
+/** Source composition of the newest gas day with complete supply: mcm/d and share. */
+function SourceMixTable({
+  balance,
+  nominations,
+}: {
+  balance: BalanceRows;
+  nominations: Map<string, number>;
+}) {
+  const row = [...balance].reverse().find((b) => sourceMix(b, nominations));
+  if (!row) return null;
+  const mix = sourceMix(row, nominations)!;
+  const total = SOURCE_SERIES.reduce((sum, s) => sum + (mix[s.key] ?? 0), 0);
+  return (
+    <div className="mt-3">
+      <h3 className="text-[12px] font-semibold tracking-wide text-muted-foreground uppercase">
+        Source composition · gas day {row.date}
+      </h3>
+      <table className="mt-1 w-full text-[13px]">
+        <tbody className="num">
+          {SOURCE_SERIES.map((s) => (
+            <tr key={s.key} className="border-t">
+              <td className="py-1">
+                <span
+                  className="mr-2 inline-block h-2 w-2 rounded-full"
+                  style={{ background: s.color }}
+                />
+                {s.name}
+              </td>
+              <td className="py-1 text-right font-semibold">{n2(mix[s.key])}</td>
+              <td className="py-1 text-right text-muted-foreground">
+                {total > 0 ? `${((mix[s.key] / total) * 100).toFixed(1)}%` : "—"}
+              </td>
+            </tr>
+          ))}
+          <tr className="border-t font-semibold">
+            <td className="py-1">Total supply = demand (model)</td>
+            <td className="py-1 text-right">{n2(total)}</td>
+            <td />
+          </tr>
+          {mix.injection > 0 && (
+            <tr className="text-muted-foreground">
+              <td className="py-1 text-[12px]">BD injection (implied surplus)</td>
+              <td className="py-1 text-right">{n2(mix.injection)}</td>
+              <td />
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
