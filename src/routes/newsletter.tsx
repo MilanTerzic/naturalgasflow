@@ -21,6 +21,7 @@ import {
 } from "@/components/region/BalkanFlowMap";
 import { HuStoragePanel } from "@/components/dashboard/HuStorageChart";
 import { HU_STORAGE_NOTE, useHuStorage } from "@/lib/gas/use-hu-storage";
+import { fetchTariffFx } from "@/lib/data/fx.functions";
 import { fetchAgsiStorage } from "@/lib/data/agsi.functions";
 import { fetchEntsogAllocations, fetchEntsogFlows } from "@/lib/data/entsog.functions";
 import {
@@ -39,6 +40,8 @@ import {
 } from "@/lib/gas/config";
 import { buildBalance, dateRangeIso } from "@/lib/gas/demand";
 import { splitHungaryEntry } from "@/lib/gas/met-nominations";
+import { arbitrageSentences, computeAll, type RouteResult } from "@/lib/gas/arbitrage";
+import { GASTRANS_FUEL } from "@/lib/gas/tariffs/data";
 import type { FlowPointName } from "@/lib/gas/types";
 import {
   checkNewsletterToken,
@@ -368,6 +371,11 @@ function Newsletter({ today, token }: { today: string; token: string }) {
     queryKey: ["nl-prices", today],
     queryFn: () => deadline(fetchGasPrices({ data: {} }), 3 * MIN, "Prices"),
   });
+  const fxQ = useQuery({
+    ...QUERY,
+    queryKey: ["nl-fx", today],
+    queryFn: () => deadline(fetchTariffFx({ data: { onOrBefore: today } }), 2 * MIN, "FX"),
+  });
   const rbpQ = useQuery({
     ...QUERY,
     queryKey: ["nl-rbp", from, today],
@@ -410,7 +418,7 @@ function Newsletter({ today, token }: { today: string; token: string }) {
     [nomsQ.data],
   );
 
-  const all = [flowsQ, allocQ, tempsQ, regionalQ, netQ, pricesQ, rbpQ, storageQ, nomsQ];
+  const all = [flowsQ, allocQ, tempsQ, regionalQ, netQ, pricesQ, rbpQ, storageQ, nomsQ, fxQ];
   const settled = all.every((q) => q.isSuccess || q.isError) && huStorage.settled;
 
   // ---------------------------------------------------------------- derived data
@@ -601,7 +609,18 @@ function Newsletter({ today, token }: { today: string; token: string }) {
   });
   const d1Line = d1Sentence(expectD1, DOMESTIC_PRODUCTION_MCM);
   // The D+1 expectation follows the demand-forecast line.
-  const summary = d1Line
+  // Arbitrage: same delivery day for every price; D+1 when any of BGH/CEEGEX has it, else today.
+  const hubPoints = (h: "BGH" | "CEEGEX") =>
+    (hubs?.[h]?.points ?? [])
+      .filter((x): x is typeof x & { date: string } => !!x.date)
+      .map((x) => ({ date: x.date, price: x.price, final: x.final }));
+  const arbPrices = { BGH: hubPoints("BGH"), CEEGEX: hubPoints("CEEGEX") };
+  const arbDay = [...arbPrices.BGH, ...arbPrices.CEEGEX].some((x) => x.date === deliveryDay)
+    ? deliveryDay
+    : today;
+  const arb = computeAll(arbDay, arbPrices, fxQ.data?.fx ?? null);
+  const arbLines = arbitrageSentences(arb);
+  const withD1 = d1Line
     ? (() => {
         const at = baseSummary.findIndex((l) => l.startsWith("Serbian demand forecast"));
         const out = [...baseSummary];
@@ -609,6 +628,14 @@ function Newsletter({ today, token }: { today: string; token: string }) {
         return out;
       })()
     : baseSummary;
+  // Arbitrage lines follow the day-ahead price line.
+  const summary = (() => {
+    if (!arbLines.length) return withD1;
+    const at = withD1.findIndex((l) => l.startsWith("Day-ahead for delivery"));
+    const out = [...withD1];
+    out.splice(at >= 0 ? at + 1 : out.length, 0, ...arbLines);
+    return out;
+  })();
   const missing = [
     flowsQ.isError ? "ENTSOG physical flow" : null,
     allocQ.isError ? "ENTSOG allocation" : null,
@@ -619,6 +646,7 @@ function Newsletter({ today, token }: { today: string; token: string }) {
     storageQ.isError ? "AGSI storage" : null,
     huStorage.error ? "Srbijagas HU storage" : null,
     nomsQ.isError ? "MET nominations" : null,
+    fxQ.isError || fxQ.data?.error ? "EUR/HUF/RSD rates" : null,
   ].filter((x): x is string => !!x);
 
   if (!settled) {
@@ -884,6 +912,23 @@ function Newsletter({ today, token }: { today: string; token: string }) {
             </ResponsiveContainer>
           </div>
         )}
+      </Section>
+
+      <Section
+        shot="arbitrage"
+        title="Regional Arbitrage & Transport Economics"
+        subtitle={`€/MWh for delivery ${arbDay} · daily firm capacity at reserve prices, full utilisation · BGH and CEEGEX day-ahead only, same delivery day · capacity availability not checked: results are indicative`}
+      >
+        <ArbitrageTable results={arb} />
+        <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
+          Tariffs 2026/27: Bulgartransgaz calculator, Gastrans decision 05-131 (17.07.2026), FGSZ /
+          MEKH H2021/2026, AERS common Transportgas tariff (28.05.2026). Gastrans fuel = X1{" "}
+          {(GASTRANS_FUEL.x1 * 100).toFixed(2)}% in kind (ESTIMATED method).{" "}
+          {fxQ.data?.fx
+            ? `FX: BNR fixing ${fxQ.data.fx.date} (EUR/HUF ${fxQ.data.fx.hufPerEur?.toFixed(2) ?? "—"}, EUR/RSD ${fxQ.data.fx.rsdPerEur?.toFixed(2) ?? "—"}).`
+            : `FX unavailable${fxQ.data?.error ? `: ${fxQ.data.error}` : ""} — HUF/RSD legs not converted.`}{" "}
+          Delivered into Serbia = up to the Transportgas entry, excluding the domestic exit charge.
+        </p>
       </Section>
 
       <Section
@@ -1498,6 +1543,102 @@ function StorageTable({
             <td className="py-1.5 text-right">{n2(row?.gasInStorage)}</td>
             <td className={`py-1.5 text-right ${tone(row?.netInjection)}`}>
               {signed(row?.netInjection, 0)}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+const STATUS_TONE: Record<string, string> = {
+  VERIFIED: "text-[var(--status-good)]",
+  ESTIMATED: "text-[var(--status-warning)]",
+  STALE: "text-[var(--status-warning)]",
+  UNAVAILABLE: "text-muted-foreground",
+};
+
+function ArbitrageTable({ results }: { results: RouteResult[] }) {
+  const transit = results.filter((r) => r.route.destination);
+  const landed = results.filter((r) => !r.route.destination);
+  const th = "py-1.5 px-1.5 text-right font-medium";
+  const td = "num py-1.5 px-1.5 text-right";
+  const price = (x: RouteResult["origin"]) =>
+    x ? (
+      <>
+        {n2(x.price)}
+        {!x.final && <span className="ml-0.5 text-[9px] text-muted-foreground">p</span>}
+      </>
+    ) : (
+      <span className="text-[11px] text-muted-foreground">n/a</span>
+    );
+  return (
+    <table className="w-full border-separate border-spacing-0 text-[12px]">
+      <thead className="text-[10px] tracking-wide text-muted-foreground uppercase">
+        <tr className="whitespace-nowrap">
+          <th className="py-1.5 pr-1.5 text-left font-medium">Route</th>
+          <th className={th}>Origin</th>
+          <th className={th}>Dest.</th>
+          <th className={th}>Gross</th>
+          <th className={th}>Capacity</th>
+          <th className={th}>Fuel</th>
+          <th className={th}>Fees</th>
+          <th className={th}>Transport</th>
+          <th className={th}>Delivered</th>
+          <th className={th}>Net</th>
+          <th className="py-1.5 pl-1.5 text-left font-medium">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td
+            colSpan={11}
+            className="border-t pt-2 pb-1 text-[10px] font-semibold tracking-wide text-muted-foreground uppercase"
+          >
+            Transit BG ↔ HU through Serbia
+          </td>
+        </tr>
+        {transit.map((r) => (
+          <tr key={r.route.id}>
+            <td className="border-t py-1.5 pr-1.5">{r.route.short}</td>
+            <td className={`${td} border-t`}>{price(r.origin)}</td>
+            <td className={`${td} border-t`}>{price(r.destination)}</td>
+            <td className={`${td} border-t ${tone(r.gross)}`}>{signed(r.gross, 2)}</td>
+            <td className={`${td} border-t`}>{n2(r.capacityCost)}</td>
+            <td className={`${td} border-t`}>{n2(r.fuelCost)}</td>
+            <td className={`${td} border-t`}>{n2(r.otherFees)}</td>
+            <td className={`${td} border-t font-semibold`}>{n2(r.transportCost)}</td>
+            <td className={`${td} border-t`}>{n2(r.delivered)}</td>
+            <td className={`${td} border-t font-semibold ${tone(r.netMargin)}`}>
+              {signed(r.netMargin, 2)}
+            </td>
+            <td className={`border-t py-1.5 pl-1.5 text-[10px] ${STATUS_TONE[r.status]}`}>
+              {r.status}
+            </td>
+          </tr>
+        ))}
+        <tr>
+          <td
+            colSpan={11}
+            className="border-t pt-3 pb-1 text-[10px] font-semibold tracking-wide text-muted-foreground uppercase"
+          >
+            Delivered into Serbia (no Serbian hub price)
+          </td>
+        </tr>
+        {landed.map((r) => (
+          <tr key={r.route.id}>
+            <td className="border-t py-1.5 pr-1.5">{r.route.short}</td>
+            <td className={`${td} border-t`}>{price(r.origin)}</td>
+            <td className={`${td} border-t text-muted-foreground`}>—</td>
+            <td className={`${td} border-t text-muted-foreground`}>—</td>
+            <td className={`${td} border-t`}>{n2(r.capacityCost)}</td>
+            <td className={`${td} border-t`}>{n2(r.fuelCost)}</td>
+            <td className={`${td} border-t`}>{n2(r.otherFees)}</td>
+            <td className={`${td} border-t font-semibold`}>{n2(r.transportCost)}</td>
+            <td className={`${td} border-t font-semibold`}>{n2(r.delivered)}</td>
+            <td className={`${td} border-t text-muted-foreground`}>—</td>
+            <td className={`border-t py-1.5 pl-1.5 text-[10px] ${STATUS_TONE[r.status]}`}>
+              {r.status}
             </td>
           </tr>
         ))}
