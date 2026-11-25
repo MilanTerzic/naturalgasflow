@@ -577,6 +577,10 @@ function Newsletter({ today, token }: { today: string; token: string }) {
   // The demand model needs a temperature; without one there is no forecast.
   const d1Temp = d1 ? (d1.avg_temperature_c ?? d1.temperature_c) : null;
   // D+1: firm capacity allocated on RBP at KKD1 (Kiskundorozsma HU→RS) for the delivery day.
+  // RBP day-ahead auction results for D+1 are out (~17:30 CET) once any point carries D+1.
+  const rbpD1Published = (rbpQ.data?.points ?? []).some((p) =>
+    p.days.some((d) => d.date === deliveryDay && Object.keys(d.byProduct).length > 0),
+  );
   const kkdBookedD1 = (() => {
     const days = (rbpQ.data?.points ?? [])
       .filter((p) => p.corridor === "hu_rs_1")
@@ -609,15 +613,17 @@ function Newsletter({ today, token }: { today: string; token: string }) {
   });
   const d1Line = d1Sentence(expectD1, DOMESTIC_PRODUCTION_MCM);
   // The D+1 expectation follows the demand-forecast line.
-  // Arbitrage: same delivery day for every price; D+1 when any of BGH/CEEGEX has it, else today.
+  // Arbitrage: same delivery day for every price.
   const hubPoints = (h: "BGH" | "CEEGEX") =>
     (hubs?.[h]?.points ?? [])
       .filter((x): x is typeof x & { date: string } => !!x.date)
       .map((x) => ({ date: x.date, price: x.price, final: x.final }));
   const arbPrices = { BGH: hubPoints("BGH"), CEEGEX: hubPoints("CEEGEX") };
-  const arbDay = [...arbPrices.BGH, ...arbPrices.CEEGEX].some((x) => x.date === deliveryDay)
-    ? deliveryDay
-    : today;
+  // Both hubs on the same day: D+1 when both published it, else today, so no route is left
+  // empty only because one exchange has not published tomorrow yet.
+  const bothOn = (d: string) =>
+    arbPrices.BGH.some((x) => x.date === d) && arbPrices.CEEGEX.some((x) => x.date === d);
+  const arbDay = bothOn(deliveryDay) ? deliveryDay : bothOn(today) ? today : deliveryDay;
   const arb = computeAll(arbDay, arbPrices, fxQ.data?.fx ?? null);
   const arbLines = arbitrageSentences(arb);
   const withD1 = d1Line
@@ -666,6 +672,7 @@ function Newsletter({ today, token }: { today: string; token: string }) {
     flowDay,
     summary,
     awaiting,
+    waitFor: rbpD1Published ? [] : ["RBP day-ahead auction results for D+1"],
     missing,
     netIntoSerbia: net.net,
     netIntoSerbiaD1: expectD1.net,
@@ -917,7 +924,7 @@ function Newsletter({ today, token }: { today: string; token: string }) {
       <Section
         shot="arbitrage"
         title="Regional Arbitrage & Transport Economics"
-        subtitle={`€/MWh for delivery ${arbDay} · daily firm capacity at reserve prices, full utilisation · BGH and CEEGEX day-ahead only, same delivery day · capacity availability not checked: results are indicative`}
+        subtitle={`€/MWh for delivery ${arbDay} · daily firm capacity at reserve prices, full utilisation · BGH and CEEGEX day-ahead only, same delivery day · BGH = running VWAP of trades so far (trading for a delivery day closes ~02:00 CET; DA delivers on the next Bulgarian business day) · capacity availability not checked: results are indicative`}
       >
         <ArbitrageTable results={arb} />
         <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
@@ -1163,13 +1170,15 @@ function PriceTable({
   today: string;
   deliveryDay: string;
 }) {
-  const cell = (p: PriceDayRow["a"], h: HubPrices | undefined) => {
+  const cell = (p: PriceDayRow["a"], h: HubPrices | undefined, running = false) => {
     if (p)
       return (
         <>
           {n2(p.price)}
-          {!p.final && (
-            <span className="ml-1 text-[10px] font-normal text-muted-foreground">prov.</span>
+          {(running || !p.final) && (
+            <span className="ml-1 text-[10px] font-normal text-muted-foreground">
+              {running ? "so far" : "prov."}
+            </span>
           )}
         </>
       );
@@ -1205,7 +1214,7 @@ function PriceTable({
                   {HUBS[r.hub as HubId]?.name ?? r.hub}
                 </td>
                 <td className="py-1.5 text-right">{cell(r.a, h)}</td>
-                <td className="py-1.5 text-right font-semibold">{cell(r.b, h)}</td>
+                <td className="py-1.5 text-right font-semibold">{cell(r.b, h, r.hub === "BGH")}</td>
                 <td className={`py-1.5 text-right ${tone(r.change)}`}>{signed(r.change, 2)}</td>
                 <td className="py-1.5 text-right">
                   {signed(r.spreadTtf, 2)}

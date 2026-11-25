@@ -1,12 +1,13 @@
 name: Daily gas newsletter
 
-# ~17:00 Belgrade time. Both entries run; the script only sends inside 16:50-19:30
+# Starts ~17:12 Belgrade time so the issue is out by 18:00 (RBP day-ahead auction results
+# arrive ~17:30). Both entries run; the script never sends at or after 18:00
 # Belgrade time and skips once today's issue is recorded as sent (CET and CEST).
 # The record is an artifact named gas-newsletter-sent-YYYY-MM-DD.
 on:
   schedule:
-    - cron: "52 14 * * *"
-    - cron: "52 15 * * *"
+    - cron: "12 15 * * *"
+    - cron: "12 16 * * *"
   workflow_dispatch:
     inputs:
       test_to:
@@ -14,7 +15,7 @@ on:
         required: false
         type: string
       force:
-        description: "Send now even outside 16:50-19:30 or if already sent"
+        description: "Send now even outside 17:05-18:00 or if already sent"
         required: false
         type: boolean
         default: false

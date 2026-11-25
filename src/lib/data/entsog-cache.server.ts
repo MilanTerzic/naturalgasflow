@@ -2,21 +2,31 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/integrations/supabase/types";
 import { entsogRecords, readThroughEntsog, type EntsogRecord, type EntsogStore } from "./entsog-cache";
 
-// In-flight coordination only; observations live in the database, never in worker memory.
-let active = 0;
-const waiting: Array<() => void> = [];
-async function limited<T>(work: () => PromiseLike<T>): Promise<T> {
-  if (active >= 5) await new Promise<void>((resolve) => waiting.push(resolve));
-  else active++;
-  try { return await work(); }
-  finally {
-    const next = waiting.shift();
-    if (next) next();
-    else active--;
-  }
+type Limiter = <T>(work: () => PromiseLike<T>) => Promise<T>;
+
+/**
+ * Concurrency limiter for ONE request. It must not be module-level: on Cloudflare Workers the
+ * isolate is shared by many requests, and a slot held by a cancelled or timed-out request was
+ * never released, so every later ENTSOG read waited on a promise nobody could resolve and the
+ * runtime answered 502 "Internal server error" immediately.
+ */
+function makeLimiter(max = 5): Limiter {
+  let active = 0;
+  const waiting: Array<() => void> = [];
+  return async (work) => {
+    if (active >= max) await new Promise<void>((resolve) => waiting.push(resolve));
+    else active++;
+    try {
+      return await work();
+    } finally {
+      const next = waiting.shift();
+      if (next) next();
+      else active--;
+    }
+  };
 }
 
-function publicClient() {
+function publicClient(limited: Limiter) {
   const url = process.env['SUPABASE_URL'] ?? process.env['VITE_SUPABASE_URL'] ?? import.meta.env.VITE_SUPABASE_URL;
   const key = process.env['SUPABASE_PUBLISHABLE_KEY'] ?? process.env['VITE_SUPABASE_PUBLISHABLE_KEY'] ?? import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
   if (!url || !key) throw new Error("ENTSOG saved-data connection unavailable");
@@ -31,7 +41,7 @@ function publicClient() {
   });
 }
 
-async function upstream(url: string, init?: RequestInit): Promise<unknown> {
+async function upstream(limited: Limiter, url: string, init?: RequestInit): Promise<unknown> {
   return limited(async () => {
     const response = await fetch(url, { ...init, signal: AbortSignal.timeout(45_000) });
     if (response.status === 404) return {};
@@ -44,13 +54,14 @@ export async function cachedEntsogFetch(input: string, init?: RequestInit, saved
   const url = new URL(input);
   if (url.origin !== "https://transparency.entsog.eu" || !url.pathname.startsWith("/api/v1/"))
     throw new Error("Invalid ENTSOG endpoint");
-  const client = publicClient();
+  const limited = makeLimiter(5);
+  const client = publicClient(limited);
   if (!url.searchParams.has("from")) {
     const cacheKey = url.toString();
     const { data, error } = await client.from("entsog_reference_cache").select("payload").eq("cache_key", cacheKey).maybeSingle();
     if (error) throw error;
     if (data) return Response.json(data.payload);
-    const payload = await upstream(input, init);
+    const payload = await upstream(limited, input, init);
     if (entsogRecords(payload).length) {
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
       const { error: saveError } = await limited(() => supabaseAdmin.from("entsog_reference_cache").upsert(
@@ -85,7 +96,7 @@ export async function cachedEntsogFetch(input: string, init?: RequestInit, saved
     },
   };
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Belgrade", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-  const rows = await readThroughEntsog(input, store, (query) => upstream(query, init), today, savedOnly);
+  const rows = await readThroughEntsog(input, store, (query) => upstream(limited, query, init), today, savedOnly);
   const field = url.pathname.toLowerCase().includes("aggregated") ? "aggregatedData" : "operationaldata";
   return Response.json({ [field]: rows });
 }
