@@ -3,7 +3,7 @@
 // 1. Checks Belgrade time and whether today's issue already went out (a GitHub
 //    artifact named gas-newsletter-sent-YYYY-MM-DD is the record; no database needed).
 // 2. Opens /newsletter in Chromium. While exchanges have not published the next-day
-//    RBP day-ahead auction results for D+1 (published ~17:30 CET), until WAIT_UNTIL,
+//    RBP day-ahead auction results for D+1 (published ~17:30 CET), until 17:45,
 //    reloads every five minutes.
 // 3. Screenshots each [data-shot] section and emails summary text + inline images,
 //    one message per recipient (SMTP when configured, otherwise Resend).
@@ -37,9 +37,11 @@ const RECIPIENTS = (TEST_TO || env("NEWSLETTER_TO"))
   .map((s) => s.trim())
   .filter(Boolean);
 
-const WINDOW_FROM = 17 * 60 + 50; // 18:00 Belgrade, minus a little schedule jitter
-const WINDOW_TO = 20 * 60 + 30; // a late GitHub schedule still sends, once
-const WAIT_UNTIL = 18 * 60 + 30; // wait for RBP D+1 auction results until 18:30
+// The issue must be out by 18:00 Belgrade and never later. RBP D+1 auction results land
+// ~17:30; the first page build takes several minutes, so the job starts ~17:12.
+const WINDOW_FROM = 17 * 60 + 5; // earliest start
+const SEND_DEADLINE = 18 * 60; // nothing is sent at or after 18:00
+const WAIT_UNTIL = 17 * 60 + 45; // wait for RBP D+1 auction results until 17:45
 const SECTIONS = [
   "glance",
   "map-flows",
@@ -140,7 +142,7 @@ async function render(page, url) {
 async function main() {
   const now = belgradeNow();
   const today = now.day;
-  if (!FORCE && !TEST_TO && (now.minutes < WINDOW_FROM || now.minutes > WINDOW_TO)) {
+  if (!FORCE && !TEST_TO && (now.minutes < WINDOW_FROM || now.minutes >= SEND_DEADLINE)) {
     console.log(`Outside the send window (${now.minutes} min Belgrade); nothing to do.`);
     return;
   }
@@ -162,7 +164,8 @@ async function main() {
     console.log("Opening newsletter view for rendering.");
     info = await render(page, pageUrl);
     // ENTSOG reads on the hosted app are slow on a cold cache; a second load is warm.
-    if (info.missing?.length) {
+    // Only reload when there is still time to finish before the 18:00 cut-off.
+    if (info.missing?.length && (FORCE || TEST_TO || belgradeNow().minutes < 17 * 60 + 40)) {
       console.log(`Missing after first load: ${info.missing.join(", ")}; loading once more.`);
       const second = await render(page, pageUrl);
       if ((second.missing?.length ?? 0) <= info.missing.length) info = second;
@@ -231,6 +234,11 @@ ${images
         socketTimeout: 90_000,
       })
     : null;
+  // Hard cut-off: a slow page build or a late GitHub schedule must not send after 18:00.
+  if (!FORCE && !TEST_TO && belgradeNow().minutes >= SEND_DEADLINE) {
+    console.log("18:00 Belgrade passed before the issue was ready; not sending today.");
+    return;
+  }
   let sent = 0;
   for (const to of RECIPIENTS) {
     try {
