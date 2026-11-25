@@ -515,6 +515,26 @@ function Newsletter({ today, token }: { today: string; token: string }) {
       }),
     [flowDay, pastFlows, balance, regional, capacity],
   );
+  // Last 14 gas days up to the flow day, for the flow-vs-technical pipes.
+  const pipeHistory = useMemo(() => {
+    if (!flowDay) return [];
+    const days = pastFlows
+      .map((r) => r.date)
+      .filter((d) => d <= flowDay)
+      .slice(-14);
+    return days.map((date) => ({
+      date,
+      values: buildLinkValues({
+        mode: "day",
+        date,
+        rows: pastFlows,
+        balance,
+        primary: "physical_flow",
+        regional,
+        capacity,
+      }),
+    }));
+  }, [flowDay, pastFlows, balance, regional, capacity]);
   const serbia = useMemo(
     () => serbiaBalance({ mode: "day", date: flowDay, rows: pastFlows, balance }),
     [flowDay, pastFlows, balance],
@@ -939,29 +959,6 @@ function Newsletter({ today, token }: { today: string; token: string }) {
       </Section>
 
       <Section
-        shot="capacity"
-        title="Capacity and bookings"
-        subtitle={`Firm technical vs firm booked capacity (ENTSOG), mcm/d, gas day ${flowDay ?? "—"} · RBP auction allocations for ${shortDay(today)} and ${shortDay(deliveryDay)}`}
-      >
-        <CapacityTable
-          values={values}
-          rbp={rbpQ.data?.points ?? []}
-          today={today}
-          deliveryDay={deliveryDay}
-        />
-        {rbpQ.isError && (
-          <div className="mt-2">
-            <Unavailable>RBP bookings unavailable.</Unavailable>
-          </div>
-        )}
-        {rbpQ.data && !rbpQ.data.allocationPublished && (
-          <p className="mt-2 text-[11px] text-muted-foreground">
-            RBP published no allocation figures for the closed auctions in this window.
-          </p>
-        )}
-      </Section>
-
-      <Section
         shot="balance"
         title="Serbian demand, temperature and supply"
         subtitle="mcm/d · stacked areas = supply by source (ENTSOG allocation; HU entry split by saved MET nominations; BD storage implied = model demand − other sources, within storage limits, no published data) · lines = demand from Belgrade temperature (workbook regression), dashed = forecast"
@@ -981,6 +978,34 @@ function Newsletter({ today, token }: { today: string; token: string }) {
       >
         {huStorage.error && <Unavailable>{huStorage.error}</Unavailable>}
         {huStorage.rows.length > 0 && <HuStoragePanel rows={huStorage.rows} compact height={240} />}
+      </Section>
+
+      <Section
+        shot="capacity"
+        title="Capacity and bookings"
+        subtitle={`Firm technical vs firm booked capacity (ENTSOG), mcm/d, gas day ${flowDay ?? "—"} · RBP auction allocations for ${shortDay(today)} and ${shortDay(deliveryDay)}`}
+      >
+        <CapacityTable
+          values={values}
+          rbp={rbpQ.data?.points ?? []}
+          today={today}
+          deliveryDay={deliveryDay}
+          history={pipeHistory}
+        />
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          Pipe = last {pipeHistory.length} gas days: filled area = flow, pipe height = firm
+          technical capacity (dashed line where technical changed).
+        </p>
+        {rbpQ.isError && (
+          <div className="mt-2">
+            <Unavailable>RBP bookings unavailable.</Unavailable>
+          </div>
+        )}
+        {rbpQ.data && !rbpQ.data.allocationPublished && (
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            RBP published no allocation figures for the closed auctions in this window.
+          </p>
+        )}
       </Section>
 
       <Section
@@ -1236,11 +1261,63 @@ function PriceTable({
   );
 }
 
+/** Small pipe: flow as a filled area inside a tube whose height is technical capacity. */
+function FlowPipe({
+  points,
+}: {
+  points: Array<{ date: string; flow: number | null; technical: number | null }>;
+}) {
+  const known = points.filter((p) => p.flow != null || p.technical != null);
+  if (!known.length) return <span className="text-[11px] text-muted-foreground">—</span>;
+  const max = Math.max(...known.map((p) => Math.max(p.flow ?? 0, p.technical ?? 0)), 0.01);
+  const techs = known.map((p) => p.technical).filter((t): t is number => t != null);
+  const techVaries = techs.length > 1 && Math.max(...techs) - Math.min(...techs) > max * 0.02;
+  const last = known[known.length - 1];
+  const util = last.flow != null && last.technical ? last.flow / last.technical : null;
+  const color =
+    util == null ? "#64748b" : util >= 0.9 ? "#ef4444" : util >= 0.6 ? "#f59e0b" : "#22c55e";
+  return (
+    <div
+      className="relative h-[18px] w-[96px] overflow-hidden rounded-full border border-slate-500/70 bg-slate-800/60"
+      title={`${known[0].date} → ${last.date}`}
+    >
+      <ResponsiveContainer width="100%" height="100%">
+        <ComposedChart data={known} margin={{ top: 1, right: 0, bottom: 0, left: 0 }}>
+          <YAxis hide domain={[0, max]} />
+          <XAxis hide dataKey="date" />
+          <Area
+            type="monotone"
+            dataKey="flow"
+            stroke={color}
+            strokeWidth={1}
+            fill={color}
+            fillOpacity={0.55}
+            isAnimationActive={false}
+            connectNulls={false}
+          />
+          {techVaries && (
+            <Line
+              type="stepAfter"
+              dataKey="technical"
+              stroke="#e2e8f0"
+              strokeWidth={1}
+              strokeDasharray="2 2"
+              dot={false}
+              isAnimationActive={false}
+            />
+          )}
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 function CapacityTable({
   values,
   rbp,
   today,
   deliveryDay,
+  history,
 }: {
   values: ReturnType<typeof buildLinkValues>;
   rbp: Array<{
@@ -1250,6 +1327,7 @@ function CapacityTable({
   }>;
   today: string;
   deliveryDay: string;
+  history: Array<{ date: string; values: ReturnType<typeof buildLinkValues> }>;
 }) {
   const rbpFor = (id: string, date: string) => {
     const days = rbp
@@ -1273,6 +1351,7 @@ function CapacityTable({
       <thead className="text-left text-[11px] tracking-wide whitespace-nowrap text-muted-foreground uppercase">
         <tr>
           <th className="py-1">Corridor</th>
+          <th className="px-2 py-1">Flow vs tech.</th>
           <th className="py-1 text-right">Flow</th>
           <th className="py-1 text-right">Technical</th>
           <th className="py-1 text-right">Booked</th>
@@ -1299,6 +1378,18 @@ function CapacityTable({
                     {v.capacityRef ? "(GY ref)" : `(cap. ${shortDay(v.capacityDate!)})`}
                   </span>
                 )}
+              </td>
+              <td className="px-2 py-1.5">
+                <FlowPipe
+                  points={history.map((h) => {
+                    const hv = h.values[c.id];
+                    return {
+                      date: h.date,
+                      flow: ok(hv?.value) ? Math.abs(hv!.value!) : null,
+                      technical: ok(hv?.technical) ? hv!.technical! : null,
+                    };
+                  })}
+                />
               </td>
               <td className="py-1.5 text-right">{n2(ok(v?.value) ? Math.abs(v!.value!) : null)}</td>
               <td className="py-1.5 text-right">{n2(v?.technical)}</td>

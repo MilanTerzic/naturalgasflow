@@ -48,9 +48,9 @@ const SECTIONS = [
   "flows",
   "prices",
   "arbitrage",
-  "capacity",
   "balance",
   "hu-storage",
+  "capacity",
   "storage",
 ];
 const TITLES = {
