@@ -280,7 +280,9 @@ test("BGH DA: matches 5+ official rows exactly; provisional and index kept apart
   const vwap = r.observations.filter((o) => o.metric === "VWAP");
   // Values as displayed on the BGH Day Ahead table, 2026-11-17.
   assert.deepEqual(
-    vwap.map((o) => [o.deliveryDate, o.priceEurMwh, o.volumeMwh, o.trades]),
+    vwap
+      .filter((o) => !o.provisional)
+      .map((o) => [o.deliveryDate, o.priceEurMwh, o.volumeMwh, o.trades]),
     [
       ["2026-11-17", 79.99, 32586, 137],
       ["2026-11-16", 82.08, 59068, 209],
@@ -291,23 +293,34 @@ test("BGH DA: matches 5+ official rows exactly; provisional and index kept apart
     ],
   );
   assert.ok(vwap.every((o) => o.product === "DA" && o.originalCurrency === "EUR"));
-  // Gas day 18th is still trading at capture time → not published as a price.
+  // Gas day 18th is still trading at capture time → kept as a provisional running VWAP.
   assert.deepEqual(r.provisionalDays, ["2026-11-18"]);
+  const running = r.observations.find(
+    (o) => o.metric === "VWAP" && o.deliveryDate === "2026-11-18",
+  );
+  assert.equal(running.provisional, true);
+  assert.ok(vwap.filter((o) => o.deliveryDate !== "2026-11-18").every((o) => !o.provisional));
   // Once BGH publishes the reference price, the next-day VWAP is final (77.01 is a
   // synthetic stand-in for the not-yet-published index).
   const closed = json.map((row) =>
     row.day === "2026-11-18" ? { ...row, reference_price: "77.01" } : row,
   );
   const r2 = parseBghDa(closed, { ...ctx, today: "2026-11-17" });
-  assert.equal(r2.observations.find((o) => o.deliveryDate === "2026-11-18").priceEurMwh, 76.98);
+  const final18 = r2.observations.find(
+    (o) => o.metric === "VWAP" && o.deliveryDate === "2026-11-18",
+  );
+  assert.equal(final18.priceEurMwh, 76.98);
+  assert.equal(final18.provisional, undefined);
   // BGHSPOTIndex is a separate metric (80.93 vs VWAP 80.90 on the 15th).
   const idx = r.observations.find((o) => o.metric === "BGHSPOT" && o.deliveryDate === "2026-11-15");
   assert.equal(idx.priceEurMwh, 80.93);
   // Only VWAP is the map benchmark.
   const series = benchmarkSeries(r.observations, MARKET_META.BGH.benchmarks);
-  assert.equal(series.at(-1).price, 79.99);
+  assert.equal(series.at(-1).deliveryDate, "2026-11-18");
+  assert.equal(series.at(-1).provisional, true);
+  assert.equal(series.at(-2).price, 79.99);
   assert.ok(series.every((p) => p.metric === "VWAP"));
-  assert.equal(vwap[0].tradingDate, "2026-11-16"); // derived, previous weekday
+  assert.equal(vwap.find((o) => o.deliveryDate === "2026-11-17").tradingDate, "2026-11-16"); // derived, previous weekday
   assert.equal(previousWeekday("2026-11-16"), "2026-11-13");
 });
 
@@ -564,4 +577,19 @@ test("UI detail line shows metric, delivery day, change, volume, FX and freshnes
   assert.match(blocked, /access needed/);
   assert.match(blocked, /Needs BGH API agreement/);
   assert.match(blocked, /last success never/);
+});
+
+test("HEnEx listing: file name and get_file link in either order, single quotes, &amp;", () => {
+  const html = `
+    <li><span>20261124_NGAS_DOL_EN_v01</span>
+      <a href='/c/document_library/get_file?uuid=c04e1fcd-adaa&amp;groupId=20126'>Download</a></li>
+    <li><a href="https://www.enexgroup.gr/c/document_library/get_file?uuid=6a90&amp;groupId=20126">
+      <img/></a><p>20261123_NGAS_DOL_EN_v02</p></li>`;
+  const m = parseHenexListing(html);
+  assert.equal(
+    m.get("2026-11-24").url,
+    "https://www.enexgroup.gr/c/document_library/get_file?uuid=c04e1fcd-adaa&groupId=20126",
+  );
+  assert.equal(m.get("2026-11-23").version, 2);
+  assert.match(m.get("2026-11-23").url, /uuid=6a90&groupId=20126$/);
 });

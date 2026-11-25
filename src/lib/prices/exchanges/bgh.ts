@@ -100,7 +100,7 @@ export interface BghParsed {
 /**
  * Parses a DA response. VWAP and BGHSPOT are separate metrics; "-" stays empty.
  * A gas day after today (Sofia) whose reference price is still "-" is being traded: its
- * VWAP is provisional and skipped until BGH closes the session.
+ * VWAP is kept as a provisional (running) price until BGH closes the session.
  */
 export function parseBghDa(
   json: unknown,
@@ -126,11 +126,11 @@ export function parseBghDa(
       out.noTradeDays.push(deliveryDate);
       continue;
     }
-    // A future gas day is final once BGH publishes its reference price (session closed).
-    if (deliveryDate > ctx.today && !validEurPrice(parsePrice(raw.reference_price))) {
-      out.provisionalDays.push(deliveryDate);
-      continue;
-    }
+    // A future gas day is final once BGH publishes its reference price (session closed,
+    // ~02:00 CET on the delivery day). Until then its VWAP is the running average of the
+    // trades so far: kept, but marked provisional so it is never shown as final.
+    const provisional = deliveryDate > ctx.today && !validEurPrice(parsePrice(raw.reference_price));
+    if (provisional) out.provisionalDays.push(deliveryDate);
     const base = {
       market: "BGH" as const,
       country: "BG" as const,
@@ -151,6 +151,7 @@ export function parseBghDa(
         priceEurMwh: vwap,
         originalPrice: vwap,
         status: "OK",
+        ...(provisional ? { provisional: true } : {}),
       });
     else out.rejected.push(`${deliveryDate}: VWAP ${vwap} outside sanity bounds`);
     const index = parsePrice(raw.reference_price);
