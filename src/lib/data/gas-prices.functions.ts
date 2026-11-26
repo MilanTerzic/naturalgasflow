@@ -47,6 +47,8 @@ export interface GasPricesResponse {
 const TTL_MS = 30 * 60 * 1000;
 const TIMEOUT_MS = 15_000;
 const cache = new Map<HubId, { at: number; res: HubPrices }>();
+/** Partial-source problems of the last load (e.g. TTF history file failed), shown as a note. */
+const loadNotes = new Map<HubId, string>();
 
 const EEX_HISTORY = "https://gasandregistry.eex.com/Gas/NGP/TTF_NGP_60_Days.csv";
 const EEX_CURRENT = "https://gasandregistry.eex.com/Gas/NGP/TTF_NGP_15_Mins.csv";
@@ -83,12 +85,18 @@ async function withCache(
   const cached = cache.get(hub);
   if (cached && Date.now() - cached.at < TTL_MS) return { ...cached.res, status: "cache" };
   try {
-    const points = await load();
+    loadNotes.delete(hub);
+    const live = await load();
+    const points =
+      hub === "TTF" || hub === "CEGH"
+        ? await (await import("@/lib/prices/hub-history.server")).withStoredHistory(hub, live)
+        : live;
     if (!points.length)
       throw new Error("source answered but no prices could be read (format may have changed)");
     const res: HubPrices = {
       hub,
       status: "live",
+      reason: loadNotes.get(hub),
       points,
       fetchedAt: new Date().toISOString(),
       sourceUrl,
@@ -123,6 +131,13 @@ async function loadTtf(): Promise<PricePoint[]> {
   for (const p of provisional) if (p.date) byDate.set(p.date, p);
   for (const p of finals) if (p.date) byDate.set(p.date, p);
   if (!byDate.size && history.status === "rejected") throw history.reason;
+  if (history.status === "rejected")
+    loadNotes.set(
+      "TTF",
+      `EEX 60-day history unavailable (${history.reason instanceof Error ? history.reason.message : "request failed"}); stored history used`,
+    );
+  else if (!finals.length)
+    loadNotes.set("TTF", "EEX 60-day history file had no readable prices; stored history used");
   return [...byDate.values()].sort((a, b) => (a.date! < b.date! ? -1 : 1));
 }
 

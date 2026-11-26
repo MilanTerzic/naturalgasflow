@@ -40,15 +40,25 @@ import {
 } from "@/lib/gas/config";
 import { buildBalance, dateRangeIso } from "@/lib/gas/demand";
 import { splitHungaryEntry } from "@/lib/gas/met-nominations";
-import { arbitrageSentences, computeAll, type RouteResult } from "@/lib/gas/arbitrage";
+import {
+  SIGNAL_THRESHOLD,
+  arbitrageSentences,
+  computeAll,
+  type RouteResult,
+} from "@/lib/gas/arbitrage";
 import { GASTRANS_FUEL } from "@/lib/gas/tariffs/data";
 import type { FlowPointName } from "@/lib/gas/types";
 import {
   checkNewsletterToken,
+  listNewsletterD1Forecasts,
   listNewsletterMetNominations,
+  saveNewsletterD1Forecast,
 } from "@/lib/newsletter/newsletter.functions";
 import {
   addDaysISO,
+  buildAlerts,
+  d1Check,
+  d1CheckSentence,
   d1Expectation,
   d1Sentence,
   netIntoSerbia,
@@ -418,7 +428,17 @@ function Newsletter({ today, token }: { today: string; token: string }) {
     [nomsQ.data],
   );
 
-  const all = [flowsQ, allocQ, tempsQ, regionalQ, netQ, pricesQ, rbpQ, storageQ, nomsQ, fxQ];
+  // Stored D+1 expectations of earlier newsletters, to check them against actual flows.
+  const d1sQ = useQuery({
+    ...QUERY,
+    queryKey: ["nl-d1-forecasts", today],
+    queryFn: () =>
+      listNewsletterD1Forecasts({
+        data: { token, from: addDaysISO(today, -7), to: addDaysISO(today, -1) },
+      }),
+  });
+
+  const all = [flowsQ, allocQ, tempsQ, regionalQ, netQ, pricesQ, rbpQ, storageQ, nomsQ, fxQ, d1sQ];
   const settled = all.every((q) => q.isSuccess || q.isError) && huStorage.settled;
 
   // ---------------------------------------------------------------- derived data
@@ -646,14 +666,42 @@ function Newsletter({ today, token }: { today: string; token: string }) {
   const arbDay = bothOn(deliveryDay) ? deliveryDay : bothOn(today) ? today : deliveryDay;
   const arb = computeAll(arbDay, arbPrices, fxQ.data?.fx ?? null);
   const arbLines = arbitrageSentences(arb);
+  const check = d1Check(
+    d1sQ.data?.rows.find((r) => r.forecast_for === flowDay) ?? null,
+    flowDay,
+    net.net,
+  );
+  const checkLine = d1CheckSentence(check);
+  const alerts = buildAlerts({
+    flowDay,
+    borderPoints: CORRIDORS.filter((c) => c.group === "serbia").map((c) => ({
+      name: c.name,
+      flow: ok(values[c.id]?.value) ? values[c.id]!.value! : null,
+      technical: ok(values[c.id]?.technical) ? values[c.id]!.technical! : null,
+      booked: ok(values[c.id]?.booked) ? values[c.id]!.booked! : null,
+    })),
+    net,
+    d1Net: expectD1.net,
+    d1Day: deliveryDay,
+    check,
+    arbitrage: arb
+      .filter(
+        (r) =>
+          r.netMargin !== null && r.netMargin >= SIGNAL_THRESHOLD && r.status !== "UNAVAILABLE",
+      )
+      .map((r) => ({ short: r.route.short, netMargin: r.netMargin!, day: r.deliveryDay })),
+    priceDays,
+  });
   const withD1 = d1Line
     ? (() => {
         const at = baseSummary.findIndex((l) => l.startsWith("Serbian demand forecast"));
         const out = [...baseSummary];
-        out.splice(at >= 0 ? at + 1 : out.length, 0, d1Line);
+        out.splice(at >= 0 ? at + 1 : out.length, 0, d1Line, ...(checkLine ? [checkLine] : []));
         return out;
       })()
-    : baseSummary;
+    : checkLine
+      ? [...baseSummary, checkLine]
+      : baseSummary;
   // Arbitrage lines follow the day-ahead price line.
   const summary = (() => {
     if (!arbLines.length) return withD1;
@@ -674,6 +722,24 @@ function Newsletter({ today, token }: { today: string; token: string }) {
     nomsQ.isError ? "MET nominations" : null,
     fxQ.isError || fxQ.data?.error ? "EUR/HUF/RSD rates" : null,
   ].filter((x): x is string => !!x);
+
+  // Keep today's D+1 expectation for tomorrow's check (the server ignores test dates).
+  const d1Save = settled && expectD1.net !== null ? expectD1 : null;
+  useEffect(() => {
+    if (!d1Save) return;
+    saveNewsletterD1Forecast({
+      data: {
+        token,
+        made_on: today,
+        forecast_for: d1Save.day,
+        net_mcm: d1Save.net!,
+        demand_mcm: d1Save.demand,
+        temperature_c: d1Save.temperature,
+        kkd_booked_mcm: d1Save.kkdBooked,
+      },
+    }).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [d1Save?.net, d1Save?.kkdBooked, d1Save?.day, token, today]);
 
   if (!settled) {
     const done = all.filter((q) => q.isSuccess || q.isError).length;
@@ -696,6 +762,7 @@ function Newsletter({ today, token }: { today: string; token: string }) {
     missing,
     netIntoSerbia: net.net,
     netIntoSerbiaD1: expectD1.net,
+    alerts: alerts.map((a) => `${a.level === "high" ? "▲" : "●"} ${a.text}`),
     ttf: ttfHeadline?.price ?? null,
   };
 
@@ -752,6 +819,7 @@ function Newsletter({ today, token }: { today: string; token: string }) {
             deltaLabel="pp w/w"
           />
         </div>
+        {flowDay && <AlertsBox alerts={alerts} />}
         {summary.length > 0 && (
           <ul className="mt-3 list-disc space-y-1 pl-5 text-[14px] leading-snug">
             {summary.map((line) => (
@@ -939,6 +1007,13 @@ function Newsletter({ today, token }: { today: string; token: string }) {
             </ResponsiveContainer>
           </div>
         )}
+        {(["TTF", "CEGH"] as const)
+          .filter((h) => hubs?.[h]?.status === "live" && hubs[h]!.reason)
+          .map((h) => (
+            <p key={h} className="mt-1 text-[11px] text-muted-foreground">
+              {h}: {hubs![h]!.reason}.
+            </p>
+          ))}
       </Section>
 
       <Section
@@ -967,7 +1042,7 @@ function Newsletter({ today, token }: { today: string; token: string }) {
         <div className="h-[260px]">
           <BalanceChart balance={balance} today={today} nominations={nomByDay} />
         </div>
-        <SourceMixTable balance={balance} nominations={nomByDay} />
+        <SourceMixTable balance={balance} nominations={nomByDay} maxDay={flowDay} />
         <ForecastTable balance={balance} today={today} />
       </Section>
 
@@ -1261,6 +1336,31 @@ function PriceTable({
   );
 }
 
+function AlertsBox({ alerts }: { alerts: Array<{ level: "high" | "watch"; text: string }> }) {
+  if (!alerts.length)
+    return (
+      <p className="mt-3 rounded-md border border-[var(--status-ok,#22c55e)]/40 px-3 py-2 text-[13px] text-muted-foreground">
+        <span className="font-semibold text-[var(--status-ok,#22c55e)]">No alerts</span> · nothing
+        crossed the thresholds today.
+      </p>
+    );
+  return (
+    <div className="mt-3 rounded-md border border-amber-500/50 bg-amber-500/5 px-3 py-2">
+      <div className="text-[11px] font-semibold tracking-wide text-amber-400 uppercase">Alerts</div>
+      <ul className="mt-1 space-y-1 text-[13.5px] leading-snug">
+        {alerts.map((a) => (
+          <li key={a.text} className="flex gap-2">
+            <span
+              className={`mt-[5px] inline-block h-2 w-2 shrink-0 rounded-full ${a.level === "high" ? "bg-red-500" : "bg-amber-400"}`}
+            />
+            <span>{a.text}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /** Small pipe: flow as a filled area inside a tube whose height is technical capacity. */
 function FlowPipe({
   points,
@@ -1349,15 +1449,25 @@ function CapacityTable({
   return (
     <table className="w-full text-[13px]">
       <thead className="text-left text-[11px] tracking-wide whitespace-nowrap text-muted-foreground uppercase">
+        <tr className="text-[10px]">
+          <th />
+          <th />
+          <th colSpan={4} className="border-b border-border/60 pb-0.5 pl-3 text-center">
+            ENTSOG · mcm/d
+          </th>
+          <th colSpan={2} className="border-b border-border/60 pb-0.5 pl-3 text-center">
+            RBP allocated
+          </th>
+        </tr>
         <tr>
           <th className="py-1">Corridor</th>
           <th className="px-2 py-1">Flow vs tech.</th>
-          <th className="py-1 text-right">Flow</th>
-          <th className="py-1 text-right">Technical</th>
-          <th className="py-1 text-right">Booked</th>
-          <th className="py-1 text-right">Booked %</th>
-          <th className="py-1 text-right">RBP {shortDay(today)}</th>
-          <th className="py-1 text-right">RBP {shortDay(deliveryDay)}</th>
+          <th className="py-1 pl-3 text-right">Flow</th>
+          <th className="py-1 pl-3 text-right">Tech.</th>
+          <th className="py-1 pl-3 text-right">Booked</th>
+          <th className="py-1 pl-3 text-right">Bkd %</th>
+          <th className="py-1 pl-3 text-right">{shortDay(today)}</th>
+          <th className="py-1 pl-3 text-right">{shortDay(deliveryDay)}</th>
         </tr>
       </thead>
       <tbody className="num">
@@ -1391,12 +1501,14 @@ function CapacityTable({
                   })}
                 />
               </td>
-              <td className="py-1.5 text-right">{n2(ok(v?.value) ? Math.abs(v!.value!) : null)}</td>
-              <td className="py-1.5 text-right">{n2(v?.technical)}</td>
-              <td className="py-1.5 text-right">{n2(v?.booked)}</td>
-              <td className="py-1.5 text-right">{pct(bookedPct)}</td>
-              <td className="py-1.5 text-right">{n2(rbpFor(c.id, today))}</td>
-              <td className="py-1.5 text-right">{n2(rbpFor(c.id, deliveryDay))}</td>
+              <td className="py-1.5 pl-3 text-right">
+                {n2(ok(v?.value) ? Math.abs(v!.value!) : null)}
+              </td>
+              <td className="py-1.5 pl-3 text-right">{n2(v?.technical)}</td>
+              <td className="py-1.5 pl-3 text-right">{n2(v?.booked)}</td>
+              <td className="py-1.5 pl-3 text-right">{pct(bookedPct)}</td>
+              <td className="py-1.5 pl-3 text-right">{n2(rbpFor(c.id, today))}</td>
+              <td className="py-1.5 pl-3 text-right">{n2(rbpFor(c.id, deliveryDay))}</td>
             </tr>
           );
         })}
@@ -1516,11 +1628,16 @@ function BalanceChart({
 function SourceMixTable({
   balance,
   nominations,
+  maxDay,
 }: {
   balance: BalanceRows;
   nominations: Map<string, number>;
+  /** Newest gas day to show: the newsletter's flow day, so every section is the same day. */
+  maxDay: string | null;
 }) {
-  const row = [...balance].reverse().find((b) => sourceMix(b, nominations));
+  const row = [...balance]
+    .reverse()
+    .find((b) => (!maxDay || b.date <= maxDay) && sourceMix(b, nominations));
   if (!row) return null;
   const mix = sourceMix(row, nominations)!;
   const total = SOURCE_SERIES.reduce((sum, s) => sum + (mix[s.key] ?? 0), 0);

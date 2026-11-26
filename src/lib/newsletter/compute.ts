@@ -375,3 +375,134 @@ export function d1Sentence(e: D1Expectation, domestic: number): string | null {
   }
   return text;
 }
+
+// ------------------------------------------------------------------ D+1 check and alerts
+
+export interface D1Check {
+  forDay: string;
+  madeOn: string;
+  expected: number;
+  actual: number;
+  /** actual − expected, mcm/d. */
+  error: number;
+}
+
+/** Yesterday's D+1 expectation against the actual net into Serbia on that gas day. */
+export function d1Check(
+  stored: { made_on: string; forecast_for: string; net_mcm: number } | null,
+  flowDay: string | null,
+  actualNet: number | null,
+): D1Check | null {
+  if (!stored || !flowDay || stored.forecast_for !== flowDay || actualNet === null) return null;
+  return {
+    forDay: flowDay,
+    madeOn: stored.made_on,
+    expected: stored.net_mcm,
+    actual: actualNet,
+    error: actualNet - stored.net_mcm,
+  };
+}
+
+export function d1CheckSentence(c: D1Check | null): string | null {
+  if (!c) return null;
+  const sign = c.error >= 0 ? "+" : "−";
+  return (
+    `D+1 check (${c.forDay}): expected ${f1(c.expected)} mcm/d on ${c.madeOn}, actual ${f1(c.actual)} mcm/d ` +
+    `(${sign}${f1(Math.abs(c.error))}; positive = more gas came in than expected).`
+  );
+}
+
+export const ALERT_THRESHOLDS = {
+  /** flow ÷ technical at a Serbian border point. */
+  utilHigh: 0.95,
+  utilWatch: 0.9,
+  /** booked ÷ technical: no firm capacity left to buy. */
+  bookedFull: 0.95,
+  /** mcm/d: net into Serbia vs 7-day average, D+1 vs actual, forecast miss. */
+  netMove: 2,
+  /** €/MWh: TTF day-on-day and hub spread vs TTF. */
+  ttfMove: 3,
+  hubSpread: 5,
+} as const;
+
+export interface Alert {
+  level: "high" | "watch";
+  text: string;
+}
+
+export interface AlertInput {
+  flowDay: string | null;
+  borderPoints: Array<{
+    name: string;
+    flow: number | null;
+    technical: number | null;
+    booked: number | null;
+  }>;
+  net: { net: number | null; avg7: number | null; change: number | null };
+  d1Net: number | null;
+  d1Day: string;
+  check: D1Check | null;
+  /** Routes whose net margin clears the arbitrage threshold. */
+  arbitrage: Array<{ short: string; netMargin: number; day: string }>;
+  priceDays: Array<{
+    hub: string;
+    change: number | null;
+    spreadTtf: number | null;
+    spreadDay: string | null;
+  }>;
+}
+
+/** Only what crossed a threshold; an empty list means "nothing unusual". */
+export function buildAlerts(i: AlertInput): Alert[] {
+  const T = ALERT_THRESHOLDS;
+  const out: Alert[] = [];
+  for (const a of i.arbitrage)
+    out.push({
+      level: "high",
+      text: `Arbitrage open: ${a.short} nets €${f2(a.netMargin)}/MWh for ${a.day} (indicative, capacity not checked).`,
+    });
+  for (const p of i.borderPoints) {
+    if (p.technical === null || p.technical <= 0) continue;
+    const util = p.flow !== null ? Math.abs(p.flow) / p.technical : null;
+    const booked = p.booked !== null ? p.booked / p.technical : null;
+    if (util !== null && util >= T.utilWatch)
+      out.push({
+        level: util >= T.utilHigh ? "high" : "watch",
+        text: `${p.name} running at ${(util * 100).toFixed(0)}% of technical capacity (${f1(Math.abs(p.flow!))} of ${f1(p.technical)} mcm/d) on ${i.flowDay}.`,
+      });
+    else if (booked !== null && booked >= T.bookedFull)
+      out.push({
+        level: "watch",
+        text: `${p.name} firm capacity ${(booked * 100).toFixed(0)}% booked: little firm capacity left.`,
+      });
+  }
+  if (i.net.change !== null && Math.abs(i.net.change) >= T.netMove)
+    out.push({
+      level: "watch",
+      text: `Net into Serbia ${f1(i.net.net!)} mcm/d on ${i.flowDay}, ${i.net.change > 0 ? "+" : "−"}${f1(Math.abs(i.net.change))} vs 7-day average.`,
+    });
+  if (i.d1Net !== null && i.net.net !== null && Math.abs(i.d1Net - i.net.net) >= T.netMove)
+    out.push({
+      level: "watch",
+      text: `D+1 (${i.d1Day}) expected ${f1(i.d1Net)} mcm/d vs ${f1(i.net.net)} on ${i.flowDay}: a ${i.d1Net > i.net.net ? "rise" : "drop"} of ${f1(Math.abs(i.d1Net - i.net.net))}.`,
+    });
+  if (i.check && Math.abs(i.check.error) >= T.netMove)
+    out.push({
+      level: "watch",
+      text: `Yesterday's D+1 expectation missed by ${f1(Math.abs(i.check.error))} mcm/d (expected ${f1(i.check.expected)}, actual ${f1(i.check.actual)}).`,
+    });
+  const ttf = i.priceDays.find((p) => p.hub === "TTF");
+  if (ttf?.change != null && Math.abs(ttf.change) >= T.ttfMove)
+    out.push({
+      level: "watch",
+      text: `TTF day-ahead ${ttf.change > 0 ? "up" : "down"} €${f2(Math.abs(ttf.change))}/MWh day on day.`,
+    });
+  for (const p of i.priceDays) {
+    if (p.hub === "TTF" || p.spreadTtf === null || Math.abs(p.spreadTtf) < T.hubSpread) continue;
+    out.push({
+      level: "watch",
+      text: `${p.hub} ${p.spreadTtf > 0 ? "premium" : "discount"} to TTF €${f2(Math.abs(p.spreadTtf))}/MWh (${p.spreadDay}).`,
+    });
+  }
+  return out.sort((a, b) => (a.level === b.level ? 0 : a.level === "high" ? -1 : 1));
+}
