@@ -252,6 +252,8 @@ export interface SummaryInput {
   today: string;
   priceDays: PriceDayRow[];
   storageRs: StorageRow | null;
+  /** Which storage storageRs is: Serbia is usually not on AGSI+, then the EU aggregate is used. */
+  storageScope?: "rs" | "eu";
 }
 
 const POINT_LABEL: Record<FlowPointName, string> = {
@@ -314,9 +316,12 @@ export function summarySentences(s: SummaryInput): string[] {
   else if (todayLine) out.push(todayLine);
   if (s.storageRs?.full != null) {
     out.push(
-      `Serbian storage (AGSI, ${s.storageRs.date}): ${f1(s.storageRs.full)}% full` +
+      `${s.storageScope === "eu" ? "EU storage" : "Serbian storage"} (AGSI+, ${s.storageRs.date}): ${f1(s.storageRs.full)}% full` +
         (s.storageRs.changeWeek !== null
-          ? ` (${signed(s.storageRs.changeWeek)} pp week on week).`
+          ? ` (${signed(s.storageRs.changeWeek)} pp week on week)`
+          : "") +
+        (s.storageScope === "eu"
+          ? "; Serbian storage (Banatski Dvor) is not reported on AGSI+."
           : "."),
     );
   }
