@@ -180,6 +180,8 @@ async function main() {
     }
     await page.waitForTimeout(2_000); // map and charts settle
 
+    // Alerts and the summary are in the email as text; don't repeat them in the image.
+    await page.addStyleTag({ content: "[data-email-text]{display:none !important}" });
     for (const id of SECTIONS) {
       const element = await page.$(`[data-shot="${id}"]`);
       if (!element) continue;

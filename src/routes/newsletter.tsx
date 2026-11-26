@@ -650,6 +650,7 @@ function Newsletter({ today, token }: { today: string; token: string }) {
     today,
     priceDays,
     storageRs: storageRs ?? storageEu,
+    storageScope: storageRs ? "rs" : "eu",
   });
   const d1Line = d1Sentence(expectD1, DOMESTIC_PRODUCTION_MCM);
   // The D+1 expectation follows the demand-forecast line.
@@ -819,21 +820,25 @@ function Newsletter({ today, token }: { today: string; token: string }) {
             deltaLabel="pp w/w"
           />
         </div>
-        {flowDay && <AlertsBox alerts={alerts} />}
-        {summary.length > 0 && (
-          <ul className="mt-3 list-disc space-y-1 pl-5 text-[14px] leading-snug">
-            {summary.map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
-        )}
-        {(missing.length > 0 || awaiting.length > 0) && (
-          <p className="mt-2 text-[12px] text-[var(--status-warning)]">
-            {missing.length > 0 && `Unavailable at send time: ${missing.join(", ")}. `}
-            {awaiting.length > 0 &&
-              `No ${shortDay(deliveryDay)} day-ahead price yet: ${awaiting.join(", ")}.`}
-          </p>
-        )}
+        {/* Alerts, summary and notes go into the email as text; the sender hides them in the
+            screenshot so they are not shown twice. */}
+        <div data-email-text>
+          {flowDay && <AlertsBox alerts={alerts} />}
+          {summary.length > 0 && (
+            <ul className="mt-3 list-disc space-y-1 pl-5 text-[14px] leading-snug">
+              {summary.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          )}
+          {(missing.length > 0 || awaiting.length > 0) && (
+            <p className="mt-2 text-[12px] text-[var(--status-warning)]">
+              {missing.length > 0 && `Unavailable at send time: ${missing.join(", ")}. `}
+              {awaiting.length > 0 &&
+                `No ${shortDay(deliveryDay)} day-ahead price yet: ${awaiting.join(", ")}.`}
+            </p>
+          )}
+        </div>
       </section>
 
       <section data-shot="map-flows" className="overflow-hidden rounded-lg border bg-card">

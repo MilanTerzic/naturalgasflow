@@ -134,6 +134,34 @@ test("summary drops sentences whose data is missing", () => {
   assert.match(lines[3], /delivery 2026-11-23 .*TTF €31\.00/);
 });
 
+test("storage line names EU when Serbia is not on AGSI+", async () => {
+  const { summarySentences } = await import("../src/lib/newsletter/compute.ts");
+  const row = {
+    date: "2026-11-24",
+    full: 67.8,
+    changeWeek: -2.1,
+    gasInStorage: 700,
+    netInjection: -3000,
+  };
+  const base = {
+    today: "2026-11-25",
+    deliveryDay: "2026-11-26",
+    flowDay: null,
+    points: [],
+    net: { net: null, avg7: null, change: null },
+    priceDays: [],
+    storageRs: row,
+  };
+  const lines = summarySentences({ ...base, storageScope: "eu" });
+  const eu = lines.find((l) => /storage/.test(l));
+  assert.match(
+    eu,
+    /^EU storage \(AGSI\+, 2026-11-24\): 67\.8% full \(−2\.1 pp week on week\); Serbian storage \(Banatski Dvor\) is not reported/,
+  );
+  const rs = summarySentences({ ...base, storageScope: "rs" }).find((l) => /storage/.test(l));
+  assert.match(rs, /^Serbian storage \(AGSI\+/);
+});
+
 test("price day rows put every hub on the same delivery days", async () => {
   const { priceDayRows } = await import("../src/lib/newsletter/compute.ts");
   const p = (date, price, final = true) => ({ date, label: date, price, final });
