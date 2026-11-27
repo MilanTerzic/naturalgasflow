@@ -30,6 +30,7 @@ const TABS = [
   { to: "/capacity", label: "Capacity Bookings" },
   { to: "/srbijagas", label: "Srbijagas Full Supply" },
   { to: "/storage", label: "Gas Storage" },
+  { to: "/arbitrage", label: "HU ↔ BG Arbitrage" },
   { to: "/model", label: "Model & Assumptions" },
 ] as const;
 
