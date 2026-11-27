@@ -235,9 +235,21 @@ test("benchmark: preferred metric per day, weekend spread without double countin
   assert.deepEqual(
     s.map((p) => [p.deliveryDate, p.metric, p.price]),
     [
-      ["2026-11-14", "CEEREP", 92.5],
-      ["2026-11-15", "CEEREP", 92.1],
+      ["2026-11-14", "VWAP", 92.41],
+      ["2026-11-15", "VWAP", 91.9],
     ],
+  );
+  // CEEREP fills a day that has no traded VWAP.
+  const noVwapSunday = r.observations.filter(
+    (o) => !(o.metric === "VWAP" && o.deliveryDate <= "2026-11-15" && o.product === "WE"),
+  );
+  const filled = benchmarkSeries(noVwapSunday, MARKET_META.CEEGEX.benchmarks);
+  assert.deepEqual(
+    filled.find((p) => p.deliveryDate === "2026-11-15") && [
+      filled.find((p) => p.deliveryDate === "2026-11-15").metric,
+      filled.find((p) => p.deliveryDate === "2026-11-15").price,
+    ],
+    ["CEEREP", 92.1],
   );
   const vwapOnly = benchmarkSeries(
     r.observations.filter((o) => o.metric === "VWAP"),

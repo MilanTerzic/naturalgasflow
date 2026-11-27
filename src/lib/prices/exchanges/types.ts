@@ -91,7 +91,8 @@ export const MARKET_META: Record<ExchangeMarket, MarketMeta> = {
     market: "CEEGEX",
     country: "HU",
     name: "CEEGEX",
-    benchmarks: ["CEEREP", "VWAP"],
+    // VWAP first (traded price, matches the imported Datascope history); CEEREP fills gaps.
+    benchmarks: ["VWAP", "CEEREP"],
     sourcePage: "https://ceegex.hu/en/market-data/daily-data",
     timeZone: "Europe/Budapest",
     publishAfter: "17:30",

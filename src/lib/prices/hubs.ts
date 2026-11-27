@@ -30,7 +30,7 @@ export const HUBS: Record<HubId, HubDef> = {
   },
   CEEGEX: {
     id: "CEEGEX",
-    name: "CEEGEX (CEEREP)",
+    name: "CEEGEX (Day-Ahead VWAP)",
     url: "https://ceegex.hu/en/market-data/daily-data",
     feed: "live",
   },
