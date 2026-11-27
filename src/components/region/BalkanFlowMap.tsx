@@ -42,10 +42,9 @@ export interface CountryBadge {
   title?: string;
 }
 
-/** Catmull-Rom → cubic Bézier through the corridor vertices. */
-function smoothPath(pts: Pt[]): string {
-  if (pts.length < 2) return "";
-  let d = `M${pts[0][0]},${pts[0][1]}`;
+/** Catmull-Rom → cubic Bézier segments [p1, c1, c2, p2] through the corridor vertices. */
+function bezierSegments(pts: Pt[]): [Pt, Pt, Pt, Pt][] {
+  const segs: [Pt, Pt, Pt, Pt][] = [];
   for (let i = 0; i < pts.length - 1; i++) {
     const p0 = pts[i - 1] ?? pts[i];
     const p1 = pts[i];
@@ -54,14 +53,188 @@ function smoothPath(pts: Pt[]): string {
     const t = 0.18;
     const c1: Pt = [p1[0] + (p2[0] - p0[0]) * t, p1[1] + (p2[1] - p0[1]) * t];
     const c2: Pt = [p2[0] - (p3[0] - p1[0]) * t, p2[1] - (p3[1] - p1[1]) * t];
+    segs.push([p1, c1, c2, p2]);
+  }
+  return segs;
+}
+
+function smoothPath(pts: Pt[]): string {
+  if (pts.length < 2) return "";
+  let d = `M${pts[0][0]},${pts[0][1]}`;
+  for (const [, c1, c2, p2] of bezierSegments(pts)) {
     d += ` C${c1[0].toFixed(1)},${c1[1].toFixed(1)} ${c2[0].toFixed(1)},${c2[1].toFixed(1)} ${p2[0]},${p2[1]}`;
   }
   return d;
 }
 
+/** Dense polyline along the smoothed curve, with cumulative arc length per vertex. */
+function sampleCurve(pts: Pt[]): { pts: Pt[]; len: number[] } {
+  const out: Pt[] = [];
+  for (const [a, b, c, d] of bezierSegments(pts)) {
+    for (let s = out.length ? 1 : 0; s <= 16; s++) {
+      const t = s / 16;
+      const u = 1 - t;
+      out.push([
+        u * u * u * a[0] + 3 * u * u * t * b[0] + 3 * u * t * t * c[0] + t * t * t * d[0],
+        u * u * u * a[1] + 3 * u * u * t * b[1] + 3 * u * t * t * c[1] + t * t * t * d[1],
+      ]);
+    }
+  }
+  const len = [0];
+  for (let i = 1; i < out.length; i++) {
+    len.push(len[i - 1] + Math.hypot(out[i][0] - out[i - 1][0], out[i][1] - out[i - 1][1]));
+  }
+  return { pts: out, len };
+}
+
+/** Point and heading (degrees, in the line's drawn direction) at arc length `at`. */
+function pointAt(
+  curve: { pts: Pt[]; len: number[] },
+  at: number,
+): { x: number; y: number; deg: number } {
+  const { pts, len } = curve;
+  let i = 1;
+  while (i < len.length - 1 && len[i] < at) i++;
+  const [a, b] = [pts[i - 1], pts[i]];
+  const seg = len[i] - len[i - 1] || 1;
+  const f = Math.min(1, Math.max(0, (at - len[i - 1]) / seg));
+  return {
+    x: a[0] + (b[0] - a[0]) * f,
+    y: a[1] + (b[1] - a[1]) * f,
+    deg: (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI,
+  };
+}
+
 const PATHS: Record<string, string> = Object.fromEntries(
   CORRIDORS.filter((c) => LINES[c.id]).map((c) => [c.id, smoothPath(LINES[c.id])]),
 );
+const CURVES: Record<string, { pts: Pt[]; len: number[] }> = Object.fromEntries(
+  CORRIDORS.filter((c) => LINES[c.id] && LINES[c.id].length > 1).map((c) => [
+    c.id,
+    sampleCurve(LINES[c.id]),
+  ]),
+);
+
+/**
+ * Arrowheads showing the physical flow direction: spaced along the line, pointing
+ * from → to for positive values and to → from for negative (reverse) flows.
+ */
+function flowArrows(
+  id: string,
+  reverse: boolean,
+  spacing: number,
+  avoid: Pt | null,
+  clearance: number,
+  phase: number,
+) {
+  const curve = CURVES[id];
+  if (!curve) return [];
+  const total = curve.len[curve.len.length - 1];
+  const n = Math.max(2, Math.min(6, Math.round(total / spacing)));
+  const out: { x: number; y: number; deg: number }[] = [];
+  for (let i = 0; i < n; i++) {
+    const p = pointAt(curve, (total * (i + phase)) / n);
+    // Keep the interconnection marker and its label readable.
+    if (avoid && Math.hypot(p.x - avoid[0], p.y - avoid[1]) < clearance) continue;
+    out.push({ x: p.x, y: p.y, deg: reverse ? p.deg + 180 : p.deg });
+  }
+  return out;
+}
+
+interface Box {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+const overlapArea = (a: Box, b: Box) =>
+  Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) *
+  Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+const inBox = (b: Box, x: number, y: number, pad = 0) =>
+  x > b.x - pad && x < b.x + b.w + pad && y > b.y - pad && y < b.y + b.h + pad;
+
+interface LabelLine {
+  text: string;
+  size: number;
+  weight: number;
+  fill: string;
+}
+interface PlacedLabel {
+  box: Box;
+  lines: LabelLine[];
+  /** Leader from the marker to the label when it had to move away from it. */
+  leader: [Pt, Pt] | null;
+}
+
+/**
+ * Greedy label placement: each label tries positions around its marker (right first,
+ * then other sides, then further out with a leader line) and takes the one that
+ * overlaps nothing already placed — other labels, markers, cities — and covers the
+ * least pipeline.
+ */
+function placeLabels(
+  items: { id: string; at: Pt; lines: LabelLine[] }[],
+  obstacles: Box[],
+  linePts: Pt[],
+  scale: number,
+  bounds: Box,
+): Record<string, PlacedLabel> {
+  const placed: Box[] = [];
+  const out: Record<string, PlacedLabel> = {};
+  const dirs: Pt[] = [
+    [1, -0.35],
+    [1, 0.6],
+    [-1, -0.35],
+    [-1, 0.6],
+    [0, -1],
+    [0, 1],
+    [0.8, -0.9],
+    [0.8, 0.9],
+    [-0.8, -0.9],
+    [-0.8, 0.9],
+  ];
+  for (const item of items) {
+    const w = Math.max(...item.lines.map((l) => l.text.length * l.size * 0.58)) + 4 * scale;
+    const h = item.lines.reduce((sum, l) => sum + l.size * 1.2, 0) + 2 * scale;
+    let best: { box: Box; cost: number; dist: number } | null = null;
+    for (const [ri, r] of [9, 24, 42, 62].entries()) {
+      for (const [di, [ux, uy]] of dirs.entries()) {
+        const d = r * scale;
+        const cx = item.at[0] + ux * d;
+        const cy = item.at[1] + uy * d;
+        const box: Box = {
+          x: ux > 0.2 ? cx : ux < -0.2 ? cx - w : cx - w / 2,
+          y: uy < -0.5 ? cy - h : uy > 0.5 ? cy : cy - h / 2,
+          w,
+          h,
+        };
+        let cost = 0;
+        for (const b of placed) cost += overlapArea(box, b) * 50;
+        for (const b of obstacles) cost += overlapArea(box, b) * 20;
+        for (const [px, py] of linePts) if (inBox(box, px, py)) cost += 4 * scale * scale;
+        const outside =
+          Math.max(0, bounds.x - box.x) +
+          Math.max(0, box.x + box.w - bounds.x - bounds.w) +
+          Math.max(0, bounds.y - box.y) +
+          Math.max(0, box.y + box.h - bounds.y - bounds.h);
+        cost += outside * h * 50;
+        // Prefer close and conventional placements when otherwise equal.
+        cost += (ri * 30 + di * 2) * scale * scale;
+        if (!best || cost < best.cost) best = { box, cost, dist: ri };
+      }
+    }
+    const box = best!.box;
+    placed.push(box);
+    const nx = Math.min(Math.max(item.at[0], box.x), box.x + box.w);
+    const ny = Math.min(Math.max(item.at[1], box.y), box.y + box.h);
+    out[item.id] = {
+      box,
+      lines: item.lines,
+      leader: best!.dist > 0 ? [item.at, [nx, ny]] : null,
+    };
+  }
+  return out;
+}
 
 interface View {
   k: number;
@@ -228,6 +401,103 @@ export function BalkanFlowMap({
   const corridors = CORRIDORS.filter(visible).sort(
     (a, b) => layerOrder.indexOf(a.group) - layerOrder.indexOf(b.group),
   );
+
+  const flowCorridors = corridors.filter((c) => c.group !== "backbone" && c.group !== "planned");
+  const ipOf = (c: Corridor): Pt => {
+    const pts = LINES[c.id];
+    return c.lng ? pts[1] : pts[Math.min(c.ip ?? 1, pts.length - 1)];
+  };
+  const labelSize = Math.max(scale, 0.6);
+  const labelItems = layers.labels
+    ? flowCorridors.flatMap((c) => {
+        const v = values[c.id];
+        if (!v || v.value === null || v.value === 0) return [];
+        const lines: LabelLine[] = [
+          {
+            text:
+              (v.value < 0 ? "⇄ " : "") +
+              formatValue(Math.abs(v.value)) +
+              (v.status === "model" ? " (model)" : "") +
+              (layers.capacity && v.technical
+                ? ` · ${Math.round((Math.abs(v.value) / v.technical) * 100)}%`
+                : ""),
+            size: 10.5 * labelSize,
+            weight: 600,
+            fill: colorFor(c),
+          },
+        ];
+        if (layers.capacity && (v.status !== "model" || v.technical)) {
+          lines.push({
+            text: v.technical
+              ? `B ${v.booked != null ? formatValue(v.booked) : "–"} / T ${formatValue(v.technical)}` +
+                (v.capacityRef
+                  ? " (GY ref)"
+                  : v.capacityDate
+                    ? ` (${v.capacityDate.slice(5)})`
+                    : "")
+              : "cap n/a",
+            size: 8.5 * labelSize,
+            weight: 500,
+            fill: "var(--muted-foreground)",
+          });
+        }
+        return [{ id: c.id, at: ipOf(c), lines }];
+      })
+    : [];
+  // Serbian points get first pick of the free space.
+  labelItems.sort(
+    (a, b) =>
+      Number(CORRIDORS.find((c) => c.id === b.id)?.group === "serbia") -
+      Number(CORRIDORS.find((c) => c.id === a.id)?.group === "serbia"),
+  );
+  const markerBoxes: Box[] = flowCorridors.map((c) => {
+    const [x, y] = ipOf(c);
+    const r = 7 * scale;
+    return { x: x - r, y: y - r, w: 2 * r, h: 2 * r };
+  });
+  const cityBoxes: Box[] = layers.cities
+    ? [...CITIES, ...STORAGE_SITES].map(([node, name]) => {
+        const [x, y] = NODES[node];
+        const f = 9 * labelSize;
+        return {
+          x: x - 3 * scale,
+          y: y - 4 * scale - f,
+          w: name.length * f * 0.55 + 12 * scale,
+          h: f * 1.6,
+        };
+      })
+    : [];
+  // Country names and their price / net-position badges (same geometry as drawn below).
+  const countryBoxes: Box[] = Object.entries(LABELS).flatMap(([name, [x, y]]) => {
+    const f = (name === "Serbia" ? 13 : 10.5) * Math.max(scale, 0.55);
+    const label = COUNTRY_LABEL[name] ?? name;
+    const boxes: Box[] = [
+      { x: x - (label.length * f * 0.8) / 2, y: y - f, w: label.length * f * 0.8, h: f * 1.2 },
+    ];
+    const k = Math.max(scale, 0.6);
+    const rows = [
+      layers.prices ? countryBadges?.[name] : undefined,
+      layers.netPosition ? netBadges?.[name] : undefined,
+    ];
+    rows.forEach((badge, rowIdx) => {
+      if (!badge) return;
+      const row = rowIdx === 1 && rows[0] ? 1 : 0;
+      const bw = (badge.text.length * 5.6 + 12) * k;
+      boxes.push({ x: x - bw / 2, y: y + 8 * k + row * 17 * k, w: bw, h: 15 * k });
+    });
+    return boxes;
+  });
+  const activeLinePts: Pt[] = flowCorridors
+    .filter((c) => values[c.id]?.value)
+    .flatMap((c) => (CURVES[c.id]?.pts ?? []).filter((_, i) => i % 2 === 0));
+  const labelLayout = placeLabels(
+    labelItems,
+    [...markerBoxes, ...cityBoxes, ...countryBoxes],
+    activeLinePts,
+    scale,
+    { x: view.x, y: view.y, w: W / view.k, h: H / view.k },
+  );
+  const labelBoxes = Object.values(labelLayout).map((l) => l.box);
 
   return (
     <div
@@ -481,6 +751,36 @@ export function BalkanFlowMap({
           );
         })}
 
+        {/* Flow-direction arrowheads, above every line so overlapping corridors stay readable. */}
+        <g className="pointer-events-none">
+          {corridors
+            .filter((c) => c.group !== "backbone" && c.group !== "planned")
+            .flatMap((c, idx) => {
+              const v = values[c.id];
+              if (!v || v.value === null || v.value === 0) return [];
+              const pts = LINES[c.id];
+              const ip = c.lng ? pts[1] : pts[Math.min(c.ip ?? 1, pts.length - 1)];
+              const w = linkWidth(v.value, maxAbs) * scale;
+              const s = Math.max(5.5 * scale, w * 0.8);
+              const dim = selected !== null && selected !== c.id;
+              // Alternate the phase so corridors sharing a route (e.g. HU⇄RS) don't stack arrows.
+              return flowArrows(c.id, v.value < 0, 55 * scale, ip, 16 * scale, idx % 2 ? 0.3 : 0.7)
+                .filter((a) => !labelBoxes.some((b) => inBox(b, a.x, a.y, s)))
+                .map((a, i) => (
+                  <path
+                    key={`arrow-${c.id}-${i}`}
+                    d={`M${-s},${-s} L${s * 0.6},0 L${-s},${s} L${-s * 0.4},0 Z`}
+                    transform={`translate(${a.x.toFixed(1)} ${a.y.toFixed(1)}) rotate(${a.deg.toFixed(1)})`}
+                    fill="#fff"
+                    stroke="var(--map-sea)"
+                    strokeWidth={0.9 * scale}
+                    strokeLinejoin="round"
+                    opacity={dim ? 0.3 : 0.95}
+                  />
+                ));
+            })}
+        </g>
+
         {/* Interconnection markers and value labels on top of all lines. */}
         {corridors
           .filter((c) => c.group !== "backbone" && c.group !== "planned")
@@ -535,51 +835,45 @@ export function BalkanFlowMap({
                     strokeWidth={1.6 * scale}
                   />
                 )}
-                {layers.labels && has && (
-                  <text
-                    x={x + 9 * scale}
-                    y={y - 8 * scale}
-                    fontSize={10.5 * Math.max(scale, 0.6)}
-                    fontWeight={600}
-                    fill={color}
-                    stroke="var(--map-sea)"
-                    strokeWidth={3 * scale}
-                    paintOrder="stroke"
-                    className="num"
-                  >
-                    {(v!.value! < 0 ? "⇄ " : "") +
-                      formatValue(Math.abs(v!.value!)) +
-                      (v!.status === "model" ? " (model)" : "") +
-                      (layers.capacity && v!.technical
-                        ? ` · ${Math.round((Math.abs(v!.value!) / v!.technical) * 100)}%`
-                        : "")}
-                  </text>
-                )}
-                {layers.labels &&
-                  layers.capacity &&
-                  has &&
-                  (v!.status !== "model" || v!.technical) && (
-                    <text
-                      x={x + 9 * scale}
-                      y={y + 4 * scale}
-                      fontSize={8.5 * Math.max(scale, 0.6)}
-                      fontWeight={500}
-                      fill="var(--muted-foreground)"
-                      stroke="var(--map-sea)"
-                      strokeWidth={3 * scale}
-                      paintOrder="stroke"
-                      className="num"
-                    >
-                      {v!.technical
-                        ? `B ${v!.booked != null ? formatValue(v!.booked) : "–"} / T ${formatValue(v!.technical)}` +
-                          (v!.capacityRef
-                            ? " (GY ref)"
-                            : v!.capacityDate
-                              ? ` (${v!.capacityDate.slice(5)})`
-                              : "")
-                        : "cap n/a"}
-                    </text>
-                  )}
+                {labelLayout[c.id] &&
+                  (() => {
+                    const L = labelLayout[c.id];
+                    let ty = L.box.y + 1 * scale;
+                    return (
+                      <>
+                        {L.leader && (
+                          <line
+                            x1={L.leader[0][0]}
+                            y1={L.leader[0][1]}
+                            x2={L.leader[1][0]}
+                            y2={L.leader[1][1]}
+                            stroke={color}
+                            strokeWidth={0.9 * scale}
+                            opacity={0.7}
+                          />
+                        )}
+                        {L.lines.map((line, i) => {
+                          ty += line.size * 1.2;
+                          return (
+                            <text
+                              key={i}
+                              x={L.box.x + 2 * scale}
+                              y={ty - line.size * 0.25}
+                              fontSize={line.size}
+                              fontWeight={line.weight}
+                              fill={line.fill}
+                              stroke="var(--map-sea)"
+                              strokeWidth={3 * scale}
+                              paintOrder="stroke"
+                              className="num"
+                            >
+                              {line.text}
+                            </text>
+                          );
+                        })}
+                      </>
+                    );
+                  })()}
               </g>
             );
           })}
