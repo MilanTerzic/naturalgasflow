@@ -1,0 +1,9 @@
+Data Source	BalkanGasHub	BalkanGasHub	DATASCOPE	DATASCOPE	DATASCOPE	DATASCOPE	DATASCOPE	DATASCOPE	DATASCOPE	BalkanGasHub	BalkanGasHub	BalkanGasHub	BalkanGasHub	DATASCOPE	CEEGEX	CEEGEX	CEEGEX	CEEGEX	CEEGEX	CEEGEX	CEEGEX	DATASCOPE	DATASCOPE	DATASCOPE	DATASCOPE	DATASCOPE	DATASCOPE	DATASCOPE	DATASCOPE	DATASCOPE	DATASCOPE	DATASCOPE
+			Commodity	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas
+			Data Type	Spot	Spot	Forward	Forward	Forward	Forward	Forward	Forward	Forward	Intraday	Intraday	Spot	Spot	Futures	Spot	Spot	Spot	Spot	Spot	Spot	Spot	Futures	Futures	Futures	Futures	Balancing	Futures	Futures	Futures	Futures	Futures	Futures
+			Product	Gas	Gas	Gas Daily	Gas Daily	Gas Daily	Gas Daily	Gas Daily	Gas Daily	Gas Daily	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas	Gas
+			Currency	EUR	EUR	EUR	EUR	EUR	EUR	EUR	EUR	EUR	BGN	BGN	BGN	BGN	EUR	EUR	EUR	EUR	EUR	EUR	EUR	EUR	GBP	GBP	EUR	EUR	EUR	EUR	EUR	GBP	EUR	EUR	EUR
+			Area														THE	MGP	MGP	MGP	MGP	MGP	MGP	MGP	NBP	NBP	TTF	TTF	GME-PBGAS	VTP	VTP	NBP	GASPOOL	NCG	TTF
+			Country	BG	BG	GR	GR	GR	GR	GR	GR	GR	BG	BG	BG	BG	DE	HU	HU	HU	HU	HU	HU	HU	GB	GB	NL	NL	IT	AT	AT	GB	DE	DE	NL
+			Price Unit	EUR/MWh	EUR/MWh	EUR/MWh	EUR/MWh	EUR/MWh	EUR/MWh	EUR/MWh	EUR/MWh	EUR/MWh	BGN/MWh	BGN/MWh	BGN/MWh	BGN/MWh	EUR/MWh	EUR/MWh	EUR/MWh	EUR/MWh	EUR/MWh	EUR/MWh	EUR/MWh	EUR/MWh	GBp/Therm	GBp/Therm	EUR/MWh	EUR/MWh	EUR/MWh	EUR/MWh	EUR/MWh	GBp/Therm	EUR/MWh	EUR/MWh	EUR/MWh
+PublicationDate	Period	Start Date	End Date	PriceSettlement	PriceVWAP	PriceLow	PriceHigh	PriceOpen	PriceClose	PriceSettlement	PriceVWAP	Volume	PriceSettlement	PriceVWAP	PriceSettlement	PriceVWAP	PriceSettlement	PriceBid	PriceAsk	PriceMid	PriceLow	PriceHigh	PriceSettlement	PriceVWAP	PriceSettlement	PriceClose	PriceSettlement	PriceClose	PriceClose	PriceClose	PriceVWAP	PriceSettlement	PriceSettlement	PriceSettlement	PriceSettlement

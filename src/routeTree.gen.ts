@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as DashRouteImport } from './routes/_dash'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as NewsletterRouteImport } from './routes/newsletter'
+import { Route as DashArbitrageRouteImport } from './routes/_dash.arbitrage'
 import { Route as DashBalanceRouteImport } from './routes/_dash.balance'
 import { Route as DashCapacityRouteImport } from './routes/_dash.capacity'
 import { Route as DashFlowsRouteImport } from './routes/_dash.flows'
@@ -40,6 +41,11 @@ const NewsletterRoute = NewsletterRouteImport.update({
   id: '/newsletter',
   path: '/newsletter',
   getParentRoute: () => rootRouteImport,
+} as any)
+const DashArbitrageRoute = DashArbitrageRouteImport.update({
+  id: '/arbitrage',
+  path: '/arbitrage',
+  getParentRoute: () => DashRoute,
 } as any)
 const DashBalanceRoute = DashBalanceRouteImport.update({
   id: '/balance',
@@ -86,6 +92,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/newsletter': typeof NewsletterRoute
+  '/arbitrage': typeof DashArbitrageRoute
   '/balance': typeof DashBalanceRoute
   '/capacity': typeof DashCapacityRoute
   '/flows': typeof DashFlowsRoute
@@ -99,6 +106,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/newsletter': typeof NewsletterRoute
+  '/arbitrage': typeof DashArbitrageRoute
   '/balance': typeof DashBalanceRoute
   '/capacity': typeof DashCapacityRoute
   '/flows': typeof DashFlowsRoute
@@ -114,6 +122,7 @@ export interface FileRoutesById {
   '/_dash': typeof DashRouteWithChildren
   '/login': typeof LoginRoute
   '/newsletter': typeof NewsletterRoute
+  '/_dash/arbitrage': typeof DashArbitrageRoute
   '/_dash/balance': typeof DashBalanceRoute
   '/_dash/capacity': typeof DashCapacityRoute
   '/_dash/flows': typeof DashFlowsRoute
@@ -129,6 +138,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/newsletter'
+    | '/arbitrage'
     | '/balance'
     | '/capacity'
     | '/flows'
@@ -142,6 +152,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/newsletter'
+    | '/arbitrage'
     | '/balance'
     | '/capacity'
     | '/flows'
@@ -156,6 +167,7 @@ export interface FileRouteTypes {
     | '/_dash'
     | '/login'
     | '/newsletter'
+    | '/_dash/arbitrage'
     | '/_dash/balance'
     | '/_dash/capacity'
     | '/_dash/flows'
@@ -203,6 +215,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/newsletter'
       preLoaderRoute: typeof NewsletterRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_dash/arbitrage': {
+      id: '/_dash/arbitrage'
+      path: '/arbitrage'
+      fullPath: '/arbitrage'
+      preLoaderRoute: typeof DashArbitrageRouteImport
+      parentRoute: typeof DashRoute
     }
     '/_dash/balance': {
       id: '/_dash/balance'
@@ -264,6 +283,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface DashRouteChildren {
+  DashArbitrageRoute: typeof DashArbitrageRoute
   DashBalanceRoute: typeof DashBalanceRoute
   DashCapacityRoute: typeof DashCapacityRoute
   DashFlowsRoute: typeof DashFlowsRoute
@@ -274,6 +294,7 @@ interface DashRouteChildren {
 }
 
 const DashRouteChildren: DashRouteChildren = {
+  DashArbitrageRoute: DashArbitrageRoute,
   DashBalanceRoute: DashBalanceRoute,
   DashCapacityRoute: DashCapacityRoute,
   DashFlowsRoute: DashFlowsRoute,

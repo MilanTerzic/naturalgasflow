@@ -64,3 +64,31 @@ export async function withStoredHistory(hub: "TTF" | "CEGH", live: PricePoint[])
     return live;
   }
 }
+
+/**
+ * Saves settled BGH / CEEGEX day-ahead benchmarks so the arbitrage history keeps growing
+ * past the exchanges' 30–35-day windows. Write-only: the live response is unchanged.
+ */
+export async function persistHubPoints(hub: "BGH" | "CEEGEX", points: PricePoint[]) {
+  const rows = points
+    .filter((p) => p.date && p.final && Number.isFinite(p.price) && p.price > 0 && p.price < 1000)
+    .map((p) => ({
+      hub,
+      delivery_date: p.date,
+      price_eur_mwh: p.price,
+      final: true,
+      label: p.label,
+      source: "fetched",
+      fetched_at: new Date().toISOString(),
+    }));
+  if (!rows.length) return;
+  try {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await (supabaseAdmin as Loose)
+      .from("hub_price_history")
+      .upsert(rows, { onConflict: "hub,delivery_date" });
+    if (error) console.warn(`[hub-history] ${hub}: save failed: ${error.message}`);
+  } catch (err) {
+    console.warn(`[hub-history] ${hub}: ${err instanceof Error ? err.message : "save failed"}`);
+  }
+}

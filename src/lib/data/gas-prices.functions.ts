@@ -332,6 +332,14 @@ export const fetchGasPrices = createServerFn({ method: "GET" })
       loadExchanges(data.force),
     ]);
     const now = new Date().toISOString();
+    const bgh = exchangeToHub("BGH", ex.summaries.BGH);
+    const ceegex = exchangeToHub("CEEGEX", ex.summaries.CEEGEX);
+    // Keep settled exchange days for the arbitrage history (failures are logged, never thrown).
+    const { persistHubPoints } = await import("@/lib/prices/hub-history.server");
+    await Promise.all([
+      persistHubPoints("BGH", bgh.points),
+      persistHubPoints("CEEGEX", ceegex.points),
+    ]);
     const none = (hub: HubId): HubPrices => ({
       hub,
       status: "unavailable",
@@ -346,8 +354,8 @@ export const fetchGasPrices = createServerFn({ method: "GET" })
       hubs: {
         TTF: ttf,
         CEGH: cegh,
-        BGH: exchangeToHub("BGH", ex.summaries.BGH),
-        CEEGEX: exchangeToHub("CEEGEX", ex.summaries.CEEGEX),
+        BGH: bgh,
+        CEEGEX: ceegex,
         HENEX: exchangeToHub("HENEX", ex.summaries.HENEX),
         BRM: exchangeToHub("BRM", ex.summaries.BRM),
         EPIAS: none("EPIAS"),
