@@ -48,10 +48,10 @@ export const PREFERENCE: Record<Base, [string, string][]> = {
     ["EUR", "pricesettlement"],
     ["BGN", "pricesettlement"],
   ],
-  // App benchmark: CEEREP, then VWAP.
+  // VWAP first (Milan's choice); Settlement fills days without a VWAP.
   CEEGEX: [
-    ["*", "pricesettlement"],
     ["*", "pricevwap"],
+    ["*", "pricesettlement"],
     ["*", "pricemid"],
   ],
   TTF: [

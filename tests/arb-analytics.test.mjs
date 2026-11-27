@@ -350,7 +350,7 @@ test("Datascope wide export: column roles, BGN peg, days, weekends, front month"
     ),
   );
   assert.ok(
-    used.some((c) => c.hub === "CEEGEX" && c.reason === "primary" && /Settlement/.test(c.header)),
+    used.some((c) => c.hub === "CEEGEX" && c.reason === "primary" && /VWAP/.test(c.header)),
   );
   assert.ok(
     used.every((c) => ["BGH", "CEEGEX", "TTF", "CEGH"].includes(c.hub)),
@@ -364,8 +364,8 @@ test("Datascope wide export: column roles, BGN peg, days, weekends, front month"
   ]);
   assert.deepEqual(
     r.series.CEEGEX.map((x) => x.price),
-    [32, 31, 33],
-    "Settlement preferred, VWAP fills gaps",
+    [31.9, 31, 33],
+    "VWAP preferred, Settlement fills gaps",
   );
   assert.deepEqual(r.series.TTF, [{ date: "2026-11-21", price: 29 }]);
   assert.deepEqual(r.series.TTF_MA, [{ date: "2026-11-20", price: 31.5 }], "front month only");
