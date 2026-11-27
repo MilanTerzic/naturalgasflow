@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { pageMetadata } from "@/lib/page-metadata";
 import { useQuery } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Area,
   CartesianGrid,
@@ -47,6 +47,9 @@ import {
   type RouteResult,
 } from "@/lib/gas/arbitrage";
 import { GASTRANS_FUEL } from "@/lib/gas/tariffs/data";
+import { useArbitrageData } from "@/components/arbitrage/useArbitrageData";
+import { NewsletterArbAnalytics } from "@/components/arbitrage/NewsletterArbAnalytics";
+import { arbDigest, digestSentences } from "@/lib/gas/arb/digest";
 import type { FlowPointName } from "@/lib/gas/types";
 import {
   checkNewsletterToken,
@@ -438,8 +441,33 @@ function Newsletter({ today, token }: { today: string; token: string }) {
       }),
   });
 
+  // HU ↔ BG arbitrage analytics: same history, models and tariffs as the Arbitrage tab.
+  // Weather/storage drivers get a grace period; after it the section renders with what
+  // arrived (the forecast then runs without the missing drivers and says so).
+  const arbA = useArbitrageData({ excludeCrisis: true, today });
+  const [arbGrace, setArbGrace] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setArbGrace(true), 4 * MIN);
+    return () => clearTimeout(t);
+  }, []);
+  const spreadBundle = arbA.forecasts.spread;
+  const digest = useMemo(
+    () =>
+      arbDigest(arbA.rows, {
+        outlook: arbA.openProbs,
+        horizon: 7,
+        signals: spreadBundle?.signals,
+        taScore: spreadBundle?.score ?? null,
+        skill: spreadBundle?.result.scores.find((x) => x.id === "ensemble")?.skill ?? null,
+      }),
+    [arbA.rows, arbA.openProbs, spreadBundle],
+  );
+
   const all = [flowsQ, allocQ, tempsQ, regionalQ, netQ, pricesQ, rbpQ, storageQ, nomsQ, fxQ, d1sQ];
-  const settled = all.every((q) => q.isSuccess || q.isError) && huStorage.settled;
+  const settled =
+    all.every((q) => q.isSuccess || q.isError) &&
+    huStorage.settled &&
+    (arbA.status.settled || arbGrace);
 
   // ---------------------------------------------------------------- derived data
   const flows = useMemo(
@@ -665,7 +693,7 @@ function Newsletter({ today, token }: { today: string; token: string }) {
     arbPrices.BGH.some((x) => x.date === d) && arbPrices.CEEGEX.some((x) => x.date === d);
   const arbDay = bothOn(deliveryDay) ? deliveryDay : bothOn(today) ? today : deliveryDay;
   const arb = computeAll(arbDay, arbPrices, fxQ.data?.fx ?? null);
-  const arbLines = arbitrageSentences(arb);
+  const arbLines = [...arbitrageSentences(arb), ...digestSentences(digest)];
   const check = d1Check(
     d1sQ.data?.rows.find((r) => r.forecast_for === flowDay) ?? null,
     flowDay,
@@ -721,6 +749,7 @@ function Newsletter({ today, token }: { today: string; token: string }) {
     huStorage.error ? "Srbijagas HU storage" : null,
     nomsQ.isError ? "MET nominations" : null,
     fxQ.isError || fxQ.data?.error ? "EUR/HUF/RSD rates" : null,
+    arbA.status.historyError ? "stored BGH/CEEGEX price history" : null,
   ].filter((x): x is string => !!x);
 
   // Keep today's D+1 expectation for tomorrow's check (the server ignores test dates).
@@ -1031,6 +1060,31 @@ function Newsletter({ today, token }: { today: string; token: string }) {
             : `FX unavailable${fxQ.data?.error ? `: ${fxQ.data.error}` : ""} — HUF/RSD legs not converted.`}{" "}
           Delivered into Serbia = up to the Transportgas entry, excluding the domestic exit charge.
         </p>
+      </Section>
+
+      <Section
+        shot="arbitrage-analytics"
+        title="HU ↔ BG Arbitrage Analytics"
+        subtitle={`CEEGEX − BGH day-ahead spread vs transport break-even via Serbia (Gastrans) · last 90 days and 7-day outlook · €/MWh${digest ? ` · latest ${digest.day}` : ""}`}
+      >
+        {digest ? (
+          <NewsletterArbAnalytics
+            digest={digest}
+            rows={arbA.rows}
+            drivers={spreadBundle?.report ?? []}
+          />
+        ) : (
+          <Unavailable>
+            No BGH/CEEGEX days with both prices yet
+            {arbA.status.historyError ? ` (stored history: ${arbA.status.historyError})` : ""}.
+          </Unavailable>
+        )}
+        {digest && arbA.status.historyError && (
+          <p className="mt-2 text-[11px] text-destructive">
+            Stored price history unavailable ({arbA.status.historyError}); figures use only the days
+            the live feeds still serve.
+          </p>
+        )}
       </Section>
 
       <Section

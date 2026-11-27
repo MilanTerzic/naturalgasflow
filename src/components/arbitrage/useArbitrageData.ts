@@ -38,8 +38,8 @@ export function belgradeToday(): string {
 
 const HOUR = 3600_000;
 
-export function useArbitrageData(opts: { excludeCrisis: boolean }) {
-  const today = belgradeToday();
+export function useArbitrageData(opts: { excludeCrisis: boolean; today?: string }) {
+  const today = opts.today ?? belgradeToday();
 
   const pricesQ = useQuery({
     queryKey: ["gas-prices"],
@@ -215,7 +215,13 @@ export function useArbitrageData(opts: { excludeCrisis: boolean }) {
     [rows, opts.excludeCrisis, forward],
   );
 
+  // Every query has answered (success or error); queries that never ran count as answered.
+  const done = (q: { isSuccess: boolean; isError: boolean; isFetching: boolean }) =>
+    q.isSuccess || q.isError || !q.isFetching;
+  const core = [pricesQ, fxQ, historyQ].every((q) => q.isSuccess || q.isError);
+  const aux = [weatherQ, huStorageQ, bgStorageQ].every(done);
   const status = {
+    settled: core && aux,
     loading: pricesQ.isLoading || historyQ.isLoading || fxQ.isLoading,
     historyError: historyQ.data?.error ?? (historyQ.error ? String(historyQ.error) : null),
     weatherError: weatherQ.data?.error ?? null,
