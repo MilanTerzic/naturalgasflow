@@ -74,6 +74,14 @@ export function useArbitrageData(opts: { excludeCrisis: boolean }) {
         .map((p) => ({ date: p.date, price: p.price, final: p.final }));
       out[h] = mergeDaily(stored, now);
     }
+    // TTF day-ahead history is short (exports often carry only futures): where it is
+    // missing, use the front-month settlement of the previous trading day as the TTF level.
+    const fm: DailyPrice[] = (hist?.TTF_MA ?? []).map((p) => ({
+      date: addDays(p.date, 1),
+      price: p.price,
+      final: true,
+    }));
+    out.TTF = mergeDaily(fm, out.TTF);
     return out;
   }, [historyQ.data, pricesQ.data]);
 

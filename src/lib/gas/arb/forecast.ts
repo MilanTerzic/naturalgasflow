@@ -424,13 +424,15 @@ export function forecastEnsemble(input: ForecastInput, origins = 60): EnsembleRe
   const ensemble: PathPoint[] = ok.length
     ? ok[0].path.map((pt, k) => {
         const p50 = ok.reduce((s, m) => s + weights[m.id][k] * m.path[k].p50, 0);
-        if (empirical)
-          return {
-            date: pt.date,
-            p50,
-            lo: p50 + quantile(ensErr[k], 0.1),
-            hi: p50 + quantile(ensErr[k], 0.9),
-          };
+        if (empirical) {
+          // Symmetric: 80th percentile of absolute backtest errors. Signed quantiles from
+          // ~60 overlapping origins skew with the latest move and can leave p50 outside.
+          const q = quantile(
+            ensErr[k].map((e) => Math.abs(e)),
+            0.8,
+          );
+          return { date: pt.date, p50, lo: p50 - q, hi: p50 + q };
+        }
         const sd = ok.reduce(
           (s, m) => s + weights[m.id][k] * ((m.path[k].hi - m.path[k].lo) / (2 * Z80)),
           0,

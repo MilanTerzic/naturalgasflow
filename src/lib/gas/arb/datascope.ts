@@ -159,7 +159,7 @@ export function parseDatascope(rows: string[][]): ImportResult {
       if (p === null) continue;
       const eur =
         c.currency.toUpperCase() === "BGN" || lc(c.unit).startsWith("bgn") ? p / BGN_PER_EUR : p;
-      if (eur > 0 && eur < 1000) return eur;
+      if (eur > 0 && eur < 1000) return Math.round(eur * 10_000) / 10_000;
     }
     return null;
   };
@@ -183,24 +183,30 @@ export function parseDatascope(rows: string[][]): ImportResult {
   for (const r of rows.slice(mr + 1)) {
     if (!r.some((c) => (c ?? "").trim())) continue;
     const pub = parseDate(r[pubCol] ?? "");
-    const start = parseDate(r[startCol] ?? "") ?? parseDate(r[periodCol] ?? "") ?? pub;
-    const end = parseDate(r[endCol] ?? "") ?? start;
-    if (!pub || !start || !end) {
+    const start = parseDate(r[startCol] ?? "") ?? pub;
+    const endRaw = parseDate(r[endCol] ?? "") ?? start;
+    if (!pub || !start || !endRaw) {
       rejected++;
       continue;
     }
-    const span = daysBetween(start, end);
+    const period = lc(r[periodCol]).toUpperCase();
+    // Datascope end dates are exclusive (DA 2 Jan runs 2 Jan → 3 Jan); an end equal to the
+    // start is read as a single inclusive day.
+    const end = endRaw > start ? addDays(endRaw, -1) : start;
+    const days = daysBetween(start, end) + 1;
     const isMonth =
-      start.slice(8) === "01" && span >= 27 && span <= 30 && addDays(end, 1).slice(8) === "01";
+      start.slice(8) === "01" && addDays(end, 1).slice(8) === "01" && days >= 28 && days <= 31;
+    // Within-day and balance-of-month are not day-ahead prices.
+    if (period === "WD" || period === "BM") continue;
     for (const hub of Object.keys(ordered) as Base[]) {
       const v = valueOf(r, hub);
       if (v === null) continue;
-      if (span <= 0 || (span <= 3 && !isMonth)) {
-        // A single day, or a weekend/holiday block applied to each of its days.
-        for (let i = 0; i <= Math.max(0, span); i++) {
+      if (days <= 4 && !isMonth) {
+        // A single day (DA), or a weekend/holiday block applied to each of its days.
+        const single = days === 1;
+        for (let i = 0; i < days; i++) {
           const d = addDays(start, i);
           const prev = daily[hub].get(d);
-          const single = span <= 0;
           if (prev && prev.single && !single) continue;
           if (prev && prev.single === single && prev.pub > pub) continue;
           daily[hub].set(d, { pub, price: v, single });
@@ -230,7 +236,7 @@ export function parseDatascope(rows: string[][]): ImportResult {
     issues.push(`BGN columns converted at the fixed ${BGN_PER_EUR} BGN/EUR peg (fallback only).`);
   if (otherSpans)
     issues.push(
-      `${otherSpans} value(s) for multi-day contracts other than weekends or months skipped.`,
+      `${otherSpans} value(s) for quarter / season / year contracts skipped (only day-ahead, weekend and front month are used).`,
     );
   if (rejected)
     issues.push(`${rejected} row(s) without a readable publication/start date skipped.`);

@@ -328,7 +328,7 @@ test("Datascope wide export: column roles, BGN peg, days, weekends, front month"
   // 20 = CEEGEX VWAP, 23 = TTF Settlement, 27 = CEGH VWAP, 21 = NBP (ignored).
   const rows = [
     ...header,
-    row("20.11.2026", "DA", "21.11.2026", "21.11.2026", {
+    row("20.11.2026", "DA", "21.11.2026", "22.11.2026", {
       1: "30,50",
       19: "32,00",
       20: "31,90",
@@ -336,10 +336,10 @@ test("Datascope wide export: column roles, BGN peg, days, weekends, front month"
       27: "30,10",
       21: "75",
     }),
-    row("20.11.2026", "WE", "21.11.2026", "22.11.2026", { 1: "30,00", 19: "31,00" }),
-    row("21.11.2026", "DA", "23.11.2026", "23.11.2026", { 12: "60,00", 20: "33,00" }),
-    row("20.11.2026", "M+1", "01.12.2026", "31.12.2026", { 23: "31,50", 27: "32,00" }),
-    row("20.11.2026", "M+2", "01.01.2027", "31.01.2027", { 23: "33,00" }),
+    row("20.11.2026", "WE", "21.11.2026", "23.11.2026", { 1: "30,00", 19: "31,00" }),
+    row("21.11.2026", "DA", "23.11.2026", "24.11.2026", { 12: "60,00", 20: "33,00" }),
+    row("20.11.2026", "MM", "01.12.2026", "01.01.2027", { 23: "31,50", 27: "32,00" }),
+    row("20.11.2026", "MM", "01.01.2027", "01.02.2027", { 23: "33,00" }),
   ];
   const r = parsePriceSheet(rows);
   const used = r.columns.filter((c) => c.hub);
@@ -360,7 +360,7 @@ test("Datascope wide export: column roles, BGN peg, days, weekends, front month"
   assert.deepEqual(r.series.BGH, [
     { date: "2026-11-21", price: 30.5 },
     { date: "2026-11-22", price: 30 },
-    { date: "2026-11-23", price: 60 / 1.95583 },
+    { date: "2026-11-23", price: Math.round((60 / 1.95583) * 1e4) / 1e4 },
   ]);
   assert.deepEqual(
     r.series.CEEGEX.map((x) => x.price),
@@ -396,4 +396,12 @@ test("backtest holds persisted drivers (TTF, storage) at their last known value"
   const fm = res.scores.find((s) => s.id === "fundamental");
   // Without look-ahead it can be no better than the random walk on a random walk.
   assert.ok(fm.skill[6] < 0.2, `fundamental skill at 7d ${fm.skill[6]} implies look-ahead`);
+});
+
+test("empirical band is symmetric around the ensemble p50", () => {
+  const y = arSeries(400, 2, 0.7, 0.5, 31);
+  for (let i = 0; i < 25; i++) y.push(y[y.length - 1] - 0.4); // a one-sided recent slide
+  const dates = y.map((_, i) => addDays("2025-01-01", i));
+  const res = forecastEnsemble({ dates, y, horizon: 14 }, 60);
+  for (const p of res.ensemble) close(p.p50 - p.lo, p.hi - p.p50, 1e-9);
 });

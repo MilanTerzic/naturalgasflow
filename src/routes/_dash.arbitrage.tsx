@@ -238,7 +238,7 @@ function ArbitragePage() {
         </ChartCard>
         <ChartCard
           title="Basis to TTF"
-          description="Each hub's premium over TTF. The arbitrage is the gap between the BGH and CEEGEX lines."
+          description="Each hub's premium over TTF (day-ahead where stored, otherwise the previous day's TTF front-month settlement). The arbitrage is the gap between the BGH and CEEGEX lines."
           height={300}
           action={<RangePicker value={range} onChange={setRange} />}
         >

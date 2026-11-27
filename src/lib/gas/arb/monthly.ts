@@ -92,7 +92,7 @@ export function monthlyOutlook(
   return {
     outlook,
     note:
-      `Seasonal norm from ${years} calendar year(s)${(opts.excludeCrisis ?? true) ? " excluding the Sep 2021 – Mar 2023 crisis" : ""}; ` +
+      `Seasonal norm from ${years} calendar year(s)${(opts.excludeCrisis ?? true) && rows.some((r) => r.crisis) ? " excluding the Sep 2021 – Mar 2023 crisis" : ""}; ` +
       `today's ${deviation >= 0 ? "+" : ""}${deviation.toFixed(2)} €/MWh deviation keeps ${(phiMonth * 100).toFixed(0)}% of its size each month.`,
   };
 }
